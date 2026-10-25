@@ -321,23 +321,99 @@
   bottom: calc(100% + 5px);
 }
 
-.pocket-watch-float[data-ring="break"] .pocket-watch-badge {
+.pocket-watch-badge[data-tone="break"] {
   background: var(--pw-break, #5fb49c);
 }
 
-.pocket-watch-float[data-ring="paused"] .pocket-watch-badge {
+.pocket-watch-badge[data-tone="paused"] {
   color: var(--text-normal);
   background: var(--background-secondary-alt);
 }
 
-/* A soft glow when a session ends. */
-.pocket-watch-float.is-ringing .pocket-watch-face {
-  animation: pocket-watch-glow 2.2s ease-in-out 3;
+/* ---------------------------------------------------------------------------
+   Time's up: orange after a focus session, green after a break.
+   --------------------------------------------------------------------------- */
+
+.pocket-watch-float {
+  --pw-alert: var(--pw-focus, #e0694f);
 }
 
-@keyframes pocket-watch-glow {
+.pocket-watch-float[data-alert="break"] {
+  --pw-alert: var(--pw-break, #5fb49c);
+}
+
+/* Glow: a soft halo that slowly breathes. */
+.pocket-watch-float[data-times-up="glow"]:not([data-alert="none"]) .pocket-watch-face {
+  animation: pocket-watch-alert-glow 2.8s ease-in-out infinite;
+}
+
+@keyframes pocket-watch-alert-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 2px color-mix(in srgb, var(--pw-alert) 40%, transparent));
+  }
   50% {
-    filter: drop-shadow(0 0 10px var(--pw-focus, #e0694f)) drop-shadow(0 0 22px rgba(224, 105, 79, 0.45));
+    filter: drop-shadow(0 0 9px var(--pw-alert)) drop-shadow(0 0 20px color-mix(in srgb, var(--pw-alert) 55%, transparent));
+  }
+}
+
+/* Colour: the ring fills with the colour and the dial takes on a faint wash of it. */
+.pw-alert-wash {
+  fill: var(--pw-alert);
+  opacity: 0;
+  transition: opacity 1.2s ease;
+  pointer-events: none;
+}
+
+.pocket-watch-float[data-times-up="colour"]:not([data-alert="none"]) .pw-alert-wash {
+  opacity: 0.13;
+}
+
+.pocket-watch-float[data-ring="over"] .pw-ring {
+  stroke: var(--pw-alert);
+}
+
+.pocket-watch-float[data-ring="over"] .pw-ring-track {
+  stroke: color-mix(in srgb, var(--pw-alert) 30%, transparent);
+}
+
+.pocket-watch-float[data-ring="over"] .pw-d-fill {
+  background: var(--pw-alert);
+}
+
+.pocket-watch-float[data-times-up="colour"]:not([data-alert="none"]) .pocket-watch-digital {
+  box-shadow: inset 0 0 0 1.5px var(--pw-alert), inset 0 0 1.4em color-mix(in srgb, var(--pw-alert) 30%, transparent);
+  transition: box-shadow 1.2s ease;
+}
+
+/* Dot: a small dot on the edge of the watch, like a notification. */
+.pocket-watch-alert-dot {
+  position: absolute;
+  display: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--pw-alert);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9), 0 1px 4px rgba(0, 0, 0, 0.45);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.pocket-watch-digital > .pocket-watch-alert-dot {
+  /* 0.293 = 1 - 1/√2: the point halfway round the rounded corner. */
+  left: calc(100% - var(--pw-corner, 1em) * 0.293);
+  top: calc(var(--pw-corner, 1em) * 0.293);
+}
+
+.pocket-watch-float[data-times-up="dot"]:not([data-alert="none"]) .pocket-watch-alert-dot {
+  display: block;
+  animation: pocket-watch-alert-dot 2.2s ease-in-out infinite;
+}
+
+@keyframes pocket-watch-alert-dot {
+  50% {
+    transform: translate(-50%, -50%) scale(0.72);
+    opacity: 0.55;
   }
 }
 
@@ -985,9 +1061,10 @@
 
 /* Layouts */
 .pw-l-wide {
+  --pw-corner: 1.1em;
   min-width: 7.6em;
   padding: 0.55em 0.95em 0.65em;
-  border-radius: 1.1em;
+  border-radius: var(--pw-corner);
 }
 
 .pw-l-wide .pw-d-time {
@@ -1004,6 +1081,7 @@
 }
 
 .pw-l-slim {
+  --pw-corner: 1.3em;
   display: flex;
   align-items: center;
   gap: 0.75em;
@@ -1030,9 +1108,10 @@
 }
 
 .pw-l-tall {
+  --pw-corner: 1.2em;
   min-width: 5.4em;
   padding: 0.6em 0.9em 0.7em;
-  border-radius: 1.2em;
+  border-radius: var(--pw-corner);
 }
 
 .pw-l-tall .pw-d-time {
@@ -1064,8 +1143,9 @@
 }
 
 .pw-l-compact {
+  --pw-corner: 0.8em;
   padding: 0.25em 0.7em 0.3em;
-  border-radius: 0.8em;
+  border-radius: var(--pw-corner);
 }
 
 .pw-l-compact .pw-d-time {
@@ -1721,7 +1801,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pocket-watch-float.is-ringing .pocket-watch-face {
+  .pocket-watch-float[data-times-up="glow"]:not([data-alert="none"]) .pocket-watch-face {
+    animation: none;
+    filter: drop-shadow(0 0 7px var(--pw-alert));
+  }
+
+  .pocket-watch-float[data-times-up="dot"]:not([data-alert="none"]) .pocket-watch-alert-dot {
     animation: none;
   }
 }
