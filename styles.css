@@ -995,6 +995,64 @@
   fill: #f1d78f;
 }
 
+/* The round moon window, with the moon's age around it */
+.pw-age-ring {
+  fill: none;
+  stroke: rgba(0, 0, 0, 0.18);
+}
+
+.pw-age-tick {
+  fill: none;
+  stroke: var(--pw-ink-soft);
+  stroke-width: 0.35;
+}
+
+.pw-age-num {
+  fill: var(--pw-ink);
+  font-family: var(--font-interface);
+  font-weight: 600;
+  text-anchor: middle;
+  dominant-baseline: central;
+  opacity: 0.85;
+}
+
+.pw-port-star {
+  fill: #f4f6ff;
+  opacity: 0.8;
+}
+
+.pw-age-pointer {
+  fill: var(--pw-accent);
+}
+
+.pw-luna-sea {
+  fill: #8f8a7c;
+  opacity: 0.55;
+}
+
+.pw-luna-crater {
+  fill: rgba(120, 112, 92, 0.4);
+}
+
+.pw-luna-rim {
+  fill: rgba(255, 252, 240, 0.55);
+}
+
+.pw-luna-night {
+  fill: #0a1128;
+  opacity: 0.86;
+}
+
+.pw-port-rim {
+  fill: none;
+}
+
+.pw-port-shadow {
+  fill: none;
+  stroke: rgba(0, 0, 0, 0.55);
+  stroke-width: 0.6;
+}
+
 .pw-moon {
   stroke: rgba(120, 85, 25, 0.5);
   stroke-width: 0.3;
