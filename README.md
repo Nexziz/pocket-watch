@@ -2,7 +2,10 @@
 
 An Obsidian plugin that tracks how long you spend in Obsidian.
 
-- **Floating watch**: a small analog or digital watch that sits on top of your notes. Drag it wherever you like; it remembers the spot. It counts minutes, not seconds, so it stays calm while you work. The rim turns orange when you go idle and grey when paused.
+- **A small timepiece over your notes**: it shows the time of day. Drag it onto any pane and it snaps to that pane's nearest corner, then stays there when you resize or rearrange things. Hold Alt while dropping to place it anywhere.
+- **Faces**: Porcelain (ivory dial with thin batons), Slate (charcoal with sand-coloured numerals), Midnight (deep blue with faint stars), or Digital.
+- **Hands**: Leaf, Baton or Breguet, with an optional seconds hand.
+- **Complications**: a date window, tonight's moon phase, and today's time in Obsidian, both as small text on the dial and as a ring on the bezel that fills up toward your daily goal. The ring dims while the timer isn't counting.
 - **Shelf**: click the watch and a shelf opens with everything else. Click outside it or press Escape to close it.
 - **Idle limit**: the timer stops after a set time with no typing, clicking, scrolling or mouse movement (30 minutes by default; set it with the slider). Any activity starts it again. Reading and scrolling count as activity.
 - **Calendar**: each day shows the time you spent. Click a day to see its time and word stats compared with today.
@@ -19,8 +22,8 @@ Your data is stored in `.obsidian/plugins/pocket-watch/data.json`.
 
 ## Settings
 
-- **Show floating watch** and **Watch style** (analog or digital)
-- **Reset watch position**: move the watch back to the bottom right corner.
+- **Watch**: show or hide it, face, hands, size, date, moon phase, seconds hand, today's time and the daily goal.
+- **Reset watch position**: snap the watch back to the bottom right corner of the note you are working in.
 - **Idle limit**: minutes without activity before the timer stops (1 to 120).
 - **Remove idle time**: when the timer goes idle, take back the minutes that passed without activity.
 - **Only count while Obsidian is focused**: pause while another app is in front (on by default).
