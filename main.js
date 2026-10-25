@@ -30,7 +30,7 @@ const ANALOG_FACES = {
   },
   midnight: {
     name: 'Midnight', case: 'polished', markers: 'dots', decor: 'aventurine', texture: 'sunburst', flange: true, applied: true,
-    hands: 'dauphine', set: { slotBottom: 'moon' },
+    hands: 'dauphine', set: { slotBottom: 'moon-age' },
   },
   sakura: {
     name: 'Sakura', case: 'polished', markers: 'pips', art: 'sakura', flange: true, applied: true, brand: 'monogram',
@@ -42,7 +42,7 @@ const ANALOG_FACES = {
   },
   meteorite: {
     name: 'Meteorite', case: 'polished', markers: 'batons', art: 'meteorite', texture: 'grain', flange: true, applied: true, brandInk: true,
-    hands: 'dauphine', set: { slotTop: 'moon' },
+    hands: 'dauphine', set: { slotBottom: 'seconds' },
   },
   openheart: {
     name: 'Open heart', case: 'polished', markers: 'batons', texture: 'azurage', flange: true, applied: true, window: 'slotBottom',
@@ -74,7 +74,7 @@ const ANALOG_FACES = {
   },
   rose: {
     name: 'Rosé', case: 'polished', markers: 'batons', texture: 'sunburst', flange: true, applied: true, serif: true, brandInk: true,
-    hands: 'leaf', set: { slotLeft: 'month', slotRight: 'date', slotBottom: 'moon' },
+    hands: 'leaf', set: { slotLeft: 'month', slotRight: 'date' },
   },
   theme: {
     name: 'Match theme', case: 'thin', markers: 'batons', decor: 'minute-dots', model: false,
@@ -131,7 +131,8 @@ const COMPLICATIONS = {
   date: 'Date',
   'weekday-date': 'Weekday and date',
   month: 'Month',
-  moon: 'Moon phase',
+  moon: 'Moon phase, arched window',
+  'moon-age': 'Moon phase, round window with its age',
   movement: 'Movement window',
   focus: "Today's time",
   words: "Today's words",
@@ -1902,6 +1903,8 @@ class FloatingWatch {
       windowed(30, now.toLocaleDateString(undefined, { month: 'short' }).replace('.', '').slice(0, 3).toUpperCase());
     } else if (type === 'moon') {
       this.drawMoonWindow(svg, add, cx, cy, k, now);
+    } else if (type === 'moon-age') {
+      this.drawMoonPorthole(svg, add, text, cx, cy, k, now);
     } else if (type === 'movement') {
       this.drawMovementWindow(svg, add, cx, cy, 19.5 * k);
     } else if (type === 'focus') {
@@ -1964,6 +1967,87 @@ class FloatingWatch {
       }
     }
     add(svg, 'path', { d: arch }, 'pw-moon-arch');
+  }
+
+  // A round window onto a realistic moon: its seas and craters, lit from the side as it is
+  // tonight, with the shadow's edge softened, and the faint earthshine on its dark side. Around
+  // the window, a scale of the moon's age in days, with a small pointer at tonight's age.
+  drawMoonPorthole(svg, add, text, cx, cy, k, now) {
+    const url = (name) => `url(#${this.id(name)})`;
+    const a = 14.5 * k;
+    const m = a * 0.7;
+    const phase = moonPhase(now);
+    this.clips = (this.clips || 0) + 1;
+    const n = this.clips;
+    add(add(this.defs, 'clipPath', { id: this.id(`port-${n}`) }), 'circle', { cx, cy, r: a });
+    add(add(this.defs, 'clipPath', { id: this.id(`luna-${n}`) }), 'circle', { cx, cy, r: m });
+    const soft = add(this.defs, 'filter', { id: this.id(`soft-${n}`), x: '-20%', y: '-20%', width: '140%', height: '140%' });
+    add(soft, 'feGaussianBlur', { stdDeviation: (m * 0.09).toFixed(2) });
+    const blur = add(this.defs, 'filter', { id: this.id(`seas-${n}`), x: '-20%', y: '-20%', width: '140%', height: '140%' });
+    add(blur, 'feGaussianBlur', { stdDeviation: (m * 0.05).toFixed(2) });
+    this.gradient(add, 'radialGradient', 'port-sky', { cx: '45%', cy: '35%', r: '70%' }, [['0%', '#23396b'], ['100%', '#060c20']]);
+    this.gradient(add, 'radialGradient', 'luna', { cx: '42%', cy: '38%', r: '62%' }, [['0%', '#fbf6e6'], ['60%', '#e2dbc4'], ['100%', '#a9a28c']]);
+
+    // The age scale: a tick for each day, longer every five, numbered, on a slightly sunken ring.
+    const ring = a + 4.2 * k;
+    add(svg, 'circle', { cx, cy, r: ring, 'stroke-width': 7.4 * k }, 'pw-age-ring');
+    let ticks = '';
+    for (let day = 0; day < 30; day++) {
+      const ang = ((day / 29.53) * 360 * Math.PI) / 180;
+      const len = day % 5 === 0 ? 2.2 : 1.2;
+      const [r1, r2] = [a + 1.4 * k, a + (1.4 + len) * k];
+      ticks += `M ${(cx + r1 * Math.sin(ang)).toFixed(2)} ${(cy - r1 * Math.cos(ang)).toFixed(2)} L ${(cx + r2 * Math.sin(ang)).toFixed(2)} ${(cy - r2 * Math.cos(ang)).toFixed(2)} `;
+      if (day % 5 === 0 && day) {
+        const rr = a + 5.4 * k;
+        text(svg, cx + rr * Math.sin(ang), cy - rr * Math.cos(ang), 2.9 * k, String(day), 'pw-age-num');
+      }
+    }
+    add(svg, 'path', { d: ticks }, 'pw-age-tick');
+    // The pointer at tonight's age, and a small star for new moon at the top.
+    const age = phase * 29.53;
+    const pr = a + 7.5 * k;
+    add(svg, 'path', {
+      d: `M ${cx} ${cy - pr + 2.6 * k} L ${cx + 1.3 * k} ${cy - pr - 0.2 * k} L ${cx - 1.3 * k} ${cy - pr - 0.2 * k} Z`,
+      transform: `rotate(${((age / 29.53) * 360).toFixed(2)} ${cx} ${cy})`,
+    }, 'pw-age-pointer');
+    add(svg, 'path', { d: glintPath(cx, cy - a - 4.9 * k, 1.5 * k, 0.3) }, 'pw-age-num');
+
+    // The window: night sky, a few stars, and the moon.
+    const g = add(svg, 'g', { 'clip-path': url(`port-${n}`) });
+    add(g, 'circle', { cx, cy, r: a, fill: url('port-sky') });
+    const rand = rng(57);
+    let stars = '';
+    for (let i = 0; i < 26; i++) {
+      const t = rand() * 2 * Math.PI;
+      const r = m * 1.08 + rand() * (a - m * 1.08);
+      stars += circlePath((cx + r * Math.cos(t)).toFixed(2), (cy + r * Math.sin(t)).toFixed(2), ((0.12 + rand() * 0.22) * k).toFixed(2));
+    }
+    add(g, 'path', { d: stars }, 'pw-port-star');
+    const luna = add(g, 'g', { 'clip-path': url(`luna-${n}`) });
+    add(luna, 'circle', { cx, cy, r: m, fill: url('luna') });
+    // The seas, roughly where they are on the moon we see.
+    let seas = '';
+    for (const [u, v, rx, ry, turn] of [
+      [-0.48, 0.02, 0.3, 0.42, 12], [-0.22, -0.38, 0.27, 0.22, -15], [0.18, -0.3, 0.16, 0.15, 0], [0.32, 0.02, 0.2, 0.17, 20],
+      [0.55, 0.2, 0.12, 0.15, 0], [0.68, -0.32, 0.1, 0.08, 0], [-0.12, 0.4, 0.17, 0.13, -10], [0.12, 0.08, 0.1, 0.12, 0],
+    ]) {
+      const x = cx + u * m;
+      const y = cy + v * m;
+      seas += `M ${(x - rx * m).toFixed(2)} ${y.toFixed(2)} a ${(rx * m).toFixed(2)} ${(ry * m).toFixed(2)} ${turn} 1 0 ${(2 * rx * m).toFixed(2)} 0 a ${(rx * m).toFixed(2)} ${(ry * m).toFixed(2)} ${turn} 1 0 ${(-2 * rx * m).toFixed(2)} 0 Z `;
+    }
+    add(luna, 'path', { d: seas, filter: url(`seas-${n}`) }, 'pw-luna-sea');
+    let craters = '';
+    let rims = '';
+    for (const [u, v, r] of [[-0.1, 0.74, 0.05], [0.42, 0.55, 0.04], [-0.62, -0.42, 0.035], [0.05, -0.62, 0.04], [0.72, 0.38, 0.03], [-0.35, 0.62, 0.03]]) {
+      craters += circlePath((cx + u * m).toFixed(2), (cy + v * m).toFixed(2), (r * m).toFixed(2));
+      rims += circlePath((cx + u * m - r * m * 0.25).toFixed(2), (cy + v * m - r * m * 0.25).toFixed(2), (r * m * 0.8).toFixed(2));
+    }
+    add(luna, 'path', { d: rims }, 'pw-luna-rim');
+    add(luna, 'path', { d: craters }, 'pw-luna-crater');
+    // Night on the moon: the part the sun doesn't reach, with a soft edge.
+    add(luna, 'path', { d: moonPath(cx, cy, m * 1.02, (phase + 0.5) % 1), filter: url(`soft-${n}`) }, 'pw-luna-night');
+    add(svg, 'circle', { cx, cy, r: a + 0.6 * k, 'stroke-width': 1.5 * k, stroke: url('metal') }, 'pw-port-rim');
+    add(svg, 'circle', { cx, cy, r: a - 0.15 * k }, 'pw-port-shadow');
   }
 
   // A window onto the movement, drawn like a real pocket watch movement at 18,000 beats an

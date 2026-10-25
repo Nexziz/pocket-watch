@@ -6,7 +6,7 @@ A fine timepiece that sits over your notes, with a Pomodoro timer for a steady r
 
 ## A timepiece
 
-- **Sixteen watches, each its own.** Every face, signed Philip Pocket, comes with its own hands and complications: a moon phase on some, a date, small seconds, your words today or a goal dial on others. You can also pick your own.
+- **Sixteen watches, each its own.** Every face, signed Philip Pocket, comes with its own hands and complications: a date, small seconds, your words today or a goal dial. Two have a moon phase, each in its own window: Porcelain's classic arch with gold moons, and Midnight's round window onto a realistic moon, with its age in days around it. You can also pick your own.
 - **Two painted dials**: Sakura, a cherry branch in gold lacquer with mother-of-pearl blossoms on black, and Nocturne, a mountain lake at dusk whose moon is tonight's moon.
 - **Snaps where you put it.** Drag it over a pane and it snaps to a corner or edge. Drop it on the ribbon or status bar to snap it to the window, or hold Alt to place it anywhere.
 - **Any size**: drag the handle on the watch, or hold Alt and scroll over it.
