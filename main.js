@@ -6,23 +6,80 @@ const { Plugin, PluginSettingTab, Setting, MarkdownView, Notice, Menu } = requir
 // Options
 // ---------------------------------------------------------------------------
 
-// Each analog face picks a case and its own hour markers, and optionally a decoration, a dial
-// finish (texture), a flange with a minute track, polished metal (applied) markers, a window
-// onto the movement in one slot, serif printing, and whether its name is printed (plain, model).
-// Its colours live in styles.css under .pocket-watch-face-<key>.
+// Each analog face is a watch of its own: a case, hour markers, hands and a set of
+// complications (set: what sits at 12, 3, 6 and 9), and optionally a decoration, a dial
+// finish (texture), a painting (art), a flange with a minute track, polished metal (applied)
+// markers, a window onto the movement in one slot, and serif printing. The Philip Pocket signature is printed
+// under 12 (brandWidth and brandClear size and place it); brand: 'script' prints just
+// "Philip", brand: 'monogram' the interlaced PP, brandAt: 'six' moves it above 6, brandInk
+// prints it rather than applying it in metal on a light dial, and
+// model: false leaves out the face's name. Its colours live in styles.css under
+// .pocket-watch-face-<key>.
 const ANALOG_FACES = {
-  porcelain: { name: 'Porcelain', case: 'polished', markers: 'batons', decor: 'minute-dots', texture: 'enamel', serif: true },
-  linen: { name: 'Linen', case: 'polished', markers: 'roman', decor: 'railroad', texture: 'guilloche', serif: true },
-  slate: { name: 'Slate', case: 'polished', markers: 'quarters', texture: 'brushed', flange: true, applied: true },
-  midnight: { name: 'Midnight', case: 'polished', markers: 'dots', decor: 'aventurine', texture: 'sunburst', flange: true, applied: true },
-  openheart: { name: 'Open heart', case: 'polished', markers: 'batons', texture: 'azurage', flange: true, applied: true, window: 'slotBottom' },
-  bauhaus: { name: 'Bauhaus', case: 'thin', markers: 'arabic', decor: 'minute-ticks' },
-  void: { name: 'Void', case: 'thin', markers: 'minimal', applied: true, plain: true },
-  field: { name: 'Field', case: 'polished', markers: 'arabic', decor: 'inner-24', texture: 'grain' },
-  sector: { name: 'Sector', case: 'polished', markers: 'arabic', decor: 'sector', texture: 'grain', serif: true },
-  diver: { name: 'Diver', case: 'dive', markers: 'lume', texture: 'waves' },
-  rose: { name: 'Rosé', case: 'polished', markers: 'batons', texture: 'sunburst', flange: true, applied: true, serif: true },
-  theme: { name: 'Match theme', case: 'thin', markers: 'batons', decor: 'minute-dots', model: false },
+  porcelain: {
+    name: 'Porcelain', case: 'polished', markers: 'batons', decor: 'minute-dots', texture: 'enamel', serif: true,
+    hands: 'leaf', set: { slotRight: 'weekday-date', slotBottom: 'moon' },
+  },
+  linen: {
+    name: 'Linen', case: 'polished', markers: 'roman', decor: 'railroad', texture: 'guilloche', serif: true,
+    hands: 'breguet', set: { slotBottom: 'seconds' },
+  },
+  slate: {
+    name: 'Slate', case: 'polished', markers: 'quarters', texture: 'brushed', flange: true, applied: true,
+    hands: 'sword', set: { slotRight: 'date', slotBottom: 'words' },
+  },
+  midnight: {
+    name: 'Midnight', case: 'polished', markers: 'dots', decor: 'aventurine', texture: 'sunburst', flange: true, applied: true,
+    hands: 'dauphine', set: { slotBottom: 'moon' },
+  },
+  sakura: {
+    name: 'Sakura', case: 'polished', markers: 'pips', art: 'sakura', flange: true, applied: true, brand: 'monogram',
+    hands: 'dauphine', set: {},
+  },
+  nocturne: {
+    name: 'Nocturne', case: 'polished', markers: 'pips', art: 'nocturne', flange: true, applied: true, brand: 'script',
+    hands: 'leaf', set: {},
+  },
+  meteorite: {
+    name: 'Meteorite', case: 'polished', markers: 'batons', art: 'meteorite', texture: 'grain', flange: true, applied: true, brandInk: true,
+    hands: 'dauphine', set: { slotTop: 'moon' },
+  },
+  openheart: {
+    name: 'Open heart', case: 'polished', markers: 'batons', texture: 'azurage', flange: true, applied: true, window: 'slotBottom',
+    hands: 'dauphine', set: {},
+  },
+  bauhaus: {
+    name: 'Bauhaus', case: 'thin', markers: 'arabic', decor: 'minute-ticks',
+    hands: 'baton', set: { slotRight: 'date' },
+  },
+  void: {
+    name: 'Void', case: 'thin', markers: 'minimal', applied: true, brand: 'script', model: false,
+    hands: 'baton', set: {},
+  },
+  field: {
+    name: 'Field', case: 'polished', markers: 'arabic', decor: 'inner-24', texture: 'grain', brandWidth: 36,
+    hands: 'sword', set: { slotRight: 'date', slotBottom: 'focus' },
+  },
+  sector: {
+    name: 'Sector', case: 'polished', markers: 'arabic', decor: 'sector', texture: 'grain', serif: true,
+    hands: 'leaf', set: { slotBottom: 'goal' },
+  },
+  panda: {
+    name: 'Panda', case: 'polished', markers: 'batons', texture: 'sunburst', applied: true, brandInk: true,
+    hands: 'baton', set: { slotLeft: 'seconds', slotRight: 'goal' },
+  },
+  diver: {
+    name: 'Diver', case: 'dive', markers: 'lume', texture: 'waves',
+    hands: 'arrow', set: { slotRight: 'date' },
+  },
+  rose: {
+    name: 'Rosé', case: 'polished', markers: 'batons', texture: 'sunburst', flange: true, applied: true, serif: true, brandInk: true,
+    hands: 'leaf', set: { slotLeft: 'month', slotRight: 'date', slotBottom: 'moon' },
+  },
+  theme: {
+    name: 'Match theme', case: 'thin', markers: 'batons', decor: 'minute-dots', model: false,
+    hands: 'baton', set: { slotRight: 'date' },
+  },
 };
 
 const MARKERS = {
@@ -34,10 +91,12 @@ const MARKERS = {
   dots: 'Dots',
   lume: 'Diver',
   minimal: 'A single dot',
+  pips: 'Small pips',
   none: 'None',
 };
 
 const HANDS = {
+  face: "Face's own",
   leaf: 'Leaf',
   baton: 'Baton',
   breguet: 'Breguet',
@@ -51,6 +110,11 @@ const SECONDS = { off: 'Off', tick: 'Ticking', sweep: 'Sweeping' };
 
 const CASES = { crown: 'Crown', bow: 'Pocket watch bow', none: 'Plain' };
 
+const SESSION_COLOURS = {
+  colour: 'Colour: orange for focus, green for breaks',
+  grey: 'Greyscale: just the watch while you focus, a soft fade on breaks',
+};
+
 const TIMES_UP = {
   glow: 'Glow: a soft halo that breathes',
   colour: 'Colour: the ring and dial take on the colour',
@@ -59,6 +123,8 @@ const TIMES_UP = {
 };
 
 const MOVEMENTS = { lifelike: 'Lifelike, 18,000 beats an hour', gentle: 'Gentle', still: 'Still' };
+
+const COMPLICATION_SETS = { face: 'As designed', custom: 'Your own' };
 
 const COMPLICATIONS = {
   none: 'Nothing',
@@ -81,6 +147,27 @@ const SLOTS = [
   { key: 'slotBottom', name: "6 o'clock", hour: 6 },
   { key: 'slotLeft', name: "9 o'clock", hour: 9 },
 ];
+
+// The Philip Pocket wordmark, as outlines so it looks the same everywhere: "Philip" in
+// Imperial Script, its i dots turned into four-pointed glints, over POCKET in Marcellus SC
+// set wide between two tapered rules. Both typefaces are under the SIL Open Font License.
+// Units are font units at a size of 100: the script's baseline is at y 0, and x 102.6 is the
+// middle of POCKET, which is where the mark is centred.
+const BRAND = {
+  centre: 102.6,
+  box: [-27.4, -66.8, 232.5, 47.0],
+  script: 'M13.1 5.6Q10.2 5.6 9.1 5.3Q6.2 4.5 6.2 3.4Q6.2 2.8 7.5 2.8Q8.1 2.8 9.1 3Q10 3.1 11.2 3.3Q13.8 3.9 15.1 3.9Q22.2 3.9 28.4 -2.6Q30.7 -5.1 33.1 -8.7Q35.5 -12.2 37.7 -16.8Q39.4 -20.3 41.1 -23.9Q42.7 -27.5 44.3 -31.1Q56.2 -55.7 68.3 -63Q61.1 -65.4 52.1 -65.4Q41.8 -65.4 33.5 -62.1Q23.8 -58.2 19.2 -50.4Q16.3 -45.5 16.3 -40.6Q16.3 -35.5 19.4 -32.1Q22.7 -28.7 27.8 -28.7Q33.5 -28.7 37.9 -32.8Q42.2 -36.8 42.2 -42.6Q42.2 -46.5 40.1 -49Q37.8 -51.6 34.1 -51.6Q31 -51.6 28.9 -49.8Q26.5 -47.7 26.5 -44.8Q26.5 -42.4 29.1 -42.4Q29.2 -42.4 29.4 -42.6Q29.5 -42.8 29.9 -43Q30.2 -42.9 30.2 -42.6Q30.2 -41.6 29 -41.6Q25.7 -41.6 25.7 -44.9Q25.7 -48.1 28.5 -50.5Q31.3 -52.8 34.5 -52.8Q38.6 -52.8 41.6 -50Q44.3 -47.2 44.3 -42.9Q44.3 -36.3 39.2 -31.8Q34.1 -27.5 27.5 -27.5Q21.5 -27.5 17.2 -31.3Q13 -35.1 13 -41.2Q13 -45.3 15 -49.3Q19.5 -58.4 31.2 -63Q40.7 -66.7 52.7 -66.7Q62.4 -66.7 70.5 -64.3Q75.5 -66.8 80.8 -66.8Q83.3 -66.8 85.7 -66Q88.6 -64.8 88.6 -62.5Q88.6 -60 87.2 -60Q86.8 -60 86.8 -61.8Q86.8 -65.5 80.5 -65.5Q76.6 -65.5 72.4 -63.7Q88.5 -58.1 88.5 -45.4Q88.5 -34.2 78.6 -27.6Q70.1 -21.8 58.3 -21.8Q57.3 -21.8 56.1 -21.9Q54.9 -22 53.4 -22.2Q49.4 -22.6 49.4 -23.4Q49.4 -24.2 49.9 -24.2H50H49.9Q49.9 -24.1 51.3 -23.8Q52.6 -23.4 54.8 -23.4Q64.9 -23.4 73.8 -29.2Q83.6 -35.8 83.6 -45.5Q83.6 -57 70 -62.4Q59.4 -55.9 50.3 -32.9Q49.5 -30.7 48.4 -27.5Q47.2 -24.2 45.3 -19.9Q41.1 -10.2 34.2 -4.1Q27.3 2.1 18 4.9Q15.9 5.6 13.1 5.6Z M75.4 1.6 75.2 1.5Q81.2 -18.5 91.1 -37Q105.5 -63.9 118.3 -63.9Q123 -63.9 123 -59.3Q123 -53.8 116.8 -46.7Q111.6 -41 105.7 -37.5Q101.1 -34.8 95.1 -32.7Q94.2 -32.4 93.8 -32.5Q90.7 -27 88.2 -21.8Q85.8 -16.6 83.9 -11.6Q88.1 -19.6 92.9 -25.1Q99.8 -33 105.9 -33Q110.9 -33 110.9 -29.4Q110.9 -25.9 104.2 -16.3Q98.3 -8 98.3 -3.1Q98.3 -0.6 100.5 -0.6Q102.2 -0.6 104.4 -1.7Q106.6 -2.8 109 -5.3Q112.1 -8.7 113.8 -11.6Q115.4 -14.5 116.7 -16.9Q117 -17.4 117.3 -17.3Q117.6 -17.2 117.4 -16.7Q115.9 -13.6 113.8 -10.2Q111.8 -6.9 109.6 -4.6Q106.8 -1.6 104 -0.5Q101.3 0.6 98.7 0.6Q93.4 0.6 93.4 -4.5Q93.4 -9 96.9 -14.9Q97.7 -16.2 99.3 -18.5Q101 -20.8 103.5 -24.1Q107 -28.8 107 -30.2Q107 -32 104.7 -32Q100.3 -32 94.2 -25.3Q90.1 -20.8 86.6 -14.8Q85 -12.1 83.3 -8.4Q81.6 -4.7 79.7 0L79.5 0.1Q78.7 -0.4 78 -0.4Q76.2 -0.4 75.4 1.6Z M94.3 -33.4Q94.7 -33.4 95.1 -33.5Q97.4 -34 99.8 -35.1Q102.3 -36.2 104.8 -37.8Q107.5 -39.6 110.2 -42Q112.9 -44.3 115.6 -47.3Q122.2 -54.5 122.2 -59.5Q122.2 -63 118.7 -63Q114.1 -63 105.1 -50.6Q102.4 -46.8 99.7 -42.5Q96.9 -38.2 94.3 -33.4Z M120.3 1Q113.7 1 113.7 -6.3Q113.7 -11.6 116.8 -17.5L124.3 -32.2H124.6Q124.9 -31.8 125.8 -31.8Q127.7 -31.8 130.8 -34.1L131 -33.9L122.5 -17.4Q117.2 -7.2 117.2 -3.2Q117.2 -1.4 118.2 -0.7Q119.2 0 120.5 0Q121.9 0 123.2 -0.6Q124.6 -1.2 125.6 -1.9Q128.3 -4 130.2 -6.8Q132 -9.5 133.4 -12.3Q134.8 -15.1 135.9 -17Q136.2 -17.5 136.5 -17.4Q136.8 -17.2 136.6 -16.7Q134.6 -12.5 132.2 -8.1Q129.8 -3.7 126.1 -1.1Q124.8 -0.2 123.4 0.4Q121.9 1 120.3 1Z M142.4 0.8Q134.3 0.8 134.3 -9.9Q134.3 -16.3 137.1 -24.8Q138.4 -28.7 139.9 -32.3Q141.4 -35.9 143.1 -39Q145.2 -42.8 147.5 -46.2Q149.8 -49.7 152.4 -52.8Q159.9 -62.1 165.2 -62.1Q167.4 -62.1 167.4 -60Q167.4 -57.2 165.1 -51.4Q157.4 -32.3 140.1 -16.6Q138.4 -10.3 138.4 -6.5Q138.4 0 142.5 0Q143.9 0 145.2 -0.6Q146.5 -1.1 147.5 -1.8Q150.2 -3.9 152.1 -6.7Q154 -9.5 155.4 -12.3Q156.8 -15.1 157.9 -17Q158.2 -17.5 158.5 -17.4Q158.8 -17.2 158.6 -16.7Q156.6 -12.5 154.2 -8.1Q151.8 -3.7 148.1 -1.1Q145.4 0.8 142.4 0.8Z M140.4 -17.6Q142.4 -19.3 144.6 -21.8Q146.8 -24.3 149.3 -27.5Q151.8 -30.7 154.4 -34.6Q157 -38.5 159.6 -43Q166.6 -54.9 166.6 -59.6Q166.6 -61.3 165.5 -61.3Q161.8 -61.3 152.3 -45.4Q149.8 -40.9 147.8 -36.7Q145.4 -31.4 143.6 -26.7Q141.7 -21.9 140.4 -17.6Z M161.5 1Q154.9 1 154.9 -6.3Q154.9 -11.6 158 -17.5L165.5 -32.2H165.8Q166.1 -31.8 167 -31.8Q168.9 -31.8 172 -34.1L172.2 -33.9L163.7 -17.4Q158.4 -7.2 158.4 -3.2Q158.4 -1.4 159.4 -0.7Q160.4 0 161.7 0Q163.1 0 164.4 -0.6Q165.8 -1.2 166.8 -1.9Q169.5 -4 171.3 -6.8Q173.2 -9.5 174.6 -12.3Q176 -15.1 177.1 -17Q177.4 -17.5 177.7 -17.4Q178 -17.2 177.8 -16.7Q175.8 -12.5 173.4 -8.1Q171 -3.7 167.3 -1.1Q166 -0.2 164.6 0.4Q163.1 1 161.5 1Z M147.9 25.8Q145.7 25.8 143.6 24.2Q141.6 22.6 141 20.3L141.1 20.1L141.6 19.9H141.8Q143 24.5 146.3 24.5Q150.2 24.5 156.1 18Q160.5 13.3 163.7 8Q165.6 4.9 168 0.3Q170.4 -4.3 173.4 -10.4Q176.5 -16.7 178.9 -21.4Q181.3 -26 183 -28.9Q184.1 -30.9 185.6 -32.8Q187.1 -34.7 188.9 -36.6Q193.7 -41.8 196.6 -41.8Q198.6 -41.8 198.6 -40Q198.6 -38.3 196.7 -37.8L195.1 -37.6Q192.1 -37.3 189.9 -35.4Q188.5 -34.2 186.7 -31.9Q184.8 -29.5 182.5 -25.9Q178.4 -19.5 176.3 -12.5Q186.5 -31.7 194.8 -31.7Q200.9 -31.7 200.9 -24.1Q200.9 -15.5 194.3 -8Q190.9 -4.2 187.4 -2.2Q183.8 -0.2 179.5 0.1Q181.5 0.4 183.3 0.4Q187 0.4 190.3 -0.9Q193.6 -2.1 196.4 -4.3Q199.3 -6.6 201.8 -9.9Q204.2 -13.1 206 -16.8Q206.3 -17.4 206.6 -17.4Q207.2 -17.4 206.7 -16.4Q205.1 -13.4 203.4 -10.8Q201.6 -8.1 199.6 -6Q197.2 -3.6 193.1 -1.1Q188.9 1.4 182.9 1.4Q181.2 1.4 179.2 1Q177.2 0.6 176 -0.4Q175.1 -1.2 174.9 -2.4Q174.7 -3.6 174.6 -5.3Q174.1 -3.4 173.2 -1Q172.3 1.5 171.1 4.4Q169.8 7.7 168.7 10Q167.6 12.2 166.8 13.4Q158 25.8 147.9 25.8Z M178.3 -0.3Q181.7 -0.3 186.6 -6.1Q190.5 -10.5 192.7 -14.8Q196.7 -22.8 196.7 -28.2Q196.7 -31.1 194.3 -31.1Q188.7 -31.1 181.8 -20.5Q178.6 -15.6 177.1 -11.7Q175.6 -7.8 175.6 -4.7Q175.6 -0.3 178.3 -0.3Z',
+  glints: 'M 132.7 -49.7 L 133.7 -43.5 L 139.9 -42.5 L 133.7 -41.4 L 132.7 -35.2 L 131.6 -41.4 L 125.4 -42.5 L 131.6 -43.5 Z M 173.8 -49.7 L 174.9 -43.5 L 181.1 -42.5 L 174.9 -41.4 L 173.8 -35.2 L 172.8 -41.4 L 166.6 -42.5 L 172.8 -43.5 Z',
+  caps: 'M45.4 41.1Q46.3 41.3 47.1 41.1Q47.8 41 48.4 40.6Q48.9 40.1 49.2 39.4Q49.5 38.6 49.5 37.5Q49.5 36.8 49.4 36.2Q49.2 35.6 48.9 35.1Q48.6 34.7 48.1 34.5Q47.7 34.2 47 34.2Q46.6 34.2 46.3 34.2Q46 34.3 45.8 34.3Q45.6 34.4 45.4 34.4Z M43.5 33.7Q43.7 33.7 43.9 33.7Q44 33.8 44.3 33.8Q44.5 33.8 44.7 33.8Q45.1 33.8 45.7 33.7Q46.3 33.6 47.3 33.6Q48.1 33.6 48.9 33.8Q49.7 34.1 50.2 34.6Q50.8 35.1 51.1 35.8Q51.4 36.5 51.4 37.5Q51.4 38.7 50.9 39.6Q50.4 40.5 49.6 41.1Q48.8 41.6 47.7 41.8Q46.6 42 45.4 41.8V43.4Q45.4 44.2 45.5 44.8Q45.5 45.3 45.5 45.8Q45.5 46.2 45.6 46.5Q45.6 46.8 45.7 47V47H43.5V47Q43.5 46.8 43.6 46.5Q43.6 46.2 43.7 45.8Q43.7 45.3 43.7 44.8Q43.7 44.2 43.7 43.4V37.3Q43.7 36.5 43.7 36Q43.7 35.4 43.7 34.9Q43.6 34.5 43.6 34.2Q43.5 33.9 43.5 33.7Z M69.3 33.5Q70.8 33.5 72.1 34Q73.4 34.5 74.4 35.4Q75.4 36.3 75.9 37.6Q76.4 38.9 76.4 40.4Q76.4 41.3 76.2 42.2Q76 43 75.6 43.8Q75.2 44.5 74.7 45.2Q74.1 45.8 73.3 46.3Q72.6 46.8 71.7 47Q70.8 47.3 69.8 47.3Q68.2 47.3 66.9 46.8Q65.6 46.3 64.7 45.4Q63.7 44.5 63.2 43.2Q62.6 41.9 62.6 40.4Q62.6 39.5 62.8 38.6Q63 37.8 63.4 37Q63.8 36.2 64.4 35.6Q65 34.9 65.7 34.5Q66.4 34 67.3 33.7Q68.2 33.5 69.3 33.5Z M69.8 46.5Q70.8 46.5 71.7 46.1Q72.5 45.7 73.2 45Q73.8 44.3 74.1 43.3Q74.5 42.3 74.5 41Q74.5 39.6 74.1 38.3Q73.8 37.1 73.1 36.2Q72.5 35.3 71.5 34.8Q70.6 34.3 69.3 34.3Q68.2 34.3 67.4 34.7Q66.5 35 65.9 35.7Q65.3 36.4 65 37.4Q64.6 38.5 64.6 39.7Q64.6 41.2 64.9 42.4Q65.3 43.6 65.9 44.5Q66.6 45.4 67.5 45.9Q68.5 46.5 69.8 46.5Z M99.3 35.7 99.2 35.8Q98.5 35.1 97.5 34.7Q96.4 34.3 95.2 34.3Q94.1 34.3 93.1 34.7Q92.1 35 91.4 35.7Q90.7 36.4 90.3 37.4Q89.9 38.5 89.9 39.7Q89.9 41.2 90.3 42.4Q90.7 43.6 91.4 44.5Q92.1 45.4 93.2 45.9Q94.3 46.5 95.8 46.5Q96.3 46.5 96.9 46.3Q97.4 46.2 97.9 46Q98.4 45.8 98.8 45.5Q99.2 45.2 99.6 44.8L99.7 44.8L98.9 46.7Q98.2 47 97.4 47.1Q96.6 47.3 95.7 47.3Q94 47.3 92.6 46.8Q91.1 46.3 90.1 45.4Q89.1 44.5 88.5 43.2Q88 41.9 88 40.4Q88 39.5 88.2 38.6Q88.4 37.8 88.8 37Q89.3 36.2 89.9 35.6Q90.6 34.9 91.4 34.5Q92.2 34 93.2 33.7Q94.2 33.5 95.3 33.5Q97.1 33.5 98.6 34Z M111.4 47Q111.4 46.8 111.5 46.5Q111.5 46.2 111.6 45.8Q111.6 45.3 111.6 44.8Q111.6 44.2 111.6 43.4V37.3Q111.6 36.5 111.6 36Q111.6 35.4 111.6 34.9Q111.5 34.5 111.5 34.2Q111.4 33.9 111.4 33.7V33.7H113.6V33.7Q113.5 33.9 113.5 34.2Q113.4 34.5 113.4 34.9Q113.4 35.4 113.4 36Q113.3 36.5 113.3 37.3V39.4L118.8 35Q119.7 34.2 119.7 33.7H122.3V33.7Q121.7 33.9 121.2 34.2Q120.6 34.6 120 35.1L115.2 39.1L120.9 45.5Q121.3 45.8 121.6 46.1Q121.8 46.3 122 46.5Q122.2 46.6 122.4 46.8Q122.5 46.9 122.7 47V47H120Q119.9 46.9 119.9 46.8Q119.8 46.7 119.7 46.5Q119.5 46.4 119.4 46.2Q119.3 46.1 119.2 46L113.3 39.6V43.4Q113.3 44.2 113.4 44.8Q113.4 45.3 113.4 45.8Q113.4 46.2 113.5 46.5Q113.5 46.8 113.6 47V47H111.4Z M133.7 33.7Q134.8 33.7 136 33.7Q137.1 33.7 138.1 33.7Q139 33.6 139.7 33.6Q140.4 33.6 140.6 33.5L140.2 34.8Q139.8 34.7 139.4 34.6Q139.1 34.6 138.6 34.5Q138.1 34.5 137.4 34.5Q137.2 34.5 136.9 34.5Q136.6 34.5 136.3 34.5Q136 34.5 135.6 34.6V39.6Q136.6 39.6 137.3 39.6Q138.1 39.5 138.6 39.5Q139.3 39.4 139.8 39.3L139.5 40.7Q138.8 40.6 138.2 40.5Q137.6 40.5 136.9 40.4Q136.2 40.4 135.6 40.4V46.2Q136.7 46.2 137.6 46.1Q138.5 46 139.2 45.9Q140 45.7 140.7 45.6L140.4 47.1Q140.3 47.1 140.1 47.1Q139.9 47 139.6 47Q139.3 47 139 47Q138.7 47 138.4 47Q138.2 47 138 47Q137.8 47 137.7 47H133.7V47Q133.7 46.8 133.8 46.5Q133.8 46.2 133.8 45.8Q133.9 45.3 133.9 44.8Q133.9 44.2 133.9 43.4V37.3Q133.9 36.5 133.9 36Q133.9 35.4 133.8 34.9Q133.8 34.5 133.8 34.2Q133.7 33.9 133.7 33.7V33.7Z M156.5 34.5Q155.4 34.5 154.5 34.6Q153.6 34.7 153 34.8Q152.2 35 151.6 35.1L151.9 33.6Q152 33.6 152.2 33.6Q152.5 33.6 152.7 33.7Q153 33.7 153.3 33.7Q153.6 33.7 153.9 33.7Q154.2 33.7 154.4 33.7Q154.6 33.7 154.7 33.7H160Q160.1 33.7 160.3 33.7Q160.5 33.7 160.7 33.7Q161 33.7 161.3 33.7Q161.6 33.7 161.9 33.7Q162.2 33.6 162.4 33.6Q162.6 33.6 162.7 33.6L163 35.1Q162.4 35 161.6 34.8Q161 34.7 160.1 34.6Q159.2 34.5 158.2 34.5V43.4Q158.2 44.2 158.2 44.8Q158.2 45.3 158.2 45.8Q158.3 46.2 158.3 46.5Q158.4 46.8 158.4 47V47H156.2V47Q156.3 46.8 156.3 46.5Q156.4 46.2 156.4 45.8Q156.4 45.3 156.4 44.8Q156.5 44.2 156.5 43.4Z',
+  rules: 'M -23.9 40.1 L 30.1 39.1 L 30.1 41.3 L -23.9 40.2 Z M -27.4 40.2 L -25.6 38.3 L -23.9 40.2 L -25.6 42 Z M 229 40.1 L 175 39.1 L 175 41.3 L 229 40.2 Z M 232.5 40.2 L 230.8 38.3 L 229 40.2 L 230.8 42 Z',
+};
+
+// The Philip Pocket monogram: two Great Vibes capital P's (SIL Open Font License), the second
+// turned half a turn and laid across the first. Centred on (0, 0), about 130 units wide.
+const MONOGRAM = {
+  box: [-66.3, -48.1, 66.3, 48.1],
+  path: 'M-49.8 37.2Q-52 37.2 -54.1 36.9Q-60.4 36.1 -63.3 33.2Q-66.3 30.3 -66.3 26.9Q-66.3 23.2 -62.9 20.2Q-59.6 17.2 -53.5 17.2Q-51.6 17.2 -49.4 17.6Q-47.3 17.9 -44.9 18.7Q-43.7 19.1 -43.7 19.8Q-43.7 20.2 -44.3 20.2Q-44.9 20.2 -45.3 20Q-46.9 19.4 -48.3 19.2Q-49.8 18.9 -51.1 18.9Q-55.4 18.9 -57.6 21.4Q-59.9 23.8 -59.9 26.7Q-59.9 29.5 -57.6 31.8Q-55.3 34.1 -50.3 34.1Q-44 34.1 -38.6 31.2Q-33.3 28.3 -28.5 23.6Q-23.4 18.6 -19.2 11.6Q-15 4.5 -10.8 -3.5Q-6.7 -11.6 -1.8 -19.8Q3.1 -28 9.5 -35.2Q10.8 -36.6 12.2 -38.1Q13.5 -39.7 14.8 -40.8Q11.4 -41.3 7.8 -41.5Q4.2 -41.8 0.7 -41.8Q-4.5 -41.8 -9.1 -41.3Q-13.8 -40.9 -18.4 -40.1Q-23.1 -39.2 -28.9 -37.3Q-34.7 -35.4 -40.1 -32.3Q-45.6 -29.3 -49.4 -25Q-53.3 -20.7 -54.2 -15.1Q-54.3 -14.6 -54.3 -14Q-54.4 -13.5 -54.4 -13Q-54.4 -8.4 -51.2 -5.4Q-48.1 -2.4 -43.9 -2.4Q-40.8 -2.4 -37.9 -4Q-35 -5.7 -32.7 -8.4Q-30.4 -11.2 -29.3 -14.5Q-29.2 -15.5 -28.5 -15.5Q-27.9 -15.5 -27.9 -14.4Q-28 -10 -30.4 -6.8Q-32.9 -3.6 -36.6 -1.9Q-40.3 -0.3 -44.1 -0.3Q-48 -0.3 -51.5 -1.9Q-55 -3.6 -57.2 -6.8Q-59.4 -10.1 -59.4 -14.9Q-59.4 -20.5 -56.6 -24.8Q-53.9 -29.1 -49.3 -32.3Q-44.7 -35.6 -39.3 -37.8Q-33.9 -40.1 -28.5 -41.4Q-23.1 -42.8 -18.7 -43.5Q-14.2 -44.2 -9.3 -44.6Q-4.5 -45 0.5 -45Q4.8 -45 9.1 -44.6Q13.4 -44.2 17.5 -43.4Q19.2 -44.7 21 -45.7Q22.8 -46.7 25 -47.5Q26.4 -48.1 27.1 -48.1Q27.7 -48.1 27.7 -47.7Q27.7 -47 26.1 -46Q25.3 -45.6 24.1 -44.6Q22.9 -43.6 21.5 -42.3Q28 -40.7 33.2 -37.5Q38.9 -34.1 41.4 -30.3Q43.8 -26.5 43.8 -22.5Q43.8 -17.9 41 -13.3Q38.2 -8.8 33.7 -4.9Q29.2 -1 23.8 1.9Q18.4 4.7 13.1 6Q8 7.3 2.8 7.9Q-2.4 8.5 -6.5 8.5Q-7.2 8.5 -7.9 8.5Q-8.7 8.5 -9.4 8.4Q-12.8 13.2 -16.4 17.8Q-20 22.3 -24.5 26.6Q-30 31.8 -36.5 34.5Q-43 37.2 -49.8 37.2ZM-8 6.2Q-4.2 6.3 0.5 5.6Q5.2 4.9 9.9 3.5Q17.7 1.1 24 -3.4Q30.2 -7.9 33.9 -13.4Q37.5 -18.9 37.5 -24.2Q37.5 -27.4 36 -30.3Q34.4 -33.2 30.9 -35.5Q28.6 -37 25.7 -38.1Q22.8 -39.2 19.6 -39.9Q14.5 -32.7 10.1 -24.9Q5.6 -17.1 1.3 -9.2Q-3.1 -1.3 -8 6.2ZM49.8 -37.2Q52 -37.2 54.1 -36.9Q60.4 -36.1 63.3 -33.2Q66.3 -30.3 66.3 -26.9Q66.3 -23.2 62.9 -20.2Q59.6 -17.2 53.5 -17.2Q51.6 -17.2 49.4 -17.6Q47.3 -17.9 44.9 -18.7Q43.7 -19.1 43.7 -19.8Q43.7 -20.2 44.3 -20.2Q44.9 -20.2 45.3 -20Q46.9 -19.4 48.3 -19.2Q49.8 -18.9 51.1 -18.9Q55.4 -18.9 57.6 -21.4Q59.9 -23.8 59.9 -26.7Q59.9 -29.5 57.6 -31.8Q55.3 -34.1 50.3 -34.1Q44 -34.1 38.6 -31.2Q33.3 -28.3 28.5 -23.6Q23.4 -18.6 19.2 -11.6Q15 -4.5 10.8 3.5Q6.7 11.6 1.8 19.8Q-3.1 28 -9.5 35.2Q-10.8 36.6 -12.2 38.1Q-13.5 39.7 -14.8 40.8Q-11.4 41.3 -7.8 41.5Q-4.2 41.8 -0.7 41.8Q4.5 41.8 9.1 41.3Q13.8 40.9 18.4 40.1Q23.1 39.2 28.9 37.3Q34.7 35.4 40.1 32.3Q45.6 29.3 49.4 25Q53.3 20.7 54.2 15.1Q54.3 14.6 54.3 14Q54.4 13.5 54.4 13Q54.4 8.4 51.2 5.4Q48.1 2.4 43.9 2.4Q40.8 2.4 37.9 4Q35 5.7 32.7 8.4Q30.4 11.2 29.3 14.5Q29.2 15.5 28.5 15.5Q27.9 15.5 27.9 14.4Q28 10 30.4 6.8Q32.9 3.6 36.6 1.9Q40.3 0.3 44.1 0.3Q48 0.3 51.5 1.9Q55 3.6 57.2 6.8Q59.4 10.1 59.4 14.9Q59.4 20.5 56.6 24.8Q53.9 29.1 49.3 32.3Q44.7 35.6 39.3 37.8Q33.9 40.1 28.5 41.4Q23.1 42.8 18.7 43.5Q14.2 44.2 9.3 44.6Q4.5 45 -0.5 45Q-4.8 45 -9.1 44.6Q-13.4 44.2 -17.5 43.4Q-19.2 44.7 -21 45.7Q-22.8 46.7 -25 47.5Q-26.4 48.1 -27.1 48.1Q-27.7 48.1 -27.7 47.7Q-27.7 47 -26.1 46Q-25.3 45.6 -24.1 44.6Q-22.9 43.6 -21.5 42.3Q-28 40.7 -33.2 37.5Q-38.9 34.1 -41.4 30.3Q-43.8 26.5 -43.8 22.5Q-43.8 17.9 -41 13.3Q-38.2 8.8 -33.7 4.9Q-29.2 1 -23.8 -1.9Q-18.4 -4.7 -13.1 -6Q-8 -7.3 -2.8 -7.9Q2.4 -8.5 6.5 -8.5Q7.2 -8.5 7.9 -8.5Q8.7 -8.5 9.4 -8.4Q12.8 -13.2 16.4 -17.8Q20 -22.3 24.5 -26.6Q30 -31.8 36.5 -34.5Q43 -37.2 49.8 -37.2ZM8 -6.2Q4.2 -6.3 -0.5 -5.6Q-5.2 -4.9 -9.9 -3.5Q-17.7 -1.1 -24 3.4Q-30.2 7.9 -33.9 13.4Q-37.5 18.9 -37.5 24.2Q-37.5 27.4 -36 30.3Q-34.4 33.2 -30.9 35.5Q-28.6 37 -25.7 38.1Q-22.8 39.2 -19.6 39.9Q-14.5 32.7 -10.1 24.9Q-5.6 17.1 -1.3 9.2Q3.1 1.3 8 -6.2Z',
+};
 
 const DIGITAL_STYLES = {
   slate: 'Slate',
@@ -110,6 +197,7 @@ const DEFAULT_SETTINGS = {
   autoStartFocus: false,
   chime: true,
   showCountdown: true,
+  sessionColours: 'colour',
   timesUp: 'glow',
 
   showWatch: true,
@@ -120,8 +208,10 @@ const DEFAULT_SETTINGS = {
   caseStyle: 'crown',
   dialText: true,
   markers: 'face',
-  hands: 'leaf',
+  hands: 'face',
   seconds: 'off',
+  // 'face' shows each face's own complications; 'custom' shows the four below.
+  complications: 'face',
   slotTop: 'none',
   slotRight: 'weekday-date',
   slotBottom: 'moon',
@@ -261,6 +351,53 @@ function circlePath(cx, cy, r) {
   return `M ${cx - r} ${cy} a ${r} ${r} 0 1 0 ${2 * r} 0 a ${r} ${r} 0 1 0 ${-2 * r} 0 Z`;
 }
 
+// A seeded random number generator, so a face is painted the same way every time.
+function rng(seed) {
+  let x = seed;
+  return () => (x = (x * 16807) % 2147483647) / 2147483647;
+}
+
+// A point on a cubic Bézier curve given as four [x, y] points.
+function bezier(c, t) {
+  const u = 1 - t;
+  return [0, 1].map((i) => u * u * u * c[0][i] + 3 * u * u * t * c[1][i] + 3 * u * t * t * c[2][i] + t * t * t * c[3][i]);
+}
+
+// A point on a chain of cubic curves, with t running from 0 to 1 over the whole chain.
+function chainAt(chain, t) {
+  const n = chain.length;
+  const i = Math.min(n - 1, Math.floor(t * n));
+  return bezier(chain[i], t * n - i);
+}
+
+// A brush stroke along a cubic curve, or a chain of them: w0 wide where it starts, tapering
+// to w1 where it ends.
+function brushPath(c, w0, w1, steps = 22) {
+  const chain = typeof c[0][0] === 'number' ? [c] : c;
+  steps *= chain.length;
+  const left = [];
+  const right = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const [x, y] = chainAt(chain, t);
+    const [ax, ay] = chainAt(chain, Math.max(0, t - 0.004));
+    const [bx, by] = chainAt(chain, Math.min(1, t + 0.004));
+    const len = Math.hypot(bx - ax, by - ay) || 1;
+    const w = (w0 + (w1 - w0) * t) / 2;
+    const nx = (-(by - ay) / len) * w;
+    const ny = ((bx - ax) / len) * w;
+    left.push(`${(x + nx).toFixed(2)} ${(y + ny).toFixed(2)}`);
+    right.unshift(`${(x - nx).toFixed(2)} ${(y - ny).toFixed(2)}`);
+  }
+  return `M ${left.join(' L ')} L ${right.join(' L ')} Z`;
+}
+
+// A four-pointed glint.
+function glintPath(x, y, z, waist = 0.24) {
+  const w = z * waist;
+  return `M ${x} ${y - z} L ${x + w} ${y - w} L ${x + z} ${y} L ${x + w} ${y + w} L ${x} ${y + z} L ${x - w} ${y + w} L ${x - z} ${y} L ${x - w} ${y - w} Z `;
+}
+
 // A toothed wheel with a centre hole and spoke windows, drawn with the even-odd rule.
 // An escape wheel has slanted, club-shaped teeth and four windows.
 function gearPath(cx, cy, r, teeth, escape) {
@@ -338,6 +475,12 @@ function migrateSettings(s) {
   if ('showMoon' in s) s.slotBottom = s.showMoon ? 'moon' : 'none';
   if ('showFocus' in s) s.goalRing = s.showFocus;
   for (const k of ['showSeconds', 'showDate', 'showMoon', 'showFocus', 'watchStyle', 'motion']) delete s[k];
+  // Before 1.6 every face shared one set of hands and complications. Now each face comes with
+  // its own, so it starts out as designed.
+  if (Object.keys(s).length && !('complications' in s)) {
+    s.complications = 'face';
+    s.hands = 'face';
+  }
   if (s.watchAnchor && s.watchAnchor.corner) {
     s.watchAnchor = { group: s.watchAnchor.group, spot: s.watchAnchor.corner };
   }
@@ -854,7 +997,7 @@ class FloatingWatch {
     const s = this.plugin.settings;
     const now = new Date();
     const key = JSON.stringify([
-      s.watchType, s.watchSize, s.face, s.caseStyle, s.dialText, s.markers, s.hands, s.seconds, s.slotTop, s.slotRight, s.slotBottom, s.slotLeft,
+      s.watchType, s.watchSize, s.face, s.caseStyle, s.dialText, s.markers, s.hands, s.seconds, s.complications, s.slotTop, s.slotRight, s.slotBottom, s.slotLeft,
       s.goalRing, s.movement, s.digitalStyle, s.digitalLayout, s.clock, s.digitalSeconds, s.blinkColon,
       s.digitalDate, s.digitalMoon, s.digitalFocus, s.digitalBar, dayKey(now),
     ]);
@@ -902,6 +1045,7 @@ class FloatingWatch {
     const alert = p.alert && s.timesUp !== 'off' ? (p.alert.kind === 'focus' ? 'focus' : 'break') : 'none';
     setIfChanged(this.el, 'data-alert', alert);
     setIfChanged(this.el, 'data-times-up', s.timesUp);
+    setIfChanged(this.el, 'data-palette', s.sessionColours === 'grey' ? 'grey' : 'colour');
     const ringMode = x ? (x.paused ? 'paused' : x.kind === 'focus' ? 'focus' : 'break')
       : alert !== 'none' && s.timesUp === 'colour' ? 'over' : s.goalRing ? 'goal' : 'off';
     setIfChanged(this.el, 'data-ring', ringMode);
@@ -970,8 +1114,9 @@ class FloatingWatch {
     const R = face.case === 'thin' ? 95 : face.case === 'dive' ? 80 : 89.5;
     const k = R / 89.5;
     this.uid = (this.uid || 0) + 1;
+    const slots = faceSlots(s);
     const used = {};
-    for (const slot of SLOTS) used[slot.hour] = s[slot.key] !== 'none' || face.window === slot.key;
+    for (const slot of SLOTS) used[slot.hour] = slots[slot.key] !== 'none' || face.window === slot.key;
 
     // The crown or the pocket watch bow sits outside the case, so the drawing grows to fit it.
     const caseStyle = CASES[s.caseStyle] ? s.caseStyle : 'crown';
@@ -1029,7 +1174,10 @@ class FloatingWatch {
     }, 'pw-ring');
     add(svg, 'circle', { cx: 100, cy: 100, r: R, fill: url('dial') }, 'pw-dial');
 
-    // Dial: its finish, then shading where it meets the case, then the flange.
+    // Dial: its painting and finish, then shading where it meets the case, then the flange.
+    if (face.art === 'sakura') this.drawSakura(svg, add, R);
+    else if (face.art === 'nocturne') this.drawNocturne(svg, add, R, now);
+    else if (face.art === 'meteorite') this.drawMeteorite(svg, add, R);
     if (face.texture) this.drawTexture(svg, add, face.texture, R);
     if (face.decor) this.drawDecor(svg, add, text, face.decor, R, k, used);
     add(svg, 'circle', { cx: 100, cy: 100, r: R, fill: url('dial-shade') }, 'pw-dial-shade');
@@ -1047,13 +1195,7 @@ class FloatingWatch {
     const markers = s.markers === 'face' || !MARKERS[s.markers] ? face.markers : s.markers;
     this.drawMarkers(svg, add, text, markers, R, k, used, face);
 
-    // The name printed under 12, unless something else sits there.
-    if (s.dialText && !face.plain && !used[0]) {
-      const offset = { batons: 31, dots: 24, arabic: face.decor === 'inner-24' ? 52 : 40, quarters: 45, roman: 44, lume: 27 }[markers] || 28;
-      const y = 100 - R + offset * k;
-      text(svg, 100, y, 5.4 * k, 'POCKET WATCH', face.serif ? ['pw-brand', 'is-serif'] : 'pw-brand');
-      if (face.model !== false) text(svg, 100, y + 6.6 * k, 3.9 * k, (face.model || face.name).toUpperCase(), face.serif ? ['pw-model', 'is-serif'] : 'pw-model');
-    }
+    if (s.dialText) this.drawBrand(svg, add, text, face, markers, R, k, used);
 
     if (face.window) {
       const slot = SLOTS.find((x) => x.key === face.window);
@@ -1061,7 +1203,7 @@ class FloatingWatch {
       this.drawMovementWindow(svg, add, cx, cy, R * 0.345);
     }
     for (const slot of SLOTS) {
-      const type = s[slot.key];
+      const type = slots[slot.key];
       if (face.window === slot.key || !type || type === 'none' || !COMPLICATIONS[type]) continue;
       const [cx, cy] = polar(R * 0.47, slot.hour * 30);
       this.drawComplication(svg, add, text, type, cx, cy, k, now);
@@ -1074,7 +1216,7 @@ class FloatingWatch {
       const body = add(turnEl, 'g', { transform: 'translate(100 100)' }, kind === 'second' ? 'pw-second' : 'pw-hand');
       return [turnEl, body];
     };
-    const style = HANDS[s.hands] ? s.hands : 'leaf';
+    const style = s.hands !== 'face' && HANDS[s.hands] ? s.hands : face.hands || 'leaf';
     let body;
     [this.parts.hour, body] = hand('hour');
     this.drawHand(body, add, style, R * 0.52, k, true);
@@ -1106,6 +1248,51 @@ class FloatingWatch {
     }, 'pw-glass-small');
   }
 
+  // The Philip Pocket signature under 12, clear of the hour markers, with the model's name
+  // beneath it; above 6 when something sits at 12. Faces with polished metal markers have it
+  // in the same metal, as if applied. A face can ask for just the script, for the monogram,
+  // or for it at 6.
+  drawBrand(svg, add, text, face, markers, R, k, used) {
+    const atSix = face.brandAt === 'six' || used[0];
+    if (atSix && used[6]) return;
+    const kind = face.brand || 'full';
+    // On light dials metal would not show, so the signature is printed there.
+    const metal = face.applied && !face.brandInk;
+    const width = (face.brandWidth || { full: 48, script: 40, monogram: 22 }[kind]) * k;
+    // The part of the drawing to fit: the whole lockup, the script alone, or the monogram.
+    const [left, top, right, bottom] = kind === 'monogram' ? MONOGRAM.box : kind === 'script' ? [6, BRAND.box[1], 207, 26] : BRAND.box;
+    const scale = width / (right - left);
+    const height = (bottom - top) * scale;
+    const modelSize = 3.6 * k;
+    const model = face.model !== false && kind === 'full' ? (face.model || face.name).toUpperCase() : '';
+    const block = height + (model ? modelSize * 2.2 : 0);
+    // How far in from the edge the markers reach at 12 (or 6).
+    const clear = (face.brandClear || {
+      batons: 24, dots: 21, arabic: face.decor === 'inner-24' ? 41 : 27, quarters: 41, roman: 30, lume: 25, minimal: 22, pips: 15,
+    }[markers] || 17) * k;
+    // At 6 the name sits lowest, so it keeps a little more room from the marker below it.
+    const y0 = atSix ? 100 + R - clear - 4 * k - block : 100 - R + clear;
+    const x = kind === 'monogram' ? 100 : kind === 'script' ? 100 - ((left + right) / 2) * scale : 100 - BRAND.centre * scale;
+    const g = add(svg, 'g', {
+      transform: `translate(${x.toFixed(2)} ${(y0 - top * scale).toFixed(2)}) scale(${scale.toFixed(4)})`,
+    }, metal ? ['pw-brand-mark', 'is-applied', 'pw-raised'] : 'pw-brand-mark');
+    const fill = metal ? { fill: `url(#${this.id('brand-metal')})` } : {};
+    if (metal) {
+      this.gradient(add, 'linearGradient', 'brand-metal', { x1: 0, x2: 0, y1: top, y2: bottom, gradientUnits: 'userSpaceOnUse' }, [['0%', 'pw-metal-a'], ['55%', 'pw-metal-b'], ['100%', 'pw-metal-c']]);
+    }
+    if (kind === 'monogram') {
+      add(g, 'path', Object.assign({ d: MONOGRAM.path }, fill), 'pw-brand-script');
+      return;
+    }
+    add(g, 'path', Object.assign({ d: BRAND.script }, fill), 'pw-brand-script');
+    add(g, 'path', { d: BRAND.glints }, 'pw-brand-glint');
+    if (kind === 'full') {
+      add(g, 'path', Object.assign({ d: BRAND.caps }, fill), 'pw-brand-caps');
+      add(g, 'path', Object.assign({ d: BRAND.rules }, fill), 'pw-brand-rules');
+    }
+    if (model) text(svg, 100, y0 + height + modelSize * 1.5, modelSize, model, face.serif ? ['pw-model', 'is-serif'] : 'pw-model');
+  }
+
   // A ceramic diver's bezel, plain apart from the luminous marker at 12 and dots at the quarters.
   drawDiveBezel(svg, add) {
     const url = (name) => `url(#${this.id(name)})`;
@@ -1120,6 +1307,318 @@ class FloatingWatch {
     add(svg, 'path', { d: 'M 93.4 4 L 106.6 4 L 100 16.2 Z', fill: url('metal') }, 'pw-applied');
     add(svg, 'path', { d: 'M 94 4.4 L 106 4.4 L 100 15.6 Z' }, 'pw-insert-pip');
     add(svg, 'circle', { cx: 100, cy: 8.6, r: 1.7 }, 'pw-insert-pearl');
+  }
+
+  // Maki-e: a cherry branch in gold lacquer with mother-of-pearl blossoms on black urushi,
+  // gold dust settled along the bottom and two bands of gold mist, and petals drifting by.
+  drawSakura(svg, add, R) {
+    const url = (name) => `url(#${this.id(name)})`;
+    const g = add(svg, 'g', { 'clip-path': url('dial-clip') });
+    const rand = rng(29);
+    this.gradient(add, 'linearGradient', 'sakura-gold', { gradientUnits: 'userSpaceOnUse', x1: 30, y1: 175, x2: 175, y2: 35 }, [
+      ['0%', '#6e4a12'], ['30%', '#c99a3e'], ['50%', '#fbe7a6'], ['68%', '#d2a24a'], ['100%', '#7a5416'],
+    ]);
+    this.gradient(add, 'radialGradient', 'sakura-petal', { cx: '50%', cy: '100%', r: '105%' }, [
+      ['0%', '#df6f93'], ['30%', '#f3b6c8'], ['62%', '#fde6ec'], ['100%', '#fffaf8'],
+    ]);
+    this.gradient(add, 'linearGradient', 'sakura-pearl', { x1: 0, y1: 0, x2: 1, y2: 1 }, [
+      ['0%', 'rgba(190,225,255,0)'], ['40%', 'rgba(196,228,255,0.5)'], ['55%', 'rgba(255,214,236,0)'], ['82%', 'rgba(214,255,226,0.38)'], ['100%', 'rgba(214,255,226,0)'],
+    ]);
+    this.gradient(add, 'linearGradient', 'sakura-mist', { x1: 0, y1: 0, x2: 1, y2: 0 }, [
+      ['0%', 'rgba(226,190,104,0)'], ['18%', 'rgba(226,190,104,0.9)'], ['82%', 'rgba(226,190,104,0.9)'], ['100%', 'rgba(226,190,104,0)'],
+    ]);
+    this.gradient(add, 'radialGradient', 'sakura-gloss', { cx: '50%', cy: '50%', r: '50%' }, [['0%', 'rgba(255,255,255,0.15)'], ['100%', 'rgba(255,255,255,0)']]);
+
+    // Nashiji: gold dust, thick along the bottom and thinning out as it rises.
+    let dust = '';
+    for (let i = 0; i < 560; i++) {
+      const x = 100 - R + rand() * 2 * R;
+      const y = 100 + R - Math.pow(rand(), 2.1) * R * 1.25;
+      dust += circlePath(x.toFixed(2), y.toFixed(2), (0.1 + rand() * 0.3).toFixed(2));
+    }
+    add(g, 'path', { d: dust, fill: url('sakura-gold') }, 'pw-art-dust');
+    // Kasumi: bands of mist in close-set gold dust, thinning out toward their ends.
+    let mist = '';
+    for (const [x, y, w, h] of [[110, 150, 82, 7.5], [14, 64, 52, 5.5], [136, 161, 44, 4.2]]) {
+      add(g, 'rect', { x, y, width: w, height: h, rx: h / 2, fill: url('sakura-mist') }, 'pw-art-mist');
+      for (let i = 0; i < w * h * 0.9; i++) {
+        const u = rand();
+        const sx = x + u * w;
+        const sy = y + rand() * h;
+        // Keep inside the rounded ends, and let the dust thin out toward them.
+        const end = Math.min(sx - x, x + w - sx);
+        if (end < h / 2 && Math.hypot(h / 2 - end, sy - y - h / 2) > h / 2) continue;
+        if (rand() > Math.min(1, end / (w * 0.22))) continue;
+        mist += circlePath(sx.toFixed(2), sy.toFixed(2), (0.1 + rand() * 0.22).toFixed(2));
+      }
+    }
+    add(g, 'path', { d: mist, fill: url('sakura-gold') }, 'pw-art-mist-dust');
+
+    // The branch, in raised gold with a light catching its upper edge.
+    const trunk = [
+      [[-4, 172], [36, 152], [70, 134], [104, 125]],
+      [[104, 125], [132, 118], [152, 101], [170, 71]],
+      [[170, 71], [175, 62], [179, 54], [186, 47]],
+    ];
+    const boughs = [
+      [trunk, 9, 0.6],
+      [[[96, 127], [86, 114], [74, 101], [60, 92]], 3.2, 0.8],
+      [[[137, 111], [150, 117], [160, 126], [173, 131]], 2.4, 0.6],
+      [[[58, 141], [55, 131], [49, 123], [39, 118]], 2.6, 0.6],
+      [[[155, 93], [160, 85], [167, 82], [177, 84]], 1.5, 0.4],
+      [[[30, 157], [26, 150], [22, 147], [14, 146]], 2.6, 0.7],
+    ];
+    // The twigs first, so they grow out from behind the trunk drawn over them.
+    const bark = add(g, 'g', {}, 'pw-bark');
+    for (const [c, w0, w1] of boughs.slice().reverse()) {
+      add(bark, 'path', { d: brushPath(c, w0, w1), fill: url('sakura-gold') });
+      const shift = ([x, y]) => [x - 0.35, y - w0 * 0.2];
+      const lit = typeof c[0][0] === 'number' ? c.map(shift) : c.map((curve) => curve.map(shift));
+      add(bark, 'path', { d: brushPath(lit, w0 * 0.3, w1 * 0.2) }, 'pw-bark-light');
+    }
+    // Cherry bark is marked with little bands across the branch.
+    let lenticels = '';
+    for (let t = 0.04; t < 0.8; t += 0.018 + rand() * 0.03) {
+      const [x, y] = chainAt(trunk, t);
+      const [x2, y2] = chainAt(trunk, t + 0.004);
+      const len = Math.hypot(x2 - x, y2 - y) || 1;
+      if (rand() < 0.35) continue;
+      const half = (9 + (0.6 - 9) * t) * (0.12 + rand() * 0.2);
+      const [nx, ny] = [(-(y2 - y) / len) * half, ((x2 - x) / len) * half];
+      const off = (rand() - 0.5) * half;
+      const [cx, cy] = [x + ((-(y2 - y)) / len) * off, y + ((x2 - x) / len) * off];
+      lenticels += `M ${(cx - nx).toFixed(2)} ${(cy - ny).toFixed(2)} L ${(cx + nx).toFixed(2)} ${(cy + ny).toFixed(2)} `;
+    }
+    add(g, 'path', { d: lenticels }, 'pw-bark-mark');
+    for (const [x, y, rx, ry, a] of [[44, 147, 1.6, 0.7, -30], [83, 129, 1.4, 0.6, -18], [121, 120, 1.2, 0.5, -30], [149, 104, 0.9, 0.45, -55]]) {
+      add(g, 'ellipse', { cx: x, cy: y, rx, ry, transform: `rotate(${a} ${x} ${y})` }, 'pw-bark-knot');
+    }
+
+    // Buds, closed in their gold calyxes.
+    const petal = (L, W) => `M 0 0 C ${-W * 0.55} ${-L * 0.25} ${-W * 0.62} ${-L * 0.85} ${-W * 0.22} ${-L} Q ${-W * 0.08} ${-L * 1.03} 0 ${-L * 0.86} Q ${W * 0.08} ${-L * 1.03} ${W * 0.22} ${-L} C ${W * 0.62} ${-L * 0.85} ${W * 0.55} ${-L * 0.25} 0 0 Z`;
+    for (const [x, y, turn] of [[186, 46, 50], [60, 92, -55], [174, 131, 105], [38, 118, -75], [178, 84, 80], [13, 146, -95]]) {
+      const b = add(g, 'g', { transform: `translate(${x} ${y}) rotate(${turn})` });
+      add(b, 'ellipse', { cx: 0, cy: -2.7, rx: 1.8, ry: 2.9, fill: url('sakura-petal') }, 'pw-petal');
+      add(b, 'path', { d: 'M -1.7 -0.9 Q 0 -3.4 1.7 -0.9 Q 0 0.9 -1.7 -0.9 Z', fill: url('sakura-gold') });
+    }
+
+    // Blossoms of mother-of-pearl, each with a deep pink eye and gold stamens.
+    const blossoms = [
+      [30, 154, 5.8, 22], [56, 136, 6.4, 8], [75, 124, 7.4, 38], [92, 134, 5.4, -22], [114, 114, 6.8, 64],
+      [128, 126, 5.2, 14], [141, 104, 6.4, -34], [152, 87, 5.6, 22], [163, 75, 5, 48], [69, 99, 5.6, -12],
+      [52, 90, 4.6, 30], [45, 124, 4.8, 2], [165, 128, 4.8, -26], [176, 64, 4.2, 12],
+    ];
+    for (const [x, y, size, turn] of blossoms) {
+      const b = add(g, 'g', { transform: `translate(${x} ${y}) rotate(${turn})` }, 'pw-blossom');
+      for (let i = 0; i < 5; i++) {
+        const leaf = add(b, 'g', { transform: `rotate(${i * 72 + (rand() - 0.5) * 8})` });
+        const L = size * (0.94 + rand() * 0.12);
+        add(leaf, 'path', { d: petal(L, L * 0.88), fill: url('sakura-petal') }, 'pw-petal');
+        add(leaf, 'path', { d: petal(L, L * 0.88), fill: url('sakura-pearl') }, 'pw-petal-sheen');
+      }
+      let stamens = '';
+      let tips = '';
+      for (let i = 0; i < 10; i++) {
+        const a = ((i * 36 + rand() * 14) * Math.PI) / 180;
+        const l = size * (0.36 + rand() * 0.16);
+        const sx = (Math.sin(a) * l).toFixed(2);
+        const sy = (-Math.cos(a) * l).toFixed(2);
+        stamens += `M 0 0 L ${sx} ${sy} `;
+        tips += circlePath(sx, sy, (size * 0.055).toFixed(2));
+      }
+      add(b, 'circle', { r: size * 0.2 }, 'pw-blossom-eye');
+      add(b, 'path', { d: stamens }, 'pw-stamen');
+      add(b, 'path', { d: tips }, 'pw-stamen-tip');
+    }
+
+    // Petals carried off on the air.
+    for (const [x, y, size, turn] of [[126, 42, 3.4, 30], [148, 54, 2.8, -50], [86, 60, 3, 80], [40, 82, 2.6, -20], [158, 150, 3.2, 120], [104, 168, 2.6, 40], [66, 38, 2.4, 150], [182, 108, 2.6, -70]]) {
+      const p = add(g, 'g', { transform: `translate(${x} ${y}) rotate(${turn})` }, 'pw-petal-fall');
+      add(p, 'path', { d: petal(size * 1.6, size * 1.3), fill: url('sakura-petal') }, 'pw-petal');
+      add(p, 'path', { d: petal(size * 1.6, size * 1.3), fill: url('sakura-pearl') }, 'pw-petal-sheen');
+    }
+    // The gloss of the lacquer.
+    add(g, 'ellipse', { cx: 72, cy: 56, rx: R * 0.62, ry: R * 0.3, transform: 'rotate(-32 72 56)', fill: url('sakura-gloss') }, 'pw-art-gloss');
+  }
+
+  // A painted night: a mountain lake at dusk under the first stars and the milky way, with
+  // tonight's moon in its true phase, its light on the water, and a boat with a lantern.
+  drawNocturne(svg, add, R, now) {
+    const url = (name) => `url(#${this.id(name)})`;
+    const g = add(svg, 'g', { 'clip-path': url('dial-clip') });
+    const rand = rng(41);
+    const H = 129;
+    const lin = (name, y1, y2, stops) => this.gradient(add, 'linearGradient', name, { gradientUnits: 'userSpaceOnUse', x1: 0, x2: 0, y1, y2 }, stops);
+    lin('noc-sky', 10, H, [['0%', '#060a20'], ['30%', '#111a46'], ['56%', '#2d2c6a'], ['76%', '#6a4985'], ['91%', '#c77a85'], ['100%', '#f2b386']]);
+    lin('noc-lake', H, 190, [['0%', '#e6a382'], ['10%', '#8f6b90'], ['36%', '#373a71'], ['72%', '#131940'], ['100%', '#070a20']]);
+    lin('noc-far', 84, H, [['0%', '#9290c0'], ['100%', '#5b5a90']]);
+    lin('noc-mid', 104, H, [['0%', '#4a4d88'], ['100%', '#2b2e62']]);
+    lin('noc-near', 112, H + 2, [['0%', '#1c1e42'], ['100%', '#0e1029']]);
+    this.gradient(add, 'radialGradient', 'noc-glow', { cx: '50%', cy: '50%', r: '50%' }, [['0%', 'rgba(255,241,206,0.55)'], ['35%', 'rgba(255,241,206,0.16)'], ['100%', 'rgba(255,241,206,0)']]);
+    this.gradient(add, 'radialGradient', 'noc-moon', { cx: '40%', cy: '35%', r: '70%' }, [['0%', '#fffbea'], ['70%', '#f1e2b1'], ['100%', '#d6c088']]);
+    this.gradient(add, 'radialGradient', 'noc-milky', { cx: '50%', cy: '50%', r: '50%' }, [['0%', 'rgba(205,212,255,0.2)'], ['100%', 'rgba(205,212,255,0)']]);
+    this.gradient(add, 'radialGradient', 'noc-dusk', { cx: '50%', cy: '50%', r: '50%' }, [['0%', 'rgba(255,192,140,0.5)'], ['100%', 'rgba(255,192,140,0)']]);
+    this.gradient(add, 'radialGradient', 'noc-lantern', { cx: '50%', cy: '50%', r: '50%' }, [['0%', 'rgba(255,214,140,0.95)'], ['30%', 'rgba(255,180,90,0.4)'], ['100%', 'rgba(255,170,80,0)']]);
+
+    // The sky, the milky way across it and the last light low in the west.
+    add(g, 'rect', { x: 0, y: 0, width: 200, height: H + 1, fill: url('noc-sky') });
+    add(g, 'ellipse', { cx: 92, cy: 58, rx: 96, ry: 15, transform: 'rotate(-27 92 58)', fill: url('noc-milky') });
+    add(g, 'ellipse', { cx: 70, cy: H, rx: 120, ry: 28, fill: url('noc-dusk') });
+    const stars = ['', '', ''];
+    for (let i = 0; i < 190; i++) {
+      // Some of the stars gather along the milky way.
+      let x;
+      let y;
+      if (i % 3 === 0) {
+        const t = rand() * 2 - 1;
+        x = 92 + t * 92 * Math.cos(0.471) + (rand() - 0.5) * 22;
+        y = 58 - t * 92 * Math.sin(0.471) + (rand() - 0.5) * 18;
+      } else {
+        x = 8 + rand() * 184;
+        y = 8 + Math.pow(rand(), 1.4) * (H - 26);
+      }
+      if (y > H - 14) continue;
+      const fade = 1 - (y - 8) / H;
+      stars[i % 3] += circlePath(x.toFixed(2), y.toFixed(2), ((0.12 + rand() * 0.36) * (0.4 + fade * 0.6)).toFixed(2));
+    }
+    stars.forEach((d, i) => add(g, 'path', { d }, ['pw-noc-star', `is-${i}`]));
+    let bright = '';
+    for (const [x, y, z] of [[48, 40, 2.1], [72, 26, 1.5], [158, 34, 1.7], [104, 52, 1.3], [30, 72, 1.4], [176, 80, 1.2]]) bright += glintPath(x, y, z);
+    add(g, 'path', { d: bright }, 'pw-noc-glint');
+
+    // Tonight's moon.
+    const [mx, my, mr] = [138, 55, 7.4];
+    const phase = moonPhase(now);
+    add(g, 'circle', { cx: mx, cy: my, r: mr * 3.6, fill: url('noc-glow') });
+    add(g, 'circle', { cx: mx, cy: my, r: mr }, 'pw-noc-moon-dark');
+    add(g, 'path', { d: moonPath(mx, my, mr, phase), fill: url('noc-moon') }, 'pw-noc-moon');
+
+    // Mountains: a far range with moonlit snow, a nearer one, and pine woods on the shores.
+    const ridge = (points, seed, rough) => {
+      const r = rng(seed);
+      let pts = points;
+      for (let pass = 0; pass < 2; pass++) {
+        const next = [];
+        for (let i = 0; i < pts.length - 1; i++) {
+          const [x1, y1] = pts[i];
+          const [x2, y2] = pts[i + 1];
+          next.push(pts[i], [(x1 + x2) / 2 + (r() - 0.5) * rough, (y1 + y2) / 2 + (r() - 0.5) * rough * 1.4]);
+        }
+        next.push(pts[pts.length - 1]);
+        pts = next;
+        rough /= 2;
+      }
+      return pts;
+    };
+    const line = (pts) => pts.map(([x, y], i) => `${i ? 'L' : 'M'} ${x.toFixed(2)} ${y.toFixed(2)}`).join(' ');
+    const fill = (pts, base) => `${line(pts)} L 205 ${base} L -5 ${base} Z`;
+    const far = ridge([[-5, 112], [14, 105], [27, 99], [38, 103], [51, 90], [61, 83], [70, 88], [81, 96], [93, 91], [105, 99], [118, 95], [131, 101], [146, 93], [158, 98], [172, 91], [187, 100], [205, 104]], 7, 5);
+    const mid = ridge([[-5, 120], [17, 113], [31, 117], [46, 109], [60, 116], [78, 112], [96, 120], [111, 112], [125, 107], [140, 114], [156, 109], [171, 117], [187, 111], [205, 116]], 13, 4);
+    const scene = add(g, 'g', {});
+    add(scene, 'path', { d: fill(far, H + 1), fill: url('noc-far') });
+    add(scene, 'path', { d: line(far) }, 'pw-noc-snow');
+    add(scene, 'path', { d: fill(mid, H + 1), fill: url('noc-mid') });
+    add(scene, 'path', { d: line(mid) }, 'pw-noc-rim');
+    let woods = `M -5 ${H + 1} L -5 ${H - 5} L 78 ${H - 2} L 84 ${H + 1} Z M 140 ${H + 1} L 146 ${H - 3} L 205 ${H - 6} L 205 ${H + 1} Z `;
+    const pine = (x, base, h) => {
+      const w = h * 0.36;
+      let d = `M ${x - 0.25} ${base} L ${x - 0.25} ${base - h * 0.2} `;
+      for (let t = 0; t < 3; t++) {
+        const y = base - h * (0.18 + t * 0.27);
+        const s = w * (1 - t * 0.26);
+        d += `L ${x - s} ${y.toFixed(2)} L ${x - s * 0.35} ${(y - h * 0.08).toFixed(2)} `;
+      }
+      d += `L ${x} ${base - h} `;
+      for (let t = 2; t >= 0; t--) {
+        const y = base - h * (0.18 + t * 0.27);
+        const s = w * (1 - t * 0.26);
+        d += `L ${x + s * 0.35} ${(y - h * 0.08).toFixed(2)} L ${x + s} ${y.toFixed(2)} `;
+      }
+      return `${d}L ${x + 0.25} ${base - h * 0.2} L ${x + 0.25} ${base} Z `;
+    };
+    for (let x = -2; x < 80; x += 2.6 + rand() * 3) woods += pine(x, H - 2 - (x / 80) * 2 + rand(), 6 + rand() * 7 * (1 - x / 120));
+    for (let x = 144; x < 204; x += 2.6 + rand() * 3) woods += pine(x, H - 3 - ((x - 140) / 60) * 3 + rand(), 5 + rand() * 6 * ((x - 120) / 80));
+    add(scene, 'path', { d: woods, fill: url('noc-near') });
+
+    // The lake, holding the mountains upside down, with ripples and the moon's path on it.
+    add(g, 'rect', { x: 0, y: H, width: 200, height: 200 - H, fill: url('noc-lake') });
+    const mirror = add(g, 'g', { transform: `matrix(1 0 0 -1 0 ${2 * H})` }, 'pw-noc-reflection');
+    add(mirror, 'path', { d: fill(far, H + 1), fill: url('noc-far') });
+    add(mirror, 'path', { d: fill(mid, H + 1), fill: url('noc-mid') });
+    add(mirror, 'path', { d: woods, fill: url('noc-near') });
+    add(g, 'rect', { x: 0, y: H - 0.3, width: 200, height: 1 }, 'pw-noc-shore');
+    let ripples = '';
+    for (let i = 0; i < 70; i++) {
+      const y = H + 2 + Math.pow(rand(), 1.6) * 56;
+      const x = rand() * 200;
+      const len = 3 + rand() * 10 + (y - H) * 0.12;
+      ripples += `M ${x.toFixed(2)} ${y.toFixed(2)} L ${(x + len).toFixed(2)} ${y.toFixed(2)} `;
+    }
+    add(g, 'path', { d: ripples }, 'pw-noc-ripple');
+    // The moon's path widens as it comes closer, broken up by the ripples.
+    let glitter = '';
+    for (let i = 0; i < 90; i++) {
+      const depth = Math.pow(rand(), 1.3);
+      const y = H + 1.5 + depth * 56;
+      const spread = 1.2 + depth * 9;
+      const x = mx + (rand() + rand() - 1) * spread;
+      const len = (0.5 + rand() * 1.6) * (1 + depth * 1.6);
+      glitter += `M ${(x - len / 2).toFixed(2)} ${y.toFixed(2)} L ${(x + len / 2).toFixed(2)} ${y.toFixed(2)} `;
+    }
+    add(g, 'path', { d: glitter, opacity: (0.35 + 0.65 * Math.sin(Math.PI * phase)).toFixed(2) }, 'pw-noc-glitter');
+
+    // A boat with a lantern, and the lantern's light on the water.
+    const [bx, by] = [70, 147];
+    let lantern = '';
+    for (let i = 0; i < 16; i++) {
+      const y = by + 3 + rand() * 20;
+      const x = bx + 8.2 + (rand() - 0.5) * (1 + (y - by) * 0.12);
+      const len = 0.5 + rand() * 1.2;
+      lantern += `M ${(x - len / 2).toFixed(2)} ${y.toFixed(2)} L ${(x + len / 2).toFixed(2)} ${y.toFixed(2)} `;
+    }
+    add(g, 'path', { d: lantern }, 'pw-noc-lantern-path');
+    add(g, 'path', { d: `M ${bx - 8} ${by} Q ${bx} ${by + 3.4} ${bx + 9} ${by - 0.4} L ${bx + 7.4} ${by + 2.2} Q ${bx} ${by + 4.6} ${bx - 6.2} ${by + 2.2} Z` }, 'pw-noc-boat');
+    add(g, 'path', { d: `M ${bx - 1.6} ${by + 1.4} L ${bx - 1.3} ${by - 3.6} Q ${bx - 0.6} ${by - 5} ${bx + 0.2} ${by - 3.6} L ${bx + 0.6} ${by + 1.6} Z M ${bx - 0.7} ${by - 4.4} m -1 0 a 1 1 0 1 0 2 0 a 1 1 0 1 0 -2 0 Z` }, 'pw-noc-boat');
+    add(g, 'path', { d: `M ${bx + 3} ${by + 1} L ${bx + 8.2} ${by - 5.6}` }, 'pw-noc-pole');
+    add(g, 'circle', { cx: bx + 8.2, cy: by - 5, r: 4.6, fill: url('noc-lantern') });
+    add(g, 'circle', { cx: bx + 8.2, cy: by - 5, r: 0.75 }, 'pw-noc-lantern');
+
+    // Reeds at the water's edge in the foreground.
+    let reeds = '';
+    for (let i = 0; i < 16; i++) {
+      const x = 12 + rand() * 38;
+      const h = 8 + rand() * 14;
+      const lean = (rand() - 0.3) * 5;
+      reeds += `M ${x.toFixed(2)} 192 Q ${(x + lean * 0.3).toFixed(2)} ${(192 - h * 0.6).toFixed(2)} ${(x + lean).toFixed(2)} ${(192 - h).toFixed(2)} `;
+    }
+    add(g, 'path', { d: reeds }, 'pw-noc-reed');
+  }
+
+  // Widmanstätten pattern: the crystals of iron and nickel that grew inside a meteorite as it
+  // cooled over millions of years, as three families of plates crossing at 60 degrees, etched
+  // so some catch the light and others lie in shadow.
+  drawMeteorite(svg, add, R) {
+    const g = add(svg, 'g', { 'clip-path': `url(#${this.id('dial-clip')})` });
+    const rand = rng(83);
+    const plates = { light: '', soft: '', dark: '', deep: '' };
+    for (const family of [0, 60, 120]) {
+      const a = ((17 + family) * Math.PI) / 180;
+      const [ux, uy] = [Math.cos(a), Math.sin(a)];
+      const at = (u, v) => `${(100 + ux * u - uy * v).toFixed(1)} ${(100 + uy * u + ux * v).toFixed(1)}`;
+      for (let v = -R - 4; v < R + 4; v += 1.9 + rand() * 3.4) {
+        const w = 0.9 + rand() * 1.9;
+        for (let u = -R - 10; u < R + 10;) {
+          const len = 10 + rand() * 46;
+          if (rand() > 0.42) {
+            const pick = rand();
+            const kind = pick < 0.3 ? 'light' : pick < 0.55 ? 'soft' : pick < 0.82 ? 'dark' : 'deep';
+            plates[kind] += `M ${at(u, v)} L ${at(u + len, v)} L ${at(u + len, v + w)} L ${at(u, v + w)} Z `;
+          }
+          u += len + rand() * 3.5;
+        }
+      }
+    }
+    for (const [kind, d] of Object.entries(plates)) add(g, 'path', { d }, ['pw-plate', `is-${kind}`]);
   }
 
   // Dial finishes, all drawn within the dial: sunburst rays, azurage circles, glossy enamel,
@@ -1345,6 +1844,20 @@ class FloatingWatch {
       const top = 100 - R + 4.4;
       add(svg, 'path', { d: `M ${100 - 7.8 * k} ${top - 0.8} L ${100 + 7.8 * k} ${top - 0.8} L 100 ${top + 15 * k} Z`, fill: url('metal') }, ['pw-applied', 'pw-raised']);
       add(svg, 'path', { d: `M ${100 - 6.6 * k} ${top} L ${100 + 6.6 * k} ${top} L 100 ${top + 13 * k} Z` }, 'pw-lume');
+    } else if (markers === 'pips') {
+      // Small lozenges at the hours, close to the edge, which leave the dial to its picture.
+      for (let i = 0; i < 12; i++) {
+        const big = i % 3 === 0;
+        const r1 = R - 5 * k;
+        const r2 = R - (big ? 11.5 : 9) * k;
+        const w = (big ? 1.6 : 1.15) * k;
+        const attr = {
+          d: `M 100 ${100 - r1} L ${100 + w} ${100 - (r1 + r2) / 2} L 100 ${100 - r2} L ${100 - w} ${100 - (r1 + r2) / 2} Z`,
+          transform: `rotate(${i * 30} 100 100)`,
+        };
+        if (metal) add(svg, 'path', Object.assign(attr, { fill: url('facet-l') }), ['pw-applied', 'pw-raised']);
+        else add(svg, 'path', attr, 'pw-dot-index');
+      }
     } else if (markers === 'minimal') {
       const dot = { cx: 100, cy: 100 - R + 12 * k, r: 3.6 * k };
       if (metal) add(svg, 'circle', Object.assign(dot, { fill: url('stud') }), ['pw-applied', 'pw-raised']);
@@ -1682,6 +2195,12 @@ class FloatingWatch {
     const box = this.faceEl.createDiv({ cls: ['pocket-watch-digital', `pw-d-${style}`, `pw-l-${layout}`] });
     if (s.blinkColon) box.addClass('pw-blink');
     box.style.fontSize = `${(s.watchSize / 120) * 13}px`;
+    // The Philip Pocket monogram, faded into the background behind the time.
+    if (s.dialText) {
+      const [x0, y0, x1, y1] = MONOGRAM.box;
+      box.createSvg('svg', { attr: { viewBox: `${x0} ${y0} ${x1 - x0} ${y1 - y0}` }, cls: 'pw-d-brand' })
+        .createSvg('path', { attr: { d: MONOGRAM.path } });
+    }
 
     const d = (this.parts.digital = {});
     const time = box.createDiv('pw-d-time');
@@ -2170,6 +2689,7 @@ class Dashboard {
     this.alertTextEl = null;
     el.createEl('h4', { text: 'Focus' });
     const box = el.createDiv('pocket-watch-focus');
+    box.setAttr('data-palette', s.sessionColours === 'grey' ? 'grey' : 'colour');
     const button = (row, label, onClick, cta) => {
       const b = row.createEl('button', { text: label });
       if (cta) b.addClass('mod-cta');
@@ -2376,6 +2896,14 @@ function focusKey(p) {
   return p.alert ? `alert|${p.alert.kind}` : '';
 }
 
+// What sits at 12, 3, 6 and 9: the face's own set, or your own choice.
+function faceSlots(s) {
+  const face = ANALOG_FACES[s.face] || ANALOG_FACES.porcelain;
+  const slots = {};
+  for (const slot of SLOTS) slots[slot.key] = s.complications === 'custom' ? s[slot.key] : face.set[slot.key] || 'none';
+  return slots;
+}
+
 function faceNames() {
   const names = {};
   for (const [k, f] of Object.entries(ANALOG_FACES)) names[k] = f.name;
@@ -2433,6 +2961,7 @@ class PocketWatchSettingTab extends PluginSettingTab {
         DIGITAL_LAYOUTS, s.digitalLayout, (v) => set({ digitalLayout: v }),
       );
       dropdown(new Setting(el).setName('Clock'), CLOCKS, s.clock, (v) => set({ clock: v }));
+      toggle('Monogram', 'dialText', 'The Philip Pocket monogram, faded into the background.');
       toggle('Seconds', 'digitalSeconds');
       toggle('Blinking colon', 'blinkColon');
       toggle('Date', 'digitalDate');
@@ -2443,15 +2972,22 @@ class PocketWatchSettingTab extends PluginSettingTab {
       new Setting(el).setName('Analog').setHeading();
       dropdown(new Setting(el).setName('Face'), faceNames(), s.face, (v) => set({ face: v }, true));
       dropdown(new Setting(el).setName('Case'), CASES, s.caseStyle, (v) => set({ caseStyle: v }));
-      toggle('Name on the dial', 'dialText', 'Prints "Pocket Watch" and the face name under 12 o\'clock, when nothing else is there.');
+      toggle('Name on the dial', 'dialText', 'The Philip Pocket signature and the name of the face, under 12 o\'clock or above 6.');
       dropdown(new Setting(el).setName('Hour markers'), MARKERS, s.markers, (v) => set({ markers: v }));
       dropdown(new Setting(el).setName('Hands'), HANDS, s.hands, (v) => set({ hands: v }));
       dropdown(new Setting(el).setName('Seconds hand'), SECONDS, s.seconds, (v) => set({ seconds: v }));
       const face = ANALOG_FACES[s.face] || ANALOG_FACES.porcelain;
-      for (const slot of SLOTS) {
-        const setting = new Setting(el).setName(slot.name);
-        dropdown(setting, COMPLICATIONS, s[slot.key], (v) => set({ [slot.key]: v }));
-        if (face.window === slot.key) setting.setDesc(`The ${face.name} face shows its movement here.`).setDisabled(true);
+      dropdown(
+        new Setting(el).setName('Complications').setDesc('Each face comes with its own, such as a moon phase or a date. Choose your own to pick what shows at 12, 3, 6 and 9 o\'clock.'),
+        // Your own starts from the face's set.
+        COMPLICATION_SETS, s.complications, (v) => set(Object.assign(v === 'custom' ? faceSlots(s) : {}, { complications: v }), true),
+      );
+      if (s.complications === 'custom') {
+        for (const slot of SLOTS) {
+          const setting = new Setting(el).setName(slot.name);
+          dropdown(setting, COMPLICATIONS, s[slot.key], (v) => set({ [slot.key]: v }));
+          if (face.window === slot.key) setting.setDesc(`The ${face.name} face shows its movement here.`).setDisabled(true);
+        }
       }
       toggle('Goal ring', 'goalRing', 'A ring on the bezel that fills up toward your daily goal, and dims while the timer is paused.');
       dropdown(
@@ -2487,7 +3023,11 @@ class PocketWatchSettingTab extends PluginSettingTab {
     plain('Start the next focus session automatically', 'autoStartFocus');
     plain('Countdown under the watch', 'showCountdown', 'Shows the minutes left in a small label next to the watch, and how far past the time you are once it is up.');
     dropdown(
-      new Setting(el).setName("When time is up").setDesc("How the watch shows that a focus session or break has ended: orange after focus, green after a break. It stays until you start the next one or dismiss it, or for a minute when the next one starts on its own."),
+      new Setting(el).setName('Colours').setDesc('In colour, the ring counts down in orange while you focus and in green on a break. In greyscale, the watch stays as it is while you focus, and a soft fade around it shows that you are on a break.'),
+      SESSION_COLOURS, s.sessionColours, (v) => set({ sessionColours: v }),
+    );
+    dropdown(
+      new Setting(el).setName("When time is up").setDesc("How the watch shows that a focus session or break has ended, in the colours above. It stays until you start the next one or dismiss it, or for a minute when the next one starts on its own."),
       TIMES_UP, s.timesUp, async (v) => {
         s.timesUp = v;
         await p.saveSettings();

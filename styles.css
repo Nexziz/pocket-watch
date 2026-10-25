@@ -147,6 +147,53 @@
   --pw-subdial: rgba(0, 0, 0, 0.25);
 }
 
+.pocket-watch-face-sakura {
+  --pw-flange: #0b0807;
+  --pw-bezel-a: #fbefc9; --pw-bezel-b: #d5ac57; --pw-bezel-c: #7c5a1d;
+  --pw-dial-a: #1d1716; --pw-dial-b: #060404;
+  --pw-ink: #e2c16e; --pw-ink-soft: #9c7d3c;
+  --pw-hand: #f4dc94; --pw-hand-shade: #b98e3a; --pw-hand-edge: rgba(0, 0, 0, 0.45);
+  --pw-lume: #1d1716; --pw-accent: #ea8eab;
+  --pw-ring: #ea8eab; --pw-ring-track: rgba(255, 255, 255, 0.08);
+  --pw-date-bg: #0b0807; --pw-date-ink: #e2c16e;
+  --pw-subdial: rgba(255, 255, 255, 0.04);
+}
+
+.pocket-watch-face-nocturne {
+  --pw-flange: rgba(5, 7, 22, 0.7);
+  --pw-bezel-a: #f4f5f8; --pw-bezel-b: #b5b9c3; --pw-bezel-c: #5d6270;
+  --pw-dial-a: #1a2150; --pw-dial-b: #080b22;
+  --pw-ink: #f1e3bd; --pw-ink-soft: #9a98c0;
+  --pw-hand: #f7f2e6; --pw-hand-shade: #c9c0a8; --pw-hand-edge: rgba(0, 0, 0, 0.5);
+  --pw-lume: #1a2150; --pw-accent: #f2b386;
+  --pw-ring: #f2b386; --pw-ring-track: rgba(0, 0, 0, 0.25);
+  --pw-date-bg: #0b0f2a; --pw-date-ink: #f1e3bd;
+  --pw-subdial: rgba(0, 0, 0, 0.25);
+}
+
+.pocket-watch-face-meteorite {
+  --pw-grain: rgba(28, 30, 33, 0.9);
+  --pw-flange: #54585e;
+  --pw-bezel-a: #eceef1; --pw-bezel-b: #a3a8b0; --pw-bezel-c: #4f545c;
+  --pw-dial-a: #aeb2b7; --pw-dial-b: #6a6e74;
+  --pw-ink: #1d2024; --pw-ink-soft: #33373c;
+  --pw-hand: #f6f7f9; --pw-hand-shade: #b9bec5; --pw-hand-edge: rgba(0, 0, 0, 0.5);
+  --pw-lume: #aeb2b7; --pw-accent: #3d6fd6;
+  --pw-ring: #3d6fd6; --pw-ring-track: rgba(0, 0, 0, 0.16);
+  --pw-date-bg: #f4f5f6; --pw-date-ink: #1d2024;
+  --pw-subdial: rgba(0, 0, 0, 0.2);
+}
+
+.pocket-watch-face-panda {
+  --pw-bezel-a: #f1f2f4; --pw-bezel-b: #b0b5bc; --pw-bezel-c: #5b6068;
+  --pw-dial-a: #fcfbf8; --pw-dial-b: #e3e1db;
+  --pw-ink: #1b1c1e; --pw-ink-soft: #8b8d92;
+  --pw-hand: #1b1c1e; --pw-lume: #fcfbf8; --pw-accent: #d4412f;
+  --pw-ring: #d4412f; --pw-ring-track: rgba(0, 0, 0, 0.1);
+  --pw-date-bg: #ffffff; --pw-date-ink: #1b1c1e;
+  --pw-subdial: #161719;
+}
+
 .pocket-watch-face-openheart {
   --pw-bezel-a: #f1f2f4; --pw-bezel-b: #b3b8bf; --pw-bezel-c: #5f656d;
   --pw-dial-a: #333a45; --pw-dial-b: #191d24;
@@ -330,8 +377,39 @@
   background: var(--background-secondary-alt);
 }
 
+/* Greyscale: while you focus the watch is just a watch, with no countdown ring or bar, and
+   on a break a soft light fades in and out around it. */
+.pocket-watch-float[data-palette="grey"] {
+  --pw-focus: #6f7277;
+  --pw-break: #d5d8dd;
+}
+
+.pocket-watch-float[data-palette="grey"]:is([data-ring="focus"], [data-ring="break"], [data-ring="paused"]) :is(.pw-ring, .pw-ring-track, .pw-d-bar) {
+  visibility: hidden;
+}
+
+.pocket-watch-float[data-palette="grey"] .pocket-watch-badge {
+  color: var(--text-normal);
+  background: var(--background-secondary-alt);
+}
+
+.pocket-watch-float[data-palette="grey"][data-ring="break"] .pocket-watch-face {
+  animation: pocket-watch-break-fade 7s ease-in-out infinite;
+}
+
+@keyframes pocket-watch-break-fade {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 4px rgba(236, 239, 243, 0.32)) drop-shadow(0 0 12px rgba(236, 239, 243, 0.14));
+  }
+  50% {
+    filter: drop-shadow(0 0 7px rgba(236, 239, 243, 0.55)) drop-shadow(0 0 20px rgba(236, 239, 243, 0.26));
+  }
+}
+
 /* ---------------------------------------------------------------------------
-   Time's up: orange after a focus session, green after a break.
+   Time's up: orange after a focus session, green after a break; in greyscale, silver after
+   focus and grey after a break.
    --------------------------------------------------------------------------- */
 
 .pocket-watch-float {
@@ -342,18 +420,32 @@
   --pw-alert: var(--pw-break, #5fb49c);
 }
 
-/* Glow: a soft halo that slowly breathes. */
+.pocket-watch-float[data-palette="grey"] {
+  --pw-alert: #eceef1;
+}
+
+.pocket-watch-float[data-palette="grey"][data-alert="break"] {
+  --pw-alert: #9a9ea5;
+}
+
+/* Glow: a soft halo that slowly breathes. Only its strength is animated and the colour is
+   worked out on every frame, so it changes at once when a focus alert becomes a break alert. */
+@property --pw-glow {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
 .pocket-watch-float[data-times-up="glow"]:not([data-alert="none"]) .pocket-watch-face {
+  filter:
+    drop-shadow(0 0 calc(2px + 7px * var(--pw-glow)) color-mix(in srgb, var(--pw-alert) calc(40% + 60% * var(--pw-glow)), transparent))
+    drop-shadow(0 0 calc(1px + 19px * var(--pw-glow)) color-mix(in srgb, var(--pw-alert) calc(55% * var(--pw-glow)), transparent));
   animation: pocket-watch-alert-glow 2.8s ease-in-out infinite;
 }
 
 @keyframes pocket-watch-alert-glow {
-  0%,
-  100% {
-    filter: drop-shadow(0 0 2px color-mix(in srgb, var(--pw-alert) 40%, transparent));
-  }
   50% {
-    filter: drop-shadow(0 0 9px var(--pw-alert)) drop-shadow(0 0 20px color-mix(in srgb, var(--pw-alert) 55%, transparent));
+    --pw-glow: 1;
   }
 }
 
@@ -543,6 +635,18 @@
   --pw-metal-a: #fff1e8;
   --pw-metal-b: #d7a08b;
   --pw-metal-c: #8e5847;
+}
+
+.pocket-watch-face-sakura {
+  --pw-metal-a: #fff4cf;
+  --pw-metal-b: #e0b85f;
+  --pw-metal-c: #8a6420;
+}
+
+.pocket-watch-face-nocturne {
+  --pw-metal-a: #ffffff;
+  --pw-metal-b: #eadfc2;
+  --pw-metal-c: #9a8d6c;
 }
 
 .pocket-watch-face-void {
@@ -982,6 +1086,7 @@
    --------------------------------------------------------------------------- */
 
 .pocket-watch-digital {
+  isolation: isolate;
   --pw-d-bg: linear-gradient(160deg, #40454c, #1f2226);
   --pw-d-ink: #ede0c6;
   --pw-d-soft: #a8a194;
@@ -1057,6 +1162,20 @@
   border-radius: 2px;
   background: var(--pw-d-accent);
   transition: width 400ms ease, opacity 400ms ease;
+}
+
+/* The monogram, faded into the background */
+.pw-d-brand {
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  top: 50%;
+  height: 84%;
+  max-width: 70%;
+  transform: translate(-50%, -50%);
+  fill: var(--pw-d-ink);
+  opacity: 0.07;
+  pointer-events: none;
 }
 
 /* Layouts */
@@ -1580,26 +1699,32 @@
   stroke-width: 0.45;
 }
 
-.pw-brand,
+/* The Philip Pocket signature */
+.pw-brand-mark {
+  fill: var(--pw-brand, var(--pw-ink));
+}
+
+.pw-brand-glint {
+  fill: var(--pw-brand-glint, var(--pw-brand, var(--pw-ink)));
+}
+
+.pw-brand-mark.is-applied .pw-brand-script,
+.pw-brand-mark.is-applied .pw-brand-caps {
+  stroke: rgba(0, 0, 0, 0.35);
+  stroke-width: 0.6;
+  paint-order: stroke;
+}
+
 .pw-model {
   fill: var(--pw-ink);
   font-family: var(--font-interface);
   text-anchor: middle;
   dominant-baseline: central;
-}
-
-.pw-brand {
-  font-weight: 650;
-  letter-spacing: 0.22em;
-}
-
-.pw-model {
   font-weight: 500;
   letter-spacing: 0.32em;
   opacity: 0.62;
 }
 
-.pw-brand.is-serif,
 .pw-model.is-serif {
   font-family: var(--pw-numeral-font);
 }
@@ -1608,6 +1733,201 @@
 .pocket-watch-face-field .pw-model {
   fill: var(--pw-accent);
   opacity: 1;
+}
+
+/* Sakura: maki-e lacquer */
+.pw-art-dust {
+  opacity: 0.85;
+}
+
+.pw-art-mist {
+  opacity: 0.1;
+}
+
+.pw-art-mist-dust {
+  opacity: 0.9;
+}
+
+.pw-bark-mark {
+  fill: none;
+  stroke: rgba(70, 40, 8, 0.45);
+  stroke-width: 0.28;
+  stroke-linecap: round;
+}
+
+.pw-bark path {
+  stroke: rgba(40, 22, 4, 0.65);
+  stroke-width: 0.3;
+}
+
+.pw-bark path.pw-bark-light {
+  stroke: none;
+}
+
+.pw-bark {
+  filter: drop-shadow(0 0.6px 0.5px rgba(0, 0, 0, 0.7));
+}
+
+.pw-bark-light {
+  fill: #fff3c8;
+  opacity: 0.45;
+}
+
+.pw-bark-knot {
+  fill: rgba(60, 34, 6, 0.75);
+}
+
+.pw-blossom,
+.pw-petal-fall {
+  filter: drop-shadow(0 0.5px 0.5px rgba(0, 0, 0, 0.75));
+}
+
+.pw-petal {
+  stroke: rgba(150, 50, 82, 0.35);
+  stroke-width: 0.18;
+}
+
+.pw-petal-sheen {
+  opacity: 0.7;
+}
+
+.pw-blossom-eye {
+  fill: #b02f58;
+}
+
+.pw-stamen {
+  fill: none;
+  stroke: #e8c25c;
+  stroke-width: 0.22;
+}
+
+.pw-stamen-tip {
+  fill: #f7d97c;
+}
+
+/* Nocturne: a painted night */
+.pw-noc-star {
+  fill: #f5f2ff;
+}
+
+.pw-noc-star.is-1 {
+  opacity: 0.7;
+}
+
+.pw-noc-star.is-2 {
+  opacity: 0.45;
+}
+
+.pw-noc-glint {
+  fill: #fdfaf0;
+}
+
+.pw-noc-moon-dark {
+  fill: #232a4f;
+  opacity: 0.85;
+}
+
+.pw-noc-snow {
+  fill: none;
+  stroke: #e4e3f7;
+  stroke-width: 0.55;
+  stroke-linejoin: round;
+  opacity: 0.55;
+}
+
+.pw-noc-rim {
+  fill: none;
+  stroke: #9da0d8;
+  stroke-width: 0.35;
+  opacity: 0.4;
+}
+
+.pw-noc-reflection {
+  opacity: 0.38;
+}
+
+.pw-noc-shore {
+  fill: #0c0e26;
+  opacity: 0.6;
+}
+
+.pw-noc-ripple {
+  fill: none;
+  stroke: #e9e6ff;
+  stroke-width: 0.3;
+  stroke-linecap: round;
+  opacity: 0.22;
+}
+
+.pw-noc-glitter {
+  fill: none;
+  stroke: #fff2d0;
+  stroke-width: 0.55;
+  stroke-linecap: round;
+}
+
+.pw-noc-boat {
+  fill: #080a1c;
+}
+
+.pw-noc-pole {
+  fill: none;
+  stroke: #080a1c;
+  stroke-width: 0.45;
+}
+
+.pw-noc-lantern {
+  fill: #fff4d6;
+}
+
+.pw-noc-lantern-path {
+  fill: none;
+  stroke: #ffc77a;
+  stroke-width: 0.5;
+  stroke-linecap: round;
+  opacity: 0.55;
+}
+
+.pw-noc-reed {
+  fill: none;
+  stroke: #05061a;
+  stroke-width: 0.6;
+  stroke-linecap: round;
+}
+
+/* Meteorite: the Widmanstätten pattern */
+/* Each plate of kamacite is edged with a bright line of taenite. */
+.pw-plate {
+  stroke: rgba(246, 248, 251, 0.5);
+  stroke-width: 0.16;
+}
+
+.pw-plate.is-light { fill: #e6e9ed; opacity: 0.3; }
+.pw-plate.is-soft { fill: #c4c8ce; opacity: 0.24; }
+.pw-plate.is-dark { fill: #34383d; opacity: 0.2; }
+.pw-plate.is-deep { fill: #1e2124; opacity: 0.26; }
+
+.pocket-watch-face-meteorite .pw-grain {
+  opacity: 0.5;
+}
+
+/* Panda: black subdials on a white dial */
+.pocket-watch-face-panda .pw-subdial {
+  stroke: #b8bcc2;
+  stroke-width: 1.1;
+}
+
+.pocket-watch-face-panda .pw-subdial-tick,
+.pocket-watch-face-panda .pw-snailing {
+  stroke: #e8e8e8;
+}
+
+.pocket-watch-face-panda .pw-caption {
+  fill: #d9d9d9;
+}
+
+.pocket-watch-face-panda .pw-goal-track {
+  stroke: rgba(255, 255, 255, 0.16);
 }
 
 /* Dial finishes */
@@ -1742,6 +2062,14 @@
   --pw-focus-colour: var(--text-faint);
 }
 
+.pocket-watch-focus[data-palette="grey"] {
+  --pw-focus-colour: var(--text-muted);
+}
+
+.pocket-watch-focus[data-palette="grey"]:is([data-kind="short"], [data-kind="long"]) {
+  --pw-focus-colour: var(--text-faint);
+}
+
 .pocket-watch-focus-top {
   display: flex;
   align-items: baseline;
@@ -1808,5 +2136,10 @@
 
   .pocket-watch-float[data-times-up="dot"]:not([data-alert="none"]) .pocket-watch-alert-dot {
     animation: none;
+  }
+
+  .pocket-watch-float[data-palette="grey"][data-ring="break"] .pocket-watch-face {
+    animation: none;
+    filter: drop-shadow(0 0 6px rgba(236, 239, 243, 0.45)) drop-shadow(0 0 16px rgba(236, 239, 243, 0.2));
   }
 }
