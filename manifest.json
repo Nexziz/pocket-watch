@@ -1,9 +1,9 @@
 {
   "id": "pocket-watch",
   "name": "Pocket Watch",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "minAppVersion": "1.4.0",
-  "description": "A small watch that tracks your time in the vault, stops when you go idle, and opens into a calendar with time and word stats.",
+  "description": "A calm little timepiece over your notes that tracks your time in the vault, pauses when you go idle, and opens into a calendar with time and word stats.",
   "author": "Nexziz",
   "isDesktopOnly": false,
   "authorUrl": "https://github.com/Nexziz"
