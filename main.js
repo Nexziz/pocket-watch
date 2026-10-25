@@ -2,7 +2,7 @@
 
 const { Plugin, ItemView, PluginSettingTab, Setting, MarkdownView, Notice } = require('obsidian');
 
-const VIEW_TYPE = 'inkwatch-view';
+const VIEW_TYPE = 'pocket-watch-view';
 
 const DEFAULT_SETTINGS = {
   idleMinutes: 30,
@@ -70,7 +70,7 @@ const STATE_LABELS = {
   paused: 'Paused',
 };
 
-module.exports = class InkwatchPlugin extends Plugin {
+module.exports = class PocketWatchPlugin extends Plugin {
   async onload() {
     const saved = (await this.loadData()) || {};
     this.settings = Object.assign({}, DEFAULT_SETTINGS, saved.settings);
@@ -87,15 +87,15 @@ module.exports = class InkwatchPlugin extends Plugin {
     this.wordCounts = new Map();
     this.pendingCounts = new Map();
 
-    this.registerView(VIEW_TYPE, (leaf) => new InkwatchView(leaf, this));
-    this.addRibbonIcon('clock', 'Open Inkwatch', () => this.openView());
-    this.addSettingTab(new InkwatchSettingTab(this.app, this));
+    this.registerView(VIEW_TYPE, (leaf) => new PocketWatchView(leaf, this));
+    this.addRibbonIcon('clock', 'Open Pocket Watch', () => this.openView());
+    this.addSettingTab(new PocketWatchSettingTab(this.app, this));
 
     this.addCommand({ id: 'open', name: 'Open time and stats', callback: () => this.openView() });
     this.addCommand({ id: 'toggle-pause', name: 'Pause or resume the timer', callback: () => this.togglePause() });
 
     this.statusEl = this.addStatusBarItem();
-    this.statusEl.addClass('inkwatch-status', 'mod-clickable');
+    this.statusEl.addClass('pocket-watch-status', 'mod-clickable');
     this.registerDomEvent(this.statusEl, 'click', () => this.openView());
 
     this.watchWindow(window);
@@ -184,20 +184,20 @@ module.exports = class InkwatchPlugin extends Plugin {
 
     this.updateStatusBar();
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-      if (leaf.view instanceof InkwatchView) leaf.view.refreshLive();
+      if (leaf.view instanceof PocketWatchView) leaf.view.refreshLive();
     }
   }
 
   updateStatusBar() {
     this.statusEl.setText(`⏱ ${fmtClock(this.getDay(dayKey(new Date())).ms)}`);
     this.statusEl.setAttr('data-state', this.state);
-    this.statusEl.setAttr('aria-label', `Inkwatch: ${STATE_LABELS[this.state]}. Click for stats.`);
+    this.statusEl.setAttr('aria-label', `Pocket Watch: ${STATE_LABELS[this.state]}. Click for stats.`);
   }
 
   togglePause() {
     this.paused = !this.paused;
     if (!this.paused) this.markActive();
-    new Notice(this.paused ? 'Inkwatch paused' : 'Inkwatch resumed');
+    new Notice(this.paused ? 'Pocket Watch paused' : 'Pocket Watch resumed');
     this.tick();
   }
 
@@ -260,7 +260,7 @@ module.exports = class InkwatchPlugin extends Plugin {
     await this.saveSettings();
     this.tick();
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-      if (leaf.view instanceof InkwatchView) leaf.view.render();
+      if (leaf.view instanceof PocketWatchView) leaf.view.render();
     }
   }
 
@@ -307,7 +307,7 @@ module.exports = class InkwatchPlugin extends Plugin {
   }
 };
 
-class InkwatchView extends ItemView {
+class PocketWatchView extends ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
@@ -323,7 +323,7 @@ class InkwatchView extends ItemView {
   }
 
   getDisplayText() {
-    return 'Inkwatch';
+    return 'Pocket Watch';
   }
 
   getIcon() {
@@ -357,26 +357,26 @@ class InkwatchView extends ItemView {
   render() {
     const el = this.contentEl;
     el.empty();
-    el.addClass('inkwatch-view');
+    el.addClass('pocket-watch-view');
     this.lastRender = Date.now();
     this.renderedDay = dayKey(new Date());
 
-    this.renderWatch(el.createDiv('inkwatch-section'));
-    this.renderCalendar(el.createDiv('inkwatch-section'));
-    this.renderDay(el.createDiv('inkwatch-section'));
-    this.renderStats(el.createDiv('inkwatch-section'));
+    this.renderWatch(el.createDiv('pocket-watch-section'));
+    this.renderCalendar(el.createDiv('pocket-watch-section'));
+    this.renderDay(el.createDiv('pocket-watch-section'));
+    this.renderStats(el.createDiv('pocket-watch-section'));
     this.refreshLive();
   }
 
   renderWatch(el) {
     const p = this.plugin;
-    this.watchEl = el.createDiv('inkwatch-watch');
-    this.watchEl.createDiv({ cls: 'inkwatch-label', text: 'Today' });
-    this.clockEl = this.watchEl.createDiv('inkwatch-clock');
-    const row = this.watchEl.createDiv('inkwatch-state-row');
-    row.createSpan('inkwatch-dot');
-    this.stateEl = row.createSpan('inkwatch-state');
-    this.pauseBtn = this.watchEl.createEl('button', { cls: 'inkwatch-pause' });
+    this.watchEl = el.createDiv('pocket-watch-watch');
+    this.watchEl.createDiv({ cls: 'pocket-watch-label', text: 'Today' });
+    this.clockEl = this.watchEl.createDiv('pocket-watch-clock');
+    const row = this.watchEl.createDiv('pocket-watch-state-row');
+    row.createSpan('pocket-watch-dot');
+    this.stateEl = row.createSpan('pocket-watch-state');
+    this.pauseBtn = this.watchEl.createEl('button', { cls: 'pocket-watch-pause' });
     this.pauseBtn.addEventListener('click', () => p.togglePause());
 
     new Setting(el)
@@ -398,13 +398,13 @@ class InkwatchView extends ItemView {
     const y = this.month.getFullYear();
     const m = this.month.getMonth();
 
-    const head = el.createDiv('inkwatch-cal-head');
-    const prev = head.createEl('button', { text: '‹', cls: 'inkwatch-nav', attr: { 'aria-label': 'Previous month' } });
+    const head = el.createDiv('pocket-watch-cal-head');
+    const prev = head.createEl('button', { text: '‹', cls: 'pocket-watch-nav', attr: { 'aria-label': 'Previous month' } });
     head.createDiv({
-      cls: 'inkwatch-month',
+      cls: 'pocket-watch-month',
       text: this.month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
     });
-    const next = head.createEl('button', { text: '›', cls: 'inkwatch-nav', attr: { 'aria-label': 'Next month' } });
+    const next = head.createEl('button', { text: '›', cls: 'pocket-watch-nav', attr: { 'aria-label': 'Next month' } });
     prev.addEventListener('click', () => {
       this.month = new Date(y, m - 1, 1);
       this.render();
@@ -414,13 +414,13 @@ class InkwatchView extends ItemView {
       this.render();
     });
 
-    const grid = el.createDiv('inkwatch-cal');
+    const grid = el.createDiv('pocket-watch-cal');
     const mon = p.settings.weekStartsMonday;
     const names = mon ? ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'] : ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-    for (const n of names) grid.createDiv({ cls: 'inkwatch-wd', text: n });
+    for (const n of names) grid.createDiv({ cls: 'pocket-watch-wd', text: n });
 
     const offset = (new Date(y, m, 1).getDay() - (mon ? 1 : 0) + 7) % 7;
-    for (let i = 0; i < offset; i++) grid.createDiv('inkwatch-cell is-blank');
+    for (let i = 0; i < offset; i++) grid.createDiv('pocket-watch-cell is-blank');
 
     const todayKey = dayKey(new Date());
     const daysInMonth = new Date(y, m + 1, 0).getDate();
@@ -428,11 +428,11 @@ class InkwatchView extends ItemView {
       const key = dayKey(new Date(y, m, d));
       const ms = p.getDay(key).ms;
       const level = ms === 0 ? 0 : ms < 30 * 60000 ? 1 : ms < 90 * 60000 ? 2 : ms < 180 * 60000 ? 3 : 4;
-      const cell = grid.createDiv(`inkwatch-cell inkwatch-l${level}`);
+      const cell = grid.createDiv(`pocket-watch-cell pocket-watch-l${level}`);
       if (key === todayKey) cell.addClass('is-today');
       if (key === this.selected) cell.addClass('is-selected');
-      cell.createDiv({ cls: 'inkwatch-daynum', text: String(d) });
-      if (ms >= 60000) cell.createDiv({ cls: 'inkwatch-daytime', text: fmtShort(ms) });
+      cell.createDiv({ cls: 'pocket-watch-daynum', text: String(d) });
+      if (ms >= 60000) cell.createDiv({ cls: 'pocket-watch-daytime', text: fmtShort(ms) });
       cell.setAttr('aria-label', `${key}: ${fmtShort(ms)}`);
       cell.addEventListener('click', () => {
         this.selected = key;
@@ -452,11 +452,11 @@ class InkwatchView extends ItemView {
     });
     el.createEl('h4', { text: this.selected === todayKey ? `Today, ${title}` : title });
 
-    const rows = el.createDiv('inkwatch-rows');
+    const rows = el.createDiv('pocket-watch-rows');
     const row = (label, value) => {
-      const r = rows.createDiv('inkwatch-row');
+      const r = rows.createDiv('pocket-watch-row');
       r.createSpan({ text: label });
-      r.createSpan({ cls: 'inkwatch-val', text: value });
+      r.createSpan({ cls: 'pocket-watch-val', text: value });
     };
     row('Time', fmtShort(d.ms));
     row('Words written', fmtNum(d.written));
@@ -472,7 +472,7 @@ class InkwatchView extends ItemView {
         : diff > 0
           ? `Today you've done ${fmtShort(diff)} more (${fmtShort(t)})`
           : `Today you've done ${fmtShort(-diff)} less (${fmtShort(t)})`;
-      el.createDiv({ cls: 'inkwatch-compare', text });
+      el.createDiv({ cls: 'pocket-watch-compare', text });
     }
   }
 
@@ -483,12 +483,12 @@ class InkwatchView extends ItemView {
     const month = p.sumLastDays(30);
     el.createEl('h4', { text: 'Stats' });
 
-    const tiles = el.createDiv('inkwatch-tiles');
+    const tiles = el.createDiv('pocket-watch-tiles');
     const tile = (label, value, sub) => {
-      const t = tiles.createDiv('inkwatch-tile');
-      t.createDiv({ cls: 'inkwatch-tile-val', text: value });
-      t.createDiv({ cls: 'inkwatch-tile-label', text: label });
-      if (sub) t.createDiv({ cls: 'inkwatch-tile-sub', text: sub });
+      const t = tiles.createDiv('pocket-watch-tile');
+      t.createDiv({ cls: 'pocket-watch-tile-val', text: value });
+      t.createDiv({ cls: 'pocket-watch-tile-label', text: label });
+      if (sub) t.createDiv({ cls: 'pocket-watch-tile-sub', text: sub });
     };
     tile('Last 7 days', fmtShort(week.ms), `${fmtNum(week.written)} words`);
     tile('Last 30 days', fmtShort(month.ms), `${fmtNum(month.written)} words`);
@@ -499,8 +499,8 @@ class InkwatchView extends ItemView {
     tile('Words written', fmtNum(s.written), 'all time');
     tile('Words deleted', fmtNum(s.deleted), 'all time');
 
-    el.createDiv({ cls: 'inkwatch-label', text: 'Last 14 days' });
-    const bars = el.createDiv('inkwatch-bars');
+    el.createDiv({ cls: 'pocket-watch-label', text: 'Last 14 days' });
+    const bars = el.createDiv('pocket-watch-bars');
     const days = [];
     for (let i = 13; i >= 0; i--) {
       const date = daysAgo(i);
@@ -508,16 +508,16 @@ class InkwatchView extends ItemView {
     }
     const max = Math.max(1, ...days.map((x) => x.ms));
     for (const { date, ms } of days) {
-      const col = bars.createDiv('inkwatch-bar-col');
+      const col = bars.createDiv('pocket-watch-bar-col');
       col.setAttr('aria-label', `${dayKey(date)}: ${fmtShort(ms)}`);
-      const track = col.createDiv('inkwatch-bar-track');
-      track.createDiv('inkwatch-bar').style.height = `${(ms / max) * 100}%`;
-      col.createDiv({ cls: 'inkwatch-bar-day', text: String(date.getDate()) });
+      const track = col.createDiv('pocket-watch-bar-track');
+      track.createDiv('pocket-watch-bar').style.height = `${(ms / max) * 100}%`;
+      col.createDiv({ cls: 'pocket-watch-bar-day', text: String(date.getDate()) });
     }
   }
 }
 
-class InkwatchSettingTab extends PluginSettingTab {
+class PocketWatchSettingTab extends PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -567,9 +567,9 @@ class InkwatchSettingTab extends PluginSettingTab {
       .setName('Reset all data')
       .setDesc('Deletes every tracked day. This cannot be undone.')
       .addButton((b) => b.setButtonText('Reset').setWarning().onClick(async () => {
-        if (window.confirm('Delete all Inkwatch time and word stats?')) {
+        if (window.confirm('Delete all Pocket Watch time and word stats?')) {
           await p.resetData();
-          new Notice('Inkwatch data reset');
+          new Notice('Pocket Watch data reset');
         }
       }));
   }
