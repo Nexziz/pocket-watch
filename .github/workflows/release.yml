@@ -1,9 +1,12 @@
 name: Release Obsidian plugin
 
+# Runs when a version tag is pushed, or by hand from the Actions tab ("Run workflow"),
+# which releases the version in manifest.json from the main branch.
 on:
   push:
     tags:
       - "*"
+  workflow_dispatch:
 
 jobs:
   release:
@@ -15,14 +18,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check the tag matches manifest.json
+      - name: Work out the version
+        id: version
         run: |
-          tag="${GITHUB_REF#refs/tags/}"
           version="$(jq -r .version manifest.json)"
-          if [ "$tag" != "$version" ]; then
-            echo "Tag $tag does not match manifest.json version $version"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match manifest.json version $version"
             exit 1
           fi
+          if ! jq -e --arg v "$version" 'has($v)' versions.json > /dev/null; then
+            echo "versions.json has no entry for $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Generate artifact attestation
         uses: actions/attest@v4
@@ -35,9 +43,10 @@ jobs:
       - name: Create release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          tag="${GITHUB_REF#refs/tags/}"
-          gh release create "$tag" \
-            --title="$tag" \
-            --notes="Pocket Watch $tag" \
+          gh release create "$VERSION" \
+            --target "$GITHUB_SHA" \
+            --title "$VERSION" \
+            --notes "Pocket Watch $VERSION" \
             main.js manifest.json styles.css
