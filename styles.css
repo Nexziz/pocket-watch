@@ -505,69 +505,150 @@
   stroke-width: 2.6;
 }
 
-.pw-mv-perlage {
-  fill: rgba(255, 255, 255, 0.05);
-  stroke: rgba(0, 0, 0, 0.12);
-  stroke-width: 0.4;
+.pw-window-edge {
+  fill: none;
+  stroke: rgba(0, 0, 0, 0.55);
+  stroke-width: 0.6;
+}
+
+.pw-mv-pin {
+  fill: #d9dde2;
+  stroke: rgba(0, 0, 0, 0.45);
+  stroke-width: 0.25;
 }
 
 .pw-mv-wheel {
   fill: #d8b766;
   stroke: rgba(70, 45, 10, 0.6);
+  stroke-width: 0.35;
+}
+
+.pw-mv-wheel-ring {
+  fill: none;
+  stroke: rgba(255, 245, 210, 0.45);
   stroke-width: 0.4;
 }
 
 .pw-mv-steel {
-  fill: #cfd4da;
   stroke: rgba(0, 0, 0, 0.55);
-  stroke-width: 0.4;
+  stroke-width: 0.35;
 }
 
 .pw-mv-lever {
   fill: none;
-  stroke: #b9c0c8;
-  stroke-width: 1.7;
+  stroke: #c7cdd4;
+  stroke-width: 1.6;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-.pw-mv-stripe {
-  opacity: 0.55;
+.pw-mv-lever.is-fine {
+  stroke-width: 0.8;
+}
+
+.pw-mv-lever.is-outline {
+  stroke: rgba(0, 0, 0, 0.55);
+  stroke-width: 2.3;
+}
+
+.pw-mv-lever.is-fine.is-outline {
+  stroke-width: 1.4;
+}
+
+.pw-mv-cock-cotes {
+  opacity: 0.6;
 }
 
 .pw-mv-edge {
   fill: none;
-  stroke: rgba(0, 0, 0, 0.45);
-  stroke-width: 0.8;
+  stroke: rgba(0, 0, 0, 0.5);
+  stroke-width: 0.7;
 }
 
-.pw-mv-cock {
-  stroke: rgba(0, 0, 0, 0.45);
-  stroke-width: 0.5;
+.pw-mv-bevel {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.8);
+  stroke-width: 0.6;
 }
 
 .pw-mv-rim {
-  stroke-width: 2.8;
+  stroke-width: 2.6;
+}
+
+.pw-mv-rim-shine {
+  fill: none;
+  stroke: rgba(255, 248, 220, 0.55);
+  stroke-width: 0.3;
+}
+
+.pw-mv-rim-edge {
+  fill: none;
+  stroke: rgba(70, 45, 10, 0.45);
+  stroke-width: 0.3;
 }
 
 .pw-mv-arm {
-  stroke-width: 1.6;
+  stroke-width: 1.5;
   stroke-linecap: round;
 }
 
-.pw-mv-rim-screw {
-  fill: #8c6526;
+.pw-mv-rim-screw,
+.pw-mv-hub {
+  stroke: rgba(70, 45, 10, 0.6);
+  stroke-width: 0.2;
 }
 
-.pw-mv-hairspring {
+.pw-mv-spring {
   fill: none;
-  stroke: #5b7fc4;
+  stroke: #4f74bd;
+  stroke-width: 0.32;
+}
+
+.pw-mv-cock {
+  stroke: rgba(0, 0, 0, 0.5);
+  stroke-width: 0.7;
+}
+
+.pw-mv-cock-bevel {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.75);
+  stroke-width: 0.3;
+}
+
+.pw-mv-snail {
+  fill: none;
+  stroke: rgba(0, 0, 0, 0.12);
+  stroke-width: 0.18;
+}
+
+.pw-mv-scale {
+  fill: none;
+  stroke: rgba(40, 45, 52, 0.75);
+  stroke-width: 0.3;
+}
+
+.pw-mv-index {
+  fill: none;
+  stroke: #9aa2ab;
+  stroke-width: 0.8;
+  stroke-linecap: round;
+}
+
+.pw-mv-stud {
+  stroke: rgba(0, 0, 0, 0.5);
+  stroke-width: 0.2;
+}
+
+.pw-mv-lyre {
+  fill: none;
+  stroke: #dfe3e8;
   stroke-width: 0.45;
+  stroke-dasharray: 5.6 1.5;
 }
 
 .pw-mv-chaton {
   stroke: rgba(70, 45, 10, 0.5);
-  stroke-width: 0.3;
+  stroke-width: 0.25;
 }
 
 .pw-mv-ruby {
@@ -590,27 +671,44 @@
   stroke-width: 0.6;
 }
 
+/* The movement keeps time with the balance: each swing is one beat. Lifelike runs at
+   18,000 beats an hour, like a classic pocket watch; gentle slows everything right down. */
+.pw-motion {
+  --pw-beat: 0.2s;
+  --pw-amp: 140deg;
+}
+
+.pw-motion.pw-movement-gentle {
+  --pw-beat: 1.25s;
+  --pw-amp: 75deg;
+}
+
 .pw-mv-balance,
 .pw-mv-fork,
+.pw-mv-hairspring,
 .pw-mv-spin {
   transform-box: fill-box;
   transform-origin: center;
 }
 
 .pw-motion .pw-mv-balance {
-  animation: pocket-watch-balance 1.25s ease-in-out infinite alternate;
+  animation: pocket-watch-balance var(--pw-beat) ease-in-out infinite alternate;
+}
+
+.pw-motion .pw-mv-hairspring {
+  animation: pocket-watch-breathe var(--pw-beat) ease-in-out infinite alternate;
 }
 
 .pw-motion .pw-mv-fork {
-  animation: pocket-watch-fork 1.25s ease-in-out infinite alternate;
+  animation: pocket-watch-fork var(--pw-beat) cubic-bezier(0.85, 0, 0.15, 1) infinite alternate;
 }
 
 .pw-motion .pw-mv-spin.is-escape {
-  animation: pocket-watch-spin 30s steps(30) infinite;
+  animation: pocket-watch-spin calc(var(--pw-beat) * 30) steps(30) infinite;
 }
 
 .pw-motion .pw-mv-spin.is-train {
-  animation: pocket-watch-spin 240s linear infinite reverse;
+  animation: pocket-watch-spin 60s linear infinite;
 }
 
 .pw-turn {
@@ -622,8 +720,13 @@
 }
 
 @keyframes pocket-watch-balance {
-  from { transform: rotate(-75deg); }
-  to { transform: rotate(75deg); }
+  from { transform: rotate(calc(var(--pw-amp) * -1)); }
+  to { transform: rotate(var(--pw-amp)); }
+}
+
+@keyframes pocket-watch-breathe {
+  from { transform: rotate(-7deg) scale(0.97); }
+  to { transform: rotate(7deg) scale(1.03); }
 }
 
 @keyframes pocket-watch-fork {
@@ -1076,6 +1179,7 @@
 @media (prefers-reduced-motion: reduce) {
   .pw-motion .pw-mv-balance,
   .pw-motion .pw-mv-fork,
+  .pw-motion .pw-mv-hairspring,
   .pw-motion .pw-mv-spin,
   .pw-blink .pw-d-colon {
     animation: none;
