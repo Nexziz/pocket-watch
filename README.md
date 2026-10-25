@@ -42,9 +42,10 @@ Search for **Pocket Watch** in Settings → Community plugins once it's listed. 
 
 ## Settings
 
-- **Watch**: analog or digital, and its size.
-- **Analog**: face, case, the signature on the dial, hour markers, hands, seconds hand, complications (as designed or your own), the goal ring, and how the movement moves.
-- **Digital**: style, layout, 12 or 24 hours, seconds, the faded monogram, date, moon phase, today's time and the goal bar.
+![Every watch in the settings](images/settings.png)
+
+- **Watch**: every watch in a gallery to pick from, its size, and its position.
+- **Customise**: for the watch you picked, its case, signature, hour markers, hands, seconds hand, complications (as designed or your own), goal ring and movement, or for the digital watch its layout, clock and what it shows.
 - **Focus sessions**: lengths, long breaks, starting automatically, the countdown label, colour or greyscale, how time being up shows, and the chime.
 - **Tracking**: daily goal, idle limit, and more.
 

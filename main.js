@@ -238,6 +238,9 @@ const DEFAULT_SETTINGS = {
   watchPos: null,
 };
 
+// Every face drawn gets its own number, so the ids of its gradients never clash with another's.
+let drawings = 0;
+
 const DEFAULT_WATCH_POS = { fx: 0.97, fy: 0.9 };
 const SNAP_INSET = 14;
 const SPOTS = ['tl', 'tc', 'tr', 'ml', 'mr', 'bl', 'bc', 'br'];
@@ -1114,7 +1117,7 @@ class FloatingWatch {
     const face = ANALOG_FACES[faceKey];
     const R = face.case === 'thin' ? 95 : face.case === 'dive' ? 80 : 89.5;
     const k = R / 89.5;
-    this.uid = (this.uid || 0) + 1;
+    this.uid = ++drawings;
     const slots = faceSlots(s);
     const used = {};
     for (const slot of SLOTS) used[slot.hour] = slots[slot.key] !== 'none' || face.window === slot.key;
@@ -2988,6 +2991,23 @@ function faceSlots(s) {
   return slots;
 }
 
+// A small copy of a watch, such as for the gallery in the settings, drawn by the watch's own
+// code with some settings changed.
+function drawPreview(plugin, container, patch, now) {
+  const preview = Object.create(FloatingWatch.prototype);
+  const proxy = Object.create(plugin);
+  proxy.settings = Object.assign({}, plugin.settings, patch);
+  proxy.session = null;
+  proxy.alert = null;
+  preview.plugin = proxy;
+  preview.el = createDiv();
+  preview.badgeEl = createDiv();
+  preview.alertDotEl = createDiv();
+  preview.faceEl = container;
+  preview.build(now);
+  preview.update(now);
+}
+
 function faceNames() {
   const names = {};
   for (const [k, f] of Object.entries(ANALOG_FACES)) names[k] = f.name;
@@ -3015,164 +3035,152 @@ class PocketWatchSettingTab extends PluginSettingTab {
     const p = this.plugin;
     const s = p.settings;
     const el = this.containerEl;
+    // Keep the place on the page when it is drawn again after a change.
+    const scroll = el.scrollTop;
     el.empty();
+    el.addClass('pocket-watch-settings');
+    this.open = this.open || { customise: false, focus: false, tracking: false };
     const set = (patch, redraw) => p.updateWatch(patch).then(() => redraw && this.display());
-    const toggle = (name, key, desc) => {
-      const setting = new Setting(el).setName(name);
+    const save = async (key, v) => {
+      s[key] = v;
+      await p.saveSettings();
+      if (p.watch) p.watch.refresh();
+    };
+    const toggle = (parent, name, key, desc) => {
+      const setting = new Setting(parent).setName(name);
       if (desc) setting.setDesc(desc);
       setting.addToggle((t) => t.setValue(s[key]).onChange((v) => set({ [key]: v })));
+      return setting;
+    };
+    const slider = (parent, name, key, [min, max, step], desc) => {
+      const setting = new Setting(parent).setName(name);
+      if (desc) setting.setDesc(desc);
+      setting.addSlider((sl) => sl.setLimits(min, max, step).setValue(s[key]).setDynamicTooltip().onChange((v) => save(key, v)));
+      return setting;
+    };
+    // A section that folds away, and remembers whether it was open.
+    const group = (key, name, desc) => {
+      const details = el.createEl('details', { cls: 'pocket-watch-group' });
+      details.open = !!this.open[key];
+      const summary = details.createEl('summary');
+      summary.createDiv({ cls: 'pocket-watch-group-name', text: name });
+      summary.createDiv({ cls: 'pocket-watch-group-desc', text: desc });
+      details.addEventListener('toggle', () => {
+        this.open[key] = details.open;
+      });
+      return details.createDiv('pocket-watch-group-body');
     };
 
     new Setting(el)
       .setName('Show watch')
-      .setDesc('Click the watch to open the stats shelf.')
+      .setDesc('Click the watch for your calendar and stats, and right-click it for focus sessions.')
       .addToggle((t) => t.setValue(s.showWatch).onChange((v) => set({ showWatch: v })));
-    dropdown(new Setting(el).setName('Type'), { analog: 'Analog', digital: 'Digital' }, s.watchType, (v) => set({ watchType: v }, true));
+    this.renderGallery(el, set);
     new Setting(el)
       .setName('Size')
-      .setDesc('You can also drag the handle that appears on the watch when you point at it, or hold Alt and scroll over the watch.')
+      .setDesc('Or drag the handle on the watch, or hold Alt and scroll over it.')
       .addSlider((sl) => sl
         .setLimits(MIN_SIZE, MAX_SIZE, 2)
         .setValue(s.watchSize)
         .setDynamicTooltip()
         .onChange((v) => set({ watchSize: v })));
+    new Setting(el)
+      .setName('Position')
+      .setDesc('Drag the watch onto a pane and it snaps to a corner or edge. Drop it on the ribbon or status bar to snap it to the window, or hold Alt to place it freely.')
+      .addButton((b) => b.setButtonText('Reset').onClick(() => set({ watchAnchor: null, watchPos: null })));
 
+    // Customise the watch you are wearing.
     if (s.watchType === 'digital') {
-      new Setting(el).setName('Digital').setHeading();
-      dropdown(new Setting(el).setName('Style'), DIGITAL_STYLES, s.digitalStyle, (v) => set({ digitalStyle: v }));
+      const body = group('customise', 'Customise the digital watch', 'Layout, clock, and what it shows.');
       dropdown(
-        new Setting(el).setName('Layout').setDesc('Wide has the time over a line of details, slim is a single line, tall stacks the hours over the minutes, and compact is just the time.'),
-        DIGITAL_LAYOUTS, s.digitalLayout, (v) => set({ digitalLayout: v }),
+        new Setting(body).setName('Layout').setDesc('Wide has the time over a line of details, slim is a single line, tall stacks the hours over the minutes, and compact is just the time.'),
+        DIGITAL_LAYOUTS, s.digitalLayout, (v) => set({ digitalLayout: v }, true),
       );
-      dropdown(new Setting(el).setName('Clock'), CLOCKS, s.clock, (v) => set({ clock: v }));
-      toggle('Monogram', 'dialText', 'The Philip Pocket monogram, faded into the background.');
-      toggle('Seconds', 'digitalSeconds');
-      toggle('Blinking colon', 'blinkColon');
-      toggle('Date', 'digitalDate');
-      toggle('Moon phase', 'digitalMoon');
-      toggle("Today's time", 'digitalFocus', 'Your time in Obsidian today.');
-      toggle('Goal bar', 'digitalBar', 'A thin bar that fills up toward your daily goal.');
+      dropdown(new Setting(body).setName('Clock'), CLOCKS, s.clock, (v) => set({ clock: v }, true));
+      toggle(body, 'Monogram', 'dialText', 'The Philip Pocket monogram, faded into the background.');
+      toggle(body, 'Seconds', 'digitalSeconds');
+      toggle(body, 'Blinking colon', 'blinkColon');
+      toggle(body, 'Date', 'digitalDate');
+      toggle(body, 'Moon phase', 'digitalMoon');
+      toggle(body, "Today's time", 'digitalFocus');
+      toggle(body, 'Goal bar', 'digitalBar', 'Fills up toward your daily goal, and counts down during a focus session.');
     } else {
-      new Setting(el).setName('Analog').setHeading();
-      dropdown(new Setting(el).setName('Face'), faceNames(), s.face, (v) => set({ face: v }, true));
-      dropdown(new Setting(el).setName('Case'), CASES, s.caseStyle, (v) => set({ caseStyle: v }));
-      toggle('Name on the dial', 'dialText', 'The Philip Pocket signature and the name of the face, under 12 o\'clock or above 6.');
-      dropdown(new Setting(el).setName('Hour markers'), MARKERS, s.markers, (v) => set({ markers: v }));
-      dropdown(new Setting(el).setName('Hands'), HANDS, s.hands, (v) => set({ hands: v }));
-      dropdown(new Setting(el).setName('Seconds hand'), SECONDS, s.seconds, (v) => set({ seconds: v }));
       const face = ANALOG_FACES[s.face] || ANALOG_FACES.porcelain;
+      const body = group('customise', `Customise ${face.name}`, 'Case, hands, markers, complications and more.');
+      dropdown(new Setting(body).setName('Case'), CASES, s.caseStyle, (v) => set({ caseStyle: v }, true));
+      toggle(body, 'Signature', 'dialText', 'Philip Pocket and the name of the face, under 12 o\'clock.');
+      dropdown(new Setting(body).setName('Hour markers'), MARKERS, s.markers, (v) => set({ markers: v }, true));
+      dropdown(new Setting(body).setName('Hands'), HANDS, s.hands, (v) => set({ hands: v }, true));
+      dropdown(new Setting(body).setName('Seconds hand'), SECONDS, s.seconds, (v) => set({ seconds: v }));
       dropdown(
-        new Setting(el).setName('Complications').setDesc('Each face comes with its own, such as a moon phase or a date. Choose your own to pick what shows at 12, 3, 6 and 9 o\'clock.'),
+        new Setting(body).setName('Complications').setDesc('Each face comes with its own. Choose your own to pick what shows at 12, 3, 6 and 9 o\'clock.'),
         // Your own starts from the face's set.
         COMPLICATION_SETS, s.complications, (v) => set(Object.assign(v === 'custom' ? faceSlots(s) : {}, { complications: v }), true),
       );
       if (s.complications === 'custom') {
         for (const slot of SLOTS) {
-          const setting = new Setting(el).setName(slot.name);
-          dropdown(setting, COMPLICATIONS, s[slot.key], (v) => set({ [slot.key]: v }));
-          if (face.window === slot.key) setting.setDesc(`The ${face.name} face shows its movement here.`).setDisabled(true);
+          const setting = new Setting(body).setName(slot.name);
+          dropdown(setting, COMPLICATIONS, s[slot.key], (v) => set({ [slot.key]: v }, true));
+          if (face.window === slot.key) setting.setDesc(`${face.name} shows its movement here.`).setDisabled(true);
         }
       }
-      toggle('Goal ring', 'goalRing', 'A ring on the bezel that fills up toward your daily goal, and dims while the timer is paused.');
+      toggle(body, 'Goal ring', 'goalRing', 'A ring on the bezel that fills up toward your daily goal.');
       dropdown(
-        new Setting(el).setName('Movement').setDesc('How the balance wheel and the wheels move in the open heart face and the movement window. Lifelike runs at the pace of a classic pocket watch: five ticks a second.'),
+        new Setting(body).setName('Movement').setDesc('How the balance wheel moves in Open heart and in the movement window. Lifelike ticks five times a second.'),
         MOVEMENTS, s.movement, (v) => set({ movement: v }),
       );
     }
 
-    new Setting(el).setName('Focus sessions').setHeading();
-    const minutes = (name, key, min, max, step, desc) => {
-      const setting = new Setting(el).setName(name);
-      if (desc) setting.setDesc(desc);
-      setting.addSlider((sl) => sl.setLimits(min, max, step).setValue(s[key]).setDynamicTooltip().onChange(async (v) => {
-        s[key] = v;
-        await p.saveSettings();
-      }));
-    };
-    minutes('Focus (minutes)', 'focusMinutes', 5, 90, 5, 'Start a session from the shelf, the command palette, or by right-clicking the watch. The ring on the bezel counts down.');
-    minutes('Short break (minutes)', 'shortBreakMinutes', 1, 30, 1);
-    minutes('Long break (minutes)', 'longBreakMinutes', 5, 60, 5);
-    minutes('Long break after', 'longBreakEvery', 2, 8, 1, 'How many focus sessions come before a long break.');
+    // Focus sessions.
+    const focus = group('focus', 'Focus sessions', 'Lengths, breaks, colours, and what happens when time is up.');
+    slider(focus, 'Focus (minutes)', 'focusMinutes', [5, 90, 5]);
+    slider(focus, 'Short break (minutes)', 'shortBreakMinutes', [1, 30, 1]);
+    slider(focus, 'Long break (minutes)', 'longBreakMinutes', [5, 60, 5]);
+    slider(focus, 'Long break after', 'longBreakEvery', [2, 8, 1], 'How many focus sessions come before a long break.');
     const plain = (name, key, desc) => {
-      const setting = new Setting(el).setName(name);
+      const setting = new Setting(focus).setName(name);
       if (desc) setting.setDesc(desc);
-      setting.addToggle((t) => t.setValue(s[key]).onChange(async (v) => {
-        s[key] = v;
-        await p.saveSettings();
-        if (p.watch) p.watch.refresh();
-      }));
+      setting.addToggle((t) => t.setValue(s[key]).onChange((v) => save(key, v)));
       return setting;
     };
     plain('Start breaks automatically', 'autoStartBreaks');
     plain('Start the next focus session automatically', 'autoStartFocus');
-    plain('Countdown under the watch', 'showCountdown', 'Shows the minutes left in a small label next to the watch, and how far past the time you are once it is up.');
+    plain('Countdown under the watch', 'showCountdown', 'The minutes left, and how far past the time you are once it is up.');
     dropdown(
-      new Setting(el).setName('Colours').setDesc('In colour, the ring counts down in orange while you focus and in green on a break. In greyscale, the watch stays as it is while you focus, and a soft fade around it shows that you are on a break.'),
+      new Setting(focus).setName('Colours').setDesc('In greyscale, the watch stays as it is while you focus, and a soft fade around it shows a break.'),
       SESSION_COLOURS, s.sessionColours, (v) => set({ sessionColours: v }),
     );
     dropdown(
-      new Setting(el).setName("When time is up").setDesc("How the watch shows that a focus session or break has ended, in the colours above. It stays until you start the next one or dismiss it, or for a minute when the next one starts on its own."),
+      new Setting(focus).setName('When time is up').setDesc('It shows until you start the next one or dismiss it, or for a minute when the next one starts on its own.'),
       TIMES_UP, s.timesUp, async (v) => {
-        s.timesUp = v;
-        await p.saveSettings();
+        await save('timesUp', v);
         p.previewAlert();
       },
     ).addExtraButton((b) => b.setIcon('eye').setTooltip('Preview').onClick(() => p.previewAlert()));
     plain('Chime', 'chime', 'A soft bell when a session or break ends.')
       .addExtraButton((b) => b.setIcon('volume-2').setTooltip('Play the chime').onClick(() => chime()));
 
-    new Setting(el).setName('Placement').setHeading();
-    new Setting(el)
-      .setName('Reset watch position')
-      .setDesc('Drag the watch over a pane and it snaps to the nearest corner or edge. Drop it outside a pane, such as on the ribbon or status bar, to snap it to the edge of the window. Hold Alt while dropping to place it freely.')
-      .addButton((b) => b.setButtonText('Reset').onClick(() => set({ watchAnchor: null, watchPos: null })));
-
-    new Setting(el).setName('Tracking').setHeading();
-
-    new Setting(el)
+    // Tracking.
+    const tracking = group('tracking', 'Tracking', 'Daily goal, idle limit, and your data.');
+    new Setting(tracking)
       .setName('Daily goal (minutes)')
       .addSlider((sl) => sl
         .setLimits(15, 480, 15)
         .setValue(s.dailyGoalMinutes)
         .setDynamicTooltip()
         .onChange((v) => set({ dailyGoalMinutes: v })));
-
-    new Setting(el)
-      .setName('Idle limit (minutes)')
-      .setDesc('The timer stops when there is no typing, clicking, scrolling or mouse movement for this long.')
-      .addSlider((sl) => sl
-        .setLimits(1, 120, 1)
-        .setValue(s.idleMinutes)
-        .setDynamicTooltip()
-        .onChange(async (v) => {
-          s.idleMinutes = v;
-          await p.saveSettings();
-        }));
-
-    new Setting(el)
+    slider(tracking, 'Idle limit (minutes)', 'idleMinutes', [1, 120, 1], 'The timer stops after this long with no typing, clicking, scrolling or mouse movement.');
+    new Setting(tracking)
       .setName('Remove idle time')
-      .setDesc('When the timer goes idle, take back the minutes you spent without activity before it stopped.')
-      .addToggle((t) => t.setValue(s.discardIdleTime).onChange(async (v) => {
-        s.discardIdleTime = v;
-        await p.saveSettings();
-      }));
-
-    new Setting(el)
+      .setDesc('When the timer goes idle, take back the minutes before it stopped.')
+      .addToggle((t) => t.setValue(s.discardIdleTime).onChange((v) => save('discardIdleTime', v)));
+    new Setting(tracking)
       .setName('Only count while Obsidian is focused')
-      .setDesc('Pause the timer when another app is in front.')
-      .addToggle((t) => t.setValue(s.onlyWhenFocused).onChange(async (v) => {
-        s.onlyWhenFocused = v;
-        await p.saveSettings();
-      }));
-
-    new Setting(el)
+      .addToggle((t) => t.setValue(s.onlyWhenFocused).onChange((v) => save('onlyWhenFocused', v)));
+    new Setting(tracking)
       .setName('Week starts on Monday')
-      .addToggle((t) => t.setValue(s.weekStartsMonday).onChange(async (v) => {
-        s.weekStartsMonday = v;
-        await p.saveSettings();
-      }));
-
-    new Setting(el)
+      .addToggle((t) => t.setValue(s.weekStartsMonday).onChange((v) => save('weekStartsMonday', v)));
+    new Setting(tracking)
       .setName('Reset all data')
       .setDesc('Deletes every tracked day. This cannot be undone.')
       .addButton((b) => b.setButtonText('Reset').setWarning().onClick(async () => {
@@ -3181,5 +3189,40 @@ class PocketWatchSettingTab extends PluginSettingTab {
           new Notice('Pocket Watch data reset');
         }
       }));
+
+    el.scrollTop = scroll;
+  }
+
+  // Every watch, drawn by the watch's own code with your choices: click one to wear it.
+  renderGallery(el, set) {
+    const p = this.plugin;
+    const s = p.settings;
+    const posed = new Date();
+    posed.setHours(10, 9, 36, 0);
+    const card = (grid, name, selected, patch, size) => {
+      const c = grid.createDiv({ cls: 'pocket-watch-card', attr: { role: 'button', tabindex: '0', 'aria-pressed': String(selected) } });
+      if (selected) c.addClass('is-selected');
+      drawPreview(p, c.createDiv('pocket-watch-card-watch'), Object.assign({ watchSize: size, movement: 'still', seconds: 'off' }, patch), posed);
+      c.createDiv({ cls: 'pocket-watch-card-name', text: name });
+      const pick = () => set(patch, true);
+      c.addEventListener('click', pick);
+      c.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          pick();
+        }
+      });
+    };
+    const gallery = el.createDiv('pocket-watch-gallery');
+    gallery.createDiv({ cls: 'pocket-watch-gallery-label', text: 'Analog' });
+    let grid = gallery.createDiv('pocket-watch-gallery-grid');
+    for (const [key, face] of Object.entries(ANALOG_FACES)) {
+      card(grid, face.name, s.watchType === 'analog' && s.face === key, { watchType: 'analog', face: key }, 98);
+    }
+    gallery.createDiv({ cls: 'pocket-watch-gallery-label', text: 'Digital' });
+    grid = gallery.createDiv({ cls: ['pocket-watch-gallery-grid', 'is-digital'] });
+    for (const [key, name] of Object.entries(DIGITAL_STYLES)) {
+      card(grid, name, s.watchType === 'digital' && s.digitalStyle === key, { watchType: 'digital', digitalStyle: key }, 72);
+    }
   }
 }

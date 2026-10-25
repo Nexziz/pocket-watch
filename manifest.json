@@ -1,7 +1,7 @@
 {
   "id": "pocket-watch",
   "name": "Pocket Watch",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "minAppVersion": "1.4.0",
   "description": "A fine timepiece over your notes, with a Pomodoro timer for a steady rhythm of focus and breaks, and a quiet log of your writing time.",
   "author": "Nexziz",
