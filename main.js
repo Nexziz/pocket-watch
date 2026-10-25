@@ -6,20 +6,21 @@ const { Plugin, PluginSettingTab, Setting, MarkdownView, Notice } = require('obs
 // Options
 // ---------------------------------------------------------------------------
 
-// Each analog face picks a case, its own hour markers and an optional decoration.
+// Each analog face picks a case, its own hour markers, and optionally a decoration, a dial
+// finish, polished metal (applied) markers, and a window onto the movement in one slot.
 // Its colours live in styles.css under .pocket-watch-face-<key>.
 const ANALOG_FACES = {
   porcelain: { name: 'Porcelain', case: 'polished', markers: 'batons', decor: 'minute-dots' },
   linen: { name: 'Linen', case: 'polished', markers: 'roman', decor: 'railroad' },
-  slate: { name: 'Slate', case: 'polished', markers: 'quarters', decor: null },
-  midnight: { name: 'Midnight', case: 'polished', markers: 'dots', decor: 'stars' },
-  skeleton: { name: 'Skeleton', case: 'polished', markers: 'batons', decor: 'skeleton' },
+  slate: { name: 'Slate', case: 'polished', markers: 'quarters' },
+  midnight: { name: 'Midnight', case: 'polished', markers: 'dots', decor: 'stars', texture: 'sunburst', applied: true },
+  openheart: { name: 'Open heart', case: 'polished', markers: 'batons', texture: 'azurage', applied: true, window: 'slotBottom' },
   bauhaus: { name: 'Bauhaus', case: 'thin', markers: 'arabic', decor: 'minute-ticks' },
-  void: { name: 'Void', case: 'thin', markers: 'minimal', decor: null },
+  void: { name: 'Void', case: 'thin', markers: 'minimal', applied: true },
   field: { name: 'Field', case: 'polished', markers: 'arabic', decor: 'inner-24' },
   sector: { name: 'Sector', case: 'polished', markers: 'arabic', decor: 'sector' },
-  diver: { name: 'Diver', case: 'dive', markers: 'lume', decor: null },
-  rose: { name: 'Rosé', case: 'polished', markers: 'batons', decor: 'minute-ticks' },
+  diver: { name: 'Diver', case: 'dive', markers: 'lume', texture: 'sunburst' },
+  rose: { name: 'Rosé', case: 'polished', markers: 'batons', decor: 'minute-ticks', texture: 'sunburst', applied: true },
   theme: { name: 'Match theme', case: 'thin', markers: 'batons', decor: 'minute-dots' },
 };
 
@@ -47,12 +48,15 @@ const HANDS = {
 
 const SECONDS = { off: 'Off', tick: 'Ticking', sweep: 'Sweeping' };
 
+const CASES = { crown: 'Crown', bow: 'Pocket watch bow', none: 'Plain' };
+
 const COMPLICATIONS = {
   none: 'Nothing',
   date: 'Date',
   'weekday-date': 'Weekday and date',
   month: 'Month',
   moon: 'Moon phase',
+  movement: 'Movement window',
   focus: "Today's time",
   words: "Today's words",
   streak: 'Streak',
@@ -93,6 +97,7 @@ const DEFAULT_SETTINGS = {
   watchSize: 120,
 
   face: 'porcelain',
+  caseStyle: 'crown',
   markers: 'face',
   hands: 'leaf',
   seconds: 'off',
@@ -235,20 +240,23 @@ function circlePath(cx, cy, r) {
   return `M ${cx - r} ${cy} a ${r} ${r} 0 1 0 ${2 * r} 0 a ${r} ${r} 0 1 0 ${-2 * r} 0 Z`;
 }
 
-// A toothed wheel with a centre hole and five windows, drawn with the even-odd rule.
-function gearPath(cx, cy, r, teeth) {
-  const inner = r - 2.6;
+// A toothed wheel with a centre hole and spoke windows, drawn with the even-odd rule.
+// An escape wheel has slanted, club-shaped teeth and four windows.
+function gearPath(cx, cy, r, teeth, escape) {
+  const inner = r - (escape ? 2.2 : 1.6);
   const step = (2 * Math.PI) / teeth;
   const at = (rr, a) => `${(cx + rr * Math.cos(a)).toFixed(2)} ${(cy + rr * Math.sin(a)).toFixed(2)}`;
   const pts = [];
   for (let i = 0; i < teeth; i++) {
     const a = i * step;
-    pts.push(at(inner, a), at(r, a + step * 0.2), at(r, a + step * 0.5), at(inner, a + step * 0.7));
+    if (escape) pts.push(at(inner, a), at(r, a + step * 0.42), at(r * 0.94, a + step * 0.62), at(inner, a + step * 0.5));
+    else pts.push(at(inner, a), at(r, a + step * 0.2), at(r, a + step * 0.5), at(inner, a + step * 0.7));
   }
-  let d = `M ${pts.join(' L ')} Z ${circlePath(cx, cy, r * 0.14)}`;
-  for (let i = 0; i < 5; i++) {
-    const a = (i * 2 * Math.PI) / 5;
-    d += ` ${circlePath(cx + r * 0.52 * Math.cos(a), cy + r * 0.52 * Math.sin(a), r * 0.2)}`;
+  const windows = escape ? 4 : 5;
+  let d = `M ${pts.join(' L ')} Z ${circlePath(cx, cy, r * 0.12)}`;
+  for (let i = 0; i < windows; i++) {
+    const a = (i * 2 * Math.PI) / windows;
+    d += ` ${circlePath(cx + r * 0.5 * Math.cos(a), cy + r * 0.5 * Math.sin(a), r * (escape ? 0.24 : 0.22))}`;
   }
   return d;
 }
@@ -267,6 +275,7 @@ const STATE_LABELS = {
 // Settings saved by earlier versions, turned into today's options.
 function migrateSettings(s) {
   if (!s) return {};
+  if (s.face === 'skeleton') s.face = 'openheart';
   if (s.face === 'digital') {
     s.watchType = 'digital';
     s.face = 'porcelain';
@@ -599,7 +608,7 @@ class FloatingWatch {
     const s = this.plugin.settings;
     const now = new Date();
     const key = JSON.stringify([
-      s.watchType, s.watchSize, s.face, s.markers, s.hands, s.seconds, s.slotTop, s.slotRight, s.slotBottom, s.slotLeft,
+      s.watchType, s.watchSize, s.face, s.caseStyle, s.markers, s.hands, s.seconds, s.slotTop, s.slotRight, s.slotBottom, s.slotLeft,
       s.goalRing, s.motion, s.digitalStyle, s.digitalLayout, s.clock, s.digitalSeconds, s.blinkColon,
       s.digitalDate, s.digitalMoon, s.digitalFocus, s.digitalBar, dayKey(now),
     ]);
@@ -668,17 +677,36 @@ class FloatingWatch {
 
   // --- Analog -------------------------------------------------------------
 
+  // An id that is unique to this build of the face, for its gradients and clip paths.
+  id(name) {
+    return `pocket-watch-${name}-${this.uid}`;
+  }
+
+  // Adds a gradient to the face once. A stop is [offset, colour] or [offset, class].
+  gradient(add, tag, name, attr, stops) {
+    if (this.defs.querySelector(`#${this.id(name)}`)) return;
+    const g = add(this.defs, tag, Object.assign({ id: this.id(name) }, attr));
+    for (const [offset, color] of stops) {
+      if (color.startsWith('pw-')) add(g, 'stop', { offset }, color);
+      else add(g, 'stop', { offset, 'stop-color': color });
+    }
+  }
+
   buildAnalog(now) {
     const s = this.plugin.settings;
     const faceKey = ANALOG_FACES[s.face] ? s.face : 'porcelain';
     const face = ANALOG_FACES[faceKey];
     const R = face.case === 'thin' ? 95 : face.case === 'dive' ? 80 : 89.5;
     const k = R / 89.5;
+    this.uid = (this.uid || 0) + 1;
     const used = {};
-    for (const slot of SLOTS) used[slot.hour] = s[slot.key] !== 'none';
+    for (const slot of SLOTS) used[slot.hour] = s[slot.key] !== 'none' || face.window === slot.key;
 
+    // The crown or the pocket watch bow sits outside the case, so the drawing grows to fit it.
+    const caseStyle = CASES[s.caseStyle] ? s.caseStyle : 'crown';
+    const box = caseStyle === 'crown' ? [0, 0, 208, 200] : caseStyle === 'bow' ? [0, -28, 200, 228] : [0, 0, 200, 200];
     const svg = this.faceEl.createSvg('svg', {
-      attr: { viewBox: '0 0 200 200', width: s.watchSize, height: s.watchSize },
+      attr: { viewBox: box.join(' '), width: (s.watchSize * box[2]) / 200, height: (s.watchSize * box[3]) / 200 },
       cls: ['pocket-watch-svg', `pocket-watch-face-${faceKey}`, `pw-case-${face.case}`],
     });
     if (s.motion) svg.addClass('pw-motion');
@@ -688,36 +716,50 @@ class FloatingWatch {
       t.textContent = value;
       return t;
     };
+    const url = (name) => `url(#${this.id(name)})`;
 
-    const defs = add(svg, 'defs');
-    const bezel = add(defs, 'linearGradient', { id: 'pocket-watch-bezel', x1: 0, y1: 0, x2: 1, y2: 1 });
-    add(bezel, 'stop', { offset: '0%' }, 'pw-bezel-a');
-    add(bezel, 'stop', { offset: '55%' }, 'pw-bezel-b');
-    add(bezel, 'stop', { offset: '100%' }, 'pw-bezel-c');
-    const dial = add(defs, 'radialGradient', { id: 'pocket-watch-dial', cx: '50%', cy: '40%', r: '62%' });
-    add(dial, 'stop', { offset: '0%' }, 'pw-dial-a');
-    add(dial, 'stop', { offset: '100%' }, 'pw-dial-b');
+    this.defs = add(svg, 'defs');
+    this.gradient(add, 'linearGradient', 'bezel', { x1: 0, y1: 0, x2: 1, y2: 1 }, [['0%', 'pw-bezel-a'], ['55%', 'pw-bezel-b'], ['100%', 'pw-bezel-c']]);
+    this.gradient(add, 'radialGradient', 'dial', { cx: '50%', cy: '40%', r: '62%' }, [['0%', 'pw-dial-a'], ['100%', 'pw-dial-b']]);
+    this.gradient(add, 'linearGradient', 'metal', { x1: 0, y1: 0, x2: 1, y2: 1 }, [['0%', 'pw-metal-a'], ['50%', 'pw-metal-b'], ['100%', 'pw-metal-c']]);
+    this.gradient(add, 'linearGradient', 'glass', { x1: 0, y1: 0, x2: 0.7, y2: 1 }, [['0%', 'rgba(255,255,255,0.13)'], ['100%', 'rgba(255,255,255,0)']]);
 
     // Case
-    add(svg, 'circle', { cx: 100, cy: 100, r: 99, fill: 'url(#pocket-watch-bezel)' }, 'pw-bezel');
-    if (face.case === 'dive') this.drawDiveBezel(svg, add, text);
+    if (caseStyle === 'crown') {
+      add(svg, 'rect', { x: 194, y: 95, width: 6, height: 10, rx: 1.5, fill: url('bezel') }, 'pw-case-part');
+      add(svg, 'rect', { x: 198.5, y: 89, width: 8.5, height: 22, rx: 2.6, fill: url('bezel') }, 'pw-case-part');
+      for (let y = 92; y <= 108.5; y += 2.2) add(svg, 'line', { x1: 199.6, y1: y, x2: 206, y2: y }, 'pw-knurl');
+    } else if (caseStyle === 'bow') {
+      add(svg, 'circle', { cx: 100, cy: -16.5, r: 9.5, fill: 'none', stroke: url('bezel'), 'stroke-width': 3.6 }, 'pw-bow');
+      add(svg, 'rect', { x: 95.5, y: -9.5, width: 9, height: 6, rx: 2, fill: url('bezel') }, 'pw-case-part');
+      add(svg, 'rect', { x: 93, y: -4.5, width: 14, height: 7, rx: 2, fill: url('bezel') }, 'pw-case-part');
+    }
+    add(svg, 'circle', { cx: 100, cy: 100, r: 99, fill: url('bezel') }, 'pw-bezel');
+    add(svg, 'circle', { cx: 100, cy: 100, r: 98.3 }, 'pw-bezel-edge');
+    if (face.case === 'dive') this.drawDiveBezel(svg, add);
     if (s.goalRing) {
-      const [ringR, ringW] = face.case === 'thin' ? [97, 2] : face.case === 'dive' ? [81.2, 2] : [94.3, 3];
+      const [ringR, ringW] = face.case === 'thin' ? [97, 2] : face.case === 'dive' ? [83, 1.8] : [94.3, 3];
       add(svg, 'circle', { cx: 100, cy: 100, r: ringR, 'stroke-width': ringW }, 'pw-ring-track');
       this.parts.ring = add(svg, 'circle', {
         cx: 100, cy: 100, r: ringR, 'stroke-width': ringW, pathLength: 100, transform: 'rotate(-90 100 100)', 'stroke-dasharray': '0 100',
       }, 'pw-ring');
     }
-    add(svg, 'circle', { cx: 100, cy: 100, r: R, fill: 'url(#pocket-watch-dial)' }, 'pw-dial');
+    add(svg, 'circle', { cx: 100, cy: 100, r: R, fill: url('dial') }, 'pw-dial');
 
     // Dial
+    if (face.texture) this.drawTexture(svg, add, face.texture, R);
     if (face.decor) this.drawDecor(svg, add, text, face.decor, R, k, used);
     const markers = s.markers === 'face' || !MARKERS[s.markers] ? face.markers : s.markers;
-    this.drawMarkers(svg, add, text, markers, R, k, used);
+    this.drawMarkers(svg, add, text, markers, R, k, used, face.applied ? url('metal') : null);
 
+    if (face.window) {
+      const slot = SLOTS.find((x) => x.key === face.window);
+      const [cx, cy] = polar(R * 0.43, slot.hour * 30);
+      this.drawMovementWindow(svg, add, cx, cy, R * 0.31);
+    }
     for (const slot of SLOTS) {
       const type = s[slot.key];
-      if (!type || type === 'none' || !COMPLICATIONS[type]) continue;
+      if (face.window === slot.key || !type || type === 'none' || !COMPLICATIONS[type]) continue;
       const [cx, cy] = polar(R * 0.47, slot.hour * 30);
       this.drawComplication(svg, add, text, type, cx, cy, k, now);
     }
@@ -744,23 +786,40 @@ class FloatingWatch {
     }
     add(svg, 'circle', { cx: 100, cy: 100, r: 4.6 * k }, 'pw-cap');
     add(svg, 'circle', { cx: 100, cy: 100, r: 1.6 * k }, 'pw-cap-dot');
+
+    // A soft reflection on the crystal.
+    const [gx1, gy1] = polar(R * 0.97, 238);
+    const [gx2, gy2] = polar(R * 0.97, 18);
+    add(svg, 'path', {
+      d: `M ${gx1} ${gy1} A ${R * 0.97} ${R * 0.97} 0 0 1 ${gx2} ${gy2} A ${R * 1.15} ${R * 1.15} 0 0 0 ${gx1} ${gy1} Z`,
+      fill: url('glass'),
+    }, 'pw-glass');
   }
 
-  // A rotating diver's bezel: a dark insert with a 60 minute scale and a marker at 12.
-  drawDiveBezel(svg, add, text) {
+  // A ceramic diver's bezel, plain apart from the luminous marker at 12 and dots at the quarters.
+  drawDiveBezel(svg, add) {
     add(svg, 'circle', { cx: 100, cy: 100, r: 89.6, 'stroke-width': 15.6 }, 'pw-insert');
-    for (let i = 0; i < 60; i++) {
-      if (i % 10 === 0) continue;
-      const [x1, y1] = polar(96, i * 6);
-      const [x2, y2] = polar(i < 15 || i % 5 === 0 ? 91.5 : 94, i * 6);
-      add(svg, 'line', { x1, y1, x2, y2 }, i % 5 === 0 ? ['pw-insert-tick', 'is-major'] : 'pw-insert-tick');
-    }
-    for (const n of [10, 20, 30, 40, 50]) {
-      const [x, y] = polar(89.4, n * 6);
-      text(svg, x, y, 9.5, String(n), 'pw-insert-num');
+    for (const a of [90, 180, 270]) {
+      const [x, y] = polar(89.6, a);
+      add(svg, 'circle', { cx: x, cy: y, r: 1.4 }, 'pw-insert-dot');
     }
     add(svg, 'path', { d: 'M 94 4.4 L 106 4.4 L 100 15.6 Z' }, 'pw-insert-pip');
     add(svg, 'circle', { cx: 100, cy: 8.6, r: 1.7 }, 'pw-insert-pearl');
+  }
+
+  // A sunburst finish catches the light in fine rays; azurage is a pattern of fine circles.
+  drawTexture(svg, add, texture, R) {
+    if (texture === 'sunburst') {
+      let d = '';
+      for (let i = 0; i < 90; i++) {
+        const [x1, y1] = polar(R, i * 4);
+        const [x2, y2] = polar(R, i * 4 + 2);
+        d += `M 100 100 L ${x1.toFixed(2)} ${y1.toFixed(2)} L ${x2.toFixed(2)} ${y2.toFixed(2)} Z `;
+      }
+      add(svg, 'path', { d }, 'pw-rays');
+    } else if (texture === 'azurage') {
+      for (let r = 2.5; r < R * 0.66; r += 1.6) add(svg, 'circle', { cx: 100, cy: 100, r }, 'pw-azurage');
+    }
   }
 
   drawDecor(svg, add, text, decor, R, k, used) {
@@ -814,66 +873,28 @@ class FloatingWatch {
         const [x, y] = polar(R - 33, i * 30);
         text(svg, x, y, 7.5 * k, String(i === 0 ? 24 : i + 12), 'pw-numeral-24');
       }
-    } else if (decor === 'skeleton') {
-      this.drawMovement(svg, add, R);
     }
   }
 
-  // The visible movement behind a skeleton dial: wheels, bridges, jewels and a balance wheel.
-  drawMovement(svg, add, R) {
-    const spin = (el, cx, cy, seconds, reverse) => {
-      el.style.transformOrigin = `${cx}px ${cy}px`;
-      el.style.animationDuration = `${seconds}s`;
-      if (reverse) el.style.animationDirection = 'reverse';
-      el.addClass('pw-spin');
-    };
-    const gears = [
-      [127, 125, 23, 30, 48, false],
-      [91, 133, 14.5, 19, 30, true],
-      [137, 91, 11.5, 15, 24, true],
-      [100, 100, 12, 16, 60, false],
-    ];
-    for (const [cx, cy, r, teeth, secs, rev] of gears) {
-      const g = add(svg, 'g', {}, 'pw-gear-wrap');
-      add(g, 'path', { d: gearPath(cx, cy, r, teeth), 'fill-rule': 'evenodd' }, 'pw-gear');
-      spin(g, cx, cy, secs, rev);
-    }
-    add(svg, 'rect', { x: 78, y: 118, width: 66, height: 9, rx: 4.5, transform: 'rotate(-14 111 122)' }, 'pw-bridge');
-    add(svg, 'rect', { x: 52, y: 64, width: 46, height: 8, rx: 4, transform: 'rotate(32 75 68)' }, 'pw-bridge');
-    // Balance wheel with a hairspring, swinging gently.
-    const bx = 70;
-    const by = 72;
-    const balance = add(svg, 'g', {}, 'pw-balance');
-    balance.style.transformOrigin = `${bx}px ${by}px`;
-    add(balance, 'circle', { cx: bx, cy: by, r: 15 }, 'pw-balance-rim');
-    for (let i = 0; i < 3; i++) {
-      const a = (i * 2 * Math.PI) / 3;
-      add(balance, 'line', { x1: bx, y1: by, x2: bx + 15 * Math.cos(a), y2: by + 15 * Math.sin(a) }, 'pw-balance-spoke');
-    }
-    let spiral = `M ${bx} ${by}`;
-    for (let t = 0; t <= 4 * Math.PI; t += 0.3) spiral += ` L ${(bx + 1.6 * t * Math.cos(t)).toFixed(2)} ${(by + 1.6 * t * Math.sin(t)).toFixed(2)}`;
-    add(svg, 'path', { d: spiral }, 'pw-hairspring');
-    for (const [x, y] of [[127, 125], [91, 133], [137, 91], [bx, by], [62, 58], [139, 117]]) {
-      add(svg, 'circle', { cx: x, cy: y, r: 2.3 }, 'pw-jewel');
-    }
-    for (const [x, y] of [[84, 128], [88, 78]]) {
-      add(svg, 'circle', { cx: x, cy: y, r: 2.6 }, 'pw-screw');
-      add(svg, 'line', { x1: x - 1.8, y1: y - 1.2, x2: x + 1.8, y2: y + 1.2 }, 'pw-screw-slot');
-    }
-    // The chapter ring that carries the hour markers.
-    add(svg, 'circle', { cx: 100, cy: 100, r: R - 8.5, 'stroke-width': 17 }, 'pw-chapter');
-  }
-
-  drawMarkers(svg, add, text, markers, R, k, used) {
+  // Printed markers, or polished metal ones when the face has applied markers.
+  drawMarkers(svg, add, text, markers, R, k, used, metal) {
     if (markers === 'batons') {
-      for (let i = 1; i < 12; i++) {
-        const [x1, y1] = polar(R - 5.5, i * 30);
-        const [x2, y2] = polar(R - (i % 3 === 0 ? 22 : 17), i * 30);
-        add(svg, 'line', { x1, y1, x2, y2 }, i % 3 === 0 ? ['pw-index', 'is-major'] : 'pw-index');
-      }
-      for (const dx of [-3.6, 3.6]) {
-        add(svg, 'line', { x1: 100 + dx * k, y1: 100 - R + 5.5, x2: 100 + dx * k, y2: 100 - R + 22 }, ['pw-index', 'is-major']);
-      }
+      const baton = (angle, dx, major) => {
+        const len = major ? 16.5 : 11.5;
+        if (metal) {
+          const w = (major ? 4.4 : 3) * k;
+          add(svg, 'rect', {
+            x: 100 + dx - w / 2, y: 100 - R + 5.5, width: w, height: len, rx: 0.8, fill: metal, transform: `rotate(${angle} 100 100)`,
+          }, 'pw-applied');
+        } else {
+          add(svg, 'line', {
+            x1: 100 + dx, y1: 100 - R + 5.5, x2: 100 + dx, y2: 100 - R + 5.5 + len, transform: `rotate(${angle} 100 100)`,
+          }, major ? ['pw-index', 'is-major'] : 'pw-index');
+        }
+      };
+      for (let i = 1; i < 12; i++) baton(i * 30, 0, i % 3 === 0);
+      baton(0, -3.6 * k, true);
+      baton(0, 3.6 * k, true);
     } else if (markers === 'arabic') {
       for (let i = 0; i < 12; i++) {
         const [x, y] = polar(R - 16.5, i * 30);
@@ -898,7 +919,9 @@ class FloatingWatch {
     } else if (markers === 'dots') {
       for (let i = 0; i < 12; i++) {
         const [x, y] = polar(R - 12.5, i * 30);
-        add(svg, 'circle', { cx: x, cy: y, r: (i === 0 ? 4 : i % 3 === 0 ? 3 : 2.1) * k }, 'pw-dot-index');
+        const r = (i === 0 ? 4 : i % 3 === 0 ? 3 : 2.1) * k;
+        if (metal) add(svg, 'circle', { cx: x, cy: y, r: r + 0.3, fill: metal }, 'pw-applied');
+        else add(svg, 'circle', { cx: x, cy: y, r }, 'pw-dot-index');
       }
     } else if (markers === 'lume') {
       for (let i = 1; i < 12; i++) {
@@ -912,7 +935,9 @@ class FloatingWatch {
       const top = 100 - R + 4;
       add(svg, 'path', { d: `M ${100 - 7 * k} ${top} L ${100 + 7 * k} ${top} L 100 ${top + 14 * k} Z` }, 'pw-lume');
     } else if (markers === 'minimal') {
-      add(svg, 'circle', { cx: 100, cy: 100 - R + 12 * k, r: 3.6 * k }, 'pw-dot-index');
+      const dot = { cx: 100, cy: 100 - R + 12 * k, r: 3.6 * k };
+      if (metal) add(svg, 'circle', Object.assign(dot, { fill: metal }), 'pw-applied');
+      else add(svg, 'circle', dot, 'pw-dot-index');
     }
   }
 
@@ -920,7 +945,10 @@ class FloatingWatch {
   drawComplication(svg, add, text, type, cx, cy, k, now) {
     const live = this.parts.live;
     const windowed = (w, value) => {
-      add(svg, 'rect', { x: cx - (w * k) / 2, y: cy - 8.5 * k, width: w * k, height: 17 * k, rx: 2.5 * k }, 'pw-date-bg');
+      const x = cx - (w * k) / 2;
+      const y = cy - 8.5 * k;
+      add(svg, 'rect', { x, y, width: w * k, height: 17 * k, rx: 2.5 * k }, 'pw-date-bg');
+      add(svg, 'path', { d: `M ${x + 1.6 * k} ${y + 1.1 * k} L ${x + (w - 1.6) * k} ${y + 1.1 * k}` }, 'pw-date-shade');
       text(svg, cx, cy + 0.4 * k, 11 * k, value, 'pw-date');
     };
     const reading = (caption, liveType) => {
@@ -930,11 +958,14 @@ class FloatingWatch {
     };
     const subdial = () => {
       add(svg, 'circle', { cx, cy, r: 17 * k }, 'pw-subdial');
+      for (let r = 3 * k; r < 15 * k; r += 1.3 * k) add(svg, 'circle', { cx, cy, r }, 'pw-snailing');
       for (let i = 0; i < 12; i++) {
-        const [x1, y1] = [cx + 15.5 * k * Math.sin((i * Math.PI) / 6), cy - 15.5 * k * Math.cos((i * Math.PI) / 6)];
+        const a = (i * Math.PI) / 6;
         const len = i % 3 === 0 ? 3.4 : 2;
-        const [x2, y2] = [cx + (15.5 - len) * k * Math.sin((i * Math.PI) / 6), cy - (15.5 - len) * k * Math.cos((i * Math.PI) / 6)];
-        add(svg, 'line', { x1, y1, x2, y2 }, 'pw-subdial-tick');
+        add(svg, 'line', {
+          x1: cx + 15.5 * k * Math.sin(a), y1: cy - 15.5 * k * Math.cos(a),
+          x2: cx + (15.5 - len) * k * Math.sin(a), y2: cy - (15.5 - len) * k * Math.cos(a),
+        }, 'pw-subdial-tick');
       }
     };
 
@@ -946,13 +977,9 @@ class FloatingWatch {
     } else if (type === 'month') {
       windowed(30, now.toLocaleDateString(undefined, { month: 'short' }).replace('.', '').slice(0, 3).toUpperCase());
     } else if (type === 'moon') {
-      add(svg, 'circle', { cx, cy, r: 20.5 * k }, 'pw-moon-frame');
-      add(svg, 'circle', { cx, cy, r: 19 * k }, 'pw-moon-sky');
-      for (const [x, y, r] of [[-12, -6, 0.7], [11, -9, 0.55], [13, 6, 0.6], [-9, 10, 0.5], [3, -14, 0.45]]) {
-        add(svg, 'circle', { cx: cx + x * k, cy: cy + y * k, r: r * k }, 'pw-moon-star');
-      }
-      add(svg, 'circle', { cx, cy, r: 9.5 * k }, 'pw-moon-dark');
-      add(svg, 'path', { d: moonPath(cx, cy, 9.5 * k, moonPhase(now)) }, 'pw-moon-lit');
+      this.drawMoonWindow(svg, add, cx, cy, k, now);
+    } else if (type === 'movement') {
+      this.drawMovementWindow(svg, add, cx, cy, 19.5 * k);
     } else if (type === 'focus') {
       reading('TODAY', 'focus');
     } else if (type === 'words') {
@@ -976,6 +1003,132 @@ class FloatingWatch {
       live.push({ type: 'subsec', el: turnEl });
       if (this.plugin.settings.seconds === 'sweep') sweep(turnEl, now);
     }
+  }
+
+  // The classic moon phase window: a turning disc of night sky carrying two gold moons,
+  // seen through an arch whose two humps hide the moon around new moon.
+  drawMoonWindow(svg, add, cx, cy, k, now) {
+    const a = 21 * k;
+    const base = cy + a * 0.42;
+    const arch = `M ${cx - a} ${base} A ${a} ${a} 0 0 1 ${cx + a} ${base} A ${a / 2} ${a / 2} 0 0 0 ${cx} ${base} A ${a / 2} ${a / 2} 0 0 0 ${cx - a} ${base} Z`;
+    this.clips = (this.clips || 0) + 1;
+    const clipId = this.id(`moon-${this.clips}`);
+    add(add(this.defs, 'clipPath', { id: clipId }), 'path', { d: arch });
+    this.gradient(add, 'linearGradient', 'sky', { x1: 0, y1: 0, x2: 0, y2: 1 }, [['0%', '#2a4a8c'], ['100%', '#0c1736']]);
+    this.gradient(add, 'radialGradient', 'moon', { cx: '38%', cy: '34%', r: '70%' }, [['0%', '#fff6d6'], ['55%', '#ebc66a'], ['100%', '#b28431']]);
+
+    const g = add(svg, 'g', { 'clip-path': `url(#${clipId})` });
+    add(g, 'rect', { x: cx - a, y: base - a - 1, width: 2 * a, height: a + 2, fill: `url(#${this.id('sky')})` });
+    const disc = add(g, 'g', { transform: `rotate(${((moonPhase(now) - 0.5) * 180).toFixed(2)} ${cx} ${base})` });
+    let seed = 5;
+    const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < 16; i++) {
+      const r = a * (0.12 + rand() * 0.85);
+      const t = rand() * 2 * Math.PI;
+      const x = cx + r * Math.cos(t);
+      const y = base + r * Math.sin(t);
+      const z = (0.5 + rand() * 0.9) * k;
+      add(disc, 'path', {
+        d: `M ${x} ${y - z} L ${x + z * 0.28} ${y - z * 0.28} L ${x + z} ${y} L ${x + z * 0.28} ${y + z * 0.28} L ${x} ${y + z} L ${x - z * 0.28} ${y + z * 0.28} L ${x - z} ${y} L ${x - z * 0.28} ${y - z * 0.28} Z`,
+      }, 'pw-moon-star');
+    }
+    for (const dy of [-a / 2, a / 2]) {
+      const my = base + dy;
+      add(disc, 'circle', { cx, cy: my, r: a * 0.46, fill: `url(#${this.id('moon')})` }, 'pw-moon');
+      for (const [x, y, r] of [[-0.14, -0.1, 0.1], [0.12, 0.06, 0.07], [-0.02, 0.18, 0.06], [0.16, -0.16, 0.045]]) {
+        add(disc, 'circle', { cx: cx + x * a, cy: my + y * a, r: r * a }, 'pw-crater');
+      }
+    }
+    add(svg, 'path', { d: arch }, 'pw-moon-arch');
+  }
+
+  // A window onto the movement: a swinging balance wheel with its blued hairspring, the
+  // escape wheel and pallet fork ticking, a bridge with Geneva stripes, rubies and screws.
+  // Drawn on a 60 unit circle around (0, 0), then scaled to radius r.
+  drawMovementWindow(svg, add, cx, cy, r) {
+    this.clips = (this.clips || 0) + 1;
+    const n = this.clips;
+    const url = (name) => `url(#${this.id(name)})`;
+    add(add(this.defs, 'clipPath', { id: this.id(`window-${n}`) }), 'circle', { cx: 0, cy: 0, r: 30 });
+    const bridgePath = 'M -34 21 L 34 16 L 34 36 L -34 36 Z';
+    add(add(this.defs, 'clipPath', { id: this.id(`bridge-${n}`) }), 'path', { d: bridgePath });
+    this.gradient(add, 'radialGradient', 'plate', { cx: '35%', cy: '30%', r: '80%' }, [['0%', '#b4bac2'], ['100%', '#666c75']]);
+    this.gradient(add, 'linearGradient', 'bridge', { x1: 0, y1: 0, x2: 0, y2: 1 }, [['0%', '#eceff2'], ['100%', '#a9afb7']]);
+    this.gradient(add, 'linearGradient', 'gold', { x1: 0, y1: 0, x2: 1, y2: 1 }, [['0%', '#f6e2a6'], ['50%', '#d0a24c'], ['100%', '#8c6526']]);
+    this.gradient(add, 'linearGradient', 'stripe', { x1: 0, y1: 0, x2: 1, y2: 0 }, [['0%', 'rgba(255,255,255,0)'], ['50%', 'rgba(255,255,255,0.55)'], ['100%', 'rgba(255,255,255,0)']]);
+    this.gradient(add, 'radialGradient', 'vignette', { cx: '50%', cy: '50%', r: '50%' }, [['62%', 'rgba(0,0,0,0)'], ['100%', 'rgba(0,0,0,0.55)']]);
+
+    const outer = add(svg, 'g', { transform: `translate(${cx.toFixed(2)} ${cy.toFixed(2)}) scale(${(r / 30).toFixed(4)})` });
+    const g = add(outer, 'g', { 'clip-path': url(`window-${n}`) });
+    const jewel = (x, y, size) => {
+      add(g, 'circle', { cx: x, cy: y, r: size * 1.7, fill: url('gold') }, 'pw-mv-chaton');
+      add(g, 'circle', { cx: x, cy: y, r: size }, 'pw-mv-ruby');
+      add(g, 'circle', { cx: x - size * 0.35, cy: y - size * 0.35, r: size * 0.32 }, 'pw-mv-glint');
+    };
+    const screw = (x, y) => {
+      add(g, 'circle', { cx: x, cy: y, r: 2 }, 'pw-mv-screw');
+      add(g, 'line', { x1: x - 1.4, y1: y - 0.9, x2: x + 1.4, y2: y + 0.9 }, 'pw-mv-slot');
+    };
+
+    // The main plate, with circular graining.
+    add(g, 'circle', { cx: 0, cy: 0, r: 31, fill: url('plate') });
+    for (const [ring, count, turn0] of [[0, 1, 0], [9, 7, 10], [18, 12, 0], [27, 18, 7]]) {
+      for (let i = 0; i < count; i++) {
+        const t = ((i * 360) / count + turn0) * (Math.PI / 180);
+        add(g, 'circle', { cx: ring * Math.cos(t), cy: ring * Math.sin(t), r: 5 }, 'pw-mv-perlage');
+      }
+    }
+
+    // A wheel of the gear train, mostly behind the dial, turning slowly.
+    const train = add(g, 'g', {}, ['pw-mv-spin', 'is-train']);
+    add(train, 'path', { d: gearPath(24, -20, 16, 40), 'fill-rule': 'evenodd' }, 'pw-mv-wheel');
+    // The escape wheel, which advances a tooth at a time.
+    const escape = add(g, 'g', {}, ['pw-mv-spin', 'is-escape']);
+    add(escape, 'path', { d: gearPath(20, 8, 8, 15, true), 'fill-rule': 'evenodd' }, 'pw-mv-steel');
+    // The pallet fork, rocking with the balance: a lever to the balance and an anchor
+    // with two ruby pallets across the escape wheel.
+    const fork = add(g, 'g', {}, 'pw-mv-fork');
+    add(fork, 'circle', { cx: 10, cy: 3, r: 14, fill: 'none' });
+    add(fork, 'path', { d: 'M 1.5 -1.5 L 10 3 M 12.2 -2.6 L 10 3 L 12.6 8.6' }, 'pw-mv-lever');
+    add(fork, 'rect', { x: 11.2, y: -3.9, width: 2.2, height: 1.5, rx: 0.3, transform: 'rotate(-30 12.3 -3.1)' }, 'pw-mv-ruby');
+    add(fork, 'rect', { x: 11.6, y: 8.2, width: 2.2, height: 1.5, rx: 0.3, transform: 'rotate(40 12.7 8.9)' }, 'pw-mv-ruby');
+    jewel(10, 3, 1);
+    jewel(20, 8, 1.3);
+    jewel(24, -20, 1.5);
+
+    // A bridge across the bottom with Geneva stripes.
+    const bridge = add(g, 'g', { 'clip-path': url(`bridge-${n}`) });
+    add(bridge, 'path', { d: bridgePath, fill: url('bridge') });
+    for (let x = -34; x < 34; x += 6) add(bridge, 'rect', { x, y: 0, width: 6, height: 36, fill: url('stripe') }, 'pw-mv-stripe');
+    add(g, 'path', { d: 'M -34 21 L 34 16' }, 'pw-mv-edge');
+    screw(-20, 27);
+    screw(21, 25);
+    jewel(1, 27, 1.4);
+
+    // The balance wheel with its hairspring, under its cock.
+    const balance = add(g, 'g', {}, 'pw-mv-balance');
+    add(balance, 'circle', { cx: -3, cy: -4, r: 14.2, fill: 'none', stroke: url('gold') }, 'pw-mv-rim');
+    for (let i = 0; i < 3; i++) {
+      const t = (i * 2 * Math.PI) / 3 + 0.5;
+      add(balance, 'line', { x1: -3, y1: -4, x2: -3 + 14 * Math.cos(t), y2: -4 + 14 * Math.sin(t), stroke: url('gold') }, 'pw-mv-arm');
+    }
+    for (let i = 0; i < 12; i++) {
+      const t = (i * 2 * Math.PI) / 12;
+      add(balance, 'circle', { cx: -3 + 14.2 * Math.cos(t), cy: -4 + 14.2 * Math.sin(t), r: 0.95 }, 'pw-mv-rim-screw');
+    }
+    let spiral = 'M -3 -4';
+    for (let t = 0.6; t <= 6 * Math.PI; t += 0.25) {
+      const rr = 1.2 + t * 0.48;
+      spiral += ` L ${(-3 + rr * Math.cos(t)).toFixed(2)} ${(-4 + rr * Math.sin(t)).toFixed(2)}`;
+    }
+    add(g, 'path', { d: spiral }, 'pw-mv-hairspring');
+    add(g, 'path', { d: 'M -36 -29 L -8 -10 Q -3.5 -8.5 -2 -4.5 Q -2.8 -0.8 -6.5 -1.8 L -36 -17 Z', fill: url('bridge') }, 'pw-mv-cock');
+    screw(-25, -19);
+    jewel(-3, -4, 1.6);
+
+    // Depth: shade the edge of the window, then its polished rim.
+    add(outer, 'circle', { cx: 0, cy: 0, r: 30, fill: url('vignette') });
+    add(outer, 'circle', { cx: 0, cy: 0, r: 30.6, fill: 'none', stroke: url('metal') }, 'pw-window-rim');
   }
 
   // Hands are drawn pointing at 12 around (0, 0) and turned into place by update().
@@ -1121,11 +1274,11 @@ class FloatingWatch {
   }
 
   // A spot in a box: a row (t, m, b) and a column (l, c, r). Bottom spots keep clear of
-  // the status bar. Null when the box is too small, such as a collapsed sidebar.
+  // the status bar. Null when the box is collapsed, such as a closed sidebar.
   spotXY(box, spot) {
     const w = this.el.offsetWidth;
     const h = this.el.offsetHeight;
-    if (box.right - box.left < w + SNAP_INSET * 2 || box.bottom - box.top < h + SNAP_INSET * 2) return null;
+    if (box.right - box.left < 40 || box.bottom - box.top < 40) return null;
     const col = spot[1];
     const row = spot[0];
     const x = col === 'l' ? box.left + SNAP_INSET
@@ -1139,7 +1292,7 @@ class FloatingWatch {
       const b = bar.getBoundingClientRect();
       if (b.width && x + w > b.left && x < b.right && y + h > b.top - 6) y = b.top - 6 - h;
     }
-    return { x, y };
+    return { x: clamp(x, 0, window.innerWidth - w), y: clamp(y, 0, window.innerHeight - h) };
   }
 
   // Over a pane, the nearest of its eight spots; anywhere else, the nearest spot of the window.
@@ -1711,15 +1864,19 @@ class PocketWatchSettingTab extends PluginSettingTab {
       toggle('Goal bar', 'digitalBar', 'A thin bar that fills up toward your daily goal.');
     } else {
       new Setting(el).setName('Analog').setHeading();
-      dropdown(new Setting(el).setName('Face'), faceNames(), s.face, (v) => set({ face: v }));
+      dropdown(new Setting(el).setName('Face'), faceNames(), s.face, (v) => set({ face: v }, true));
+      dropdown(new Setting(el).setName('Case'), CASES, s.caseStyle, (v) => set({ caseStyle: v }));
       dropdown(new Setting(el).setName('Hour markers'), MARKERS, s.markers, (v) => set({ markers: v }));
       dropdown(new Setting(el).setName('Hands'), HANDS, s.hands, (v) => set({ hands: v }));
       dropdown(new Setting(el).setName('Seconds hand'), SECONDS, s.seconds, (v) => set({ seconds: v }));
+      const face = ANALOG_FACES[s.face] || ANALOG_FACES.porcelain;
       for (const slot of SLOTS) {
-        dropdown(new Setting(el).setName(slot.name), COMPLICATIONS, s[slot.key], (v) => set({ [slot.key]: v }));
+        const setting = new Setting(el).setName(slot.name);
+        dropdown(setting, COMPLICATIONS, s[slot.key], (v) => set({ [slot.key]: v }));
+        if (face.window === slot.key) setting.setDesc(`The ${face.name} face shows its movement here.`).setDisabled(true);
       }
       toggle('Goal ring', 'goalRing', 'A ring on the bezel that fills up toward your daily goal, and dims while the timer is paused.');
-      toggle('Gentle motion', 'motion', 'Lets the wheels of the skeleton face turn and its balance wheel swing.');
+      toggle('Gentle motion', 'motion', 'Lets the balance wheel swing and the wheels tick in the open heart face and the movement window.');
     }
 
     new Setting(el).setName('Placement').setHeading();
