@@ -12,7 +12,7 @@
   user-select: none;
   touch-action: none;
   filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.28)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
-  transition: left 280ms cubic-bezier(0.2, 0.8, 0.2, 1), top 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: left 220ms cubic-bezier(0.2, 0.9, 0.3, 1.15), top 220ms cubic-bezier(0.2, 0.9, 0.3, 1.15);
 }
 
 .pocket-watch-float.is-dragging {
@@ -143,16 +143,15 @@
   --pw-subdial: rgba(0, 0, 0, 0.25);
 }
 
-.pocket-watch-face-skeleton {
-  --pw-bezel-a: #eef0f3; --pw-bezel-b: #a9afb8; --pw-bezel-c: #5c626c;
-  --pw-dial-a: rgba(40, 42, 48, 0.55); --pw-dial-b: rgba(12, 13, 16, 0.78);
-  --pw-ink: #2c2c2e; --pw-ink-soft: #8e8c88;
-  --pw-hand: #f1f2f4; --pw-lume: #c9ced6; --pw-accent: #c8463c;
-  --pw-hand-edge: rgba(0, 0, 0, 0.55);
-  --pw-ring: #c9a35c; --pw-ring-track: rgba(0, 0, 0, 0.18);
-  --pw-date-bg: #f1eee8; --pw-date-ink: #2c2c2e;
-  --pw-chapter: #ece8e0;
-  --pw-subdial: rgba(236, 232, 224, 0.92);
+.pocket-watch-face-openheart {
+  --pw-bezel-a: #f1f2f4; --pw-bezel-b: #b3b8bf; --pw-bezel-c: #5f656d;
+  --pw-dial-a: #333a45; --pw-dial-b: #191d24;
+  --pw-ink: #e9edf2; --pw-ink-soft: #7e8794;
+  --pw-hand: #f3f5f8; --pw-lume: #2b313b; --pw-accent: #d9a85b;
+  --pw-hand-edge: rgba(0, 0, 0, 0.35);
+  --pw-ring: #d9a85b; --pw-ring-track: rgba(0, 0, 0, 0.2);
+  --pw-date-bg: #12161c; --pw-date-ink: #e9edf2;
+  --pw-subdial: rgba(0, 0, 0, 0.2);
 }
 
 .pocket-watch-face-bauhaus {
@@ -266,21 +265,9 @@
   stroke: var(--pw-insert);
 }
 
-.pw-insert-tick {
-  stroke: var(--pw-insert-ink);
-  stroke-width: 0.9;
-}
-
-.pw-insert-tick.is-major {
-  stroke-width: 1.8;
-}
-
-.pw-insert-num {
+.pw-insert-dot {
   fill: var(--pw-insert-ink);
-  font-family: var(--font-interface);
-  font-weight: 600;
-  text-anchor: middle;
-  dominant-baseline: central;
+  opacity: 0.8;
 }
 
 .pw-insert-pip {
@@ -370,70 +357,182 @@
   stroke-width: 0.6;
 }
 
-/* Skeleton movement */
-.pw-gear {
-  fill: #c3c8cf;
+/* Dial finishes */
+.pw-rays {
+  fill: #ffffff;
+  opacity: 0.05;
+}
+
+.pw-azurage {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.07);
+  stroke-width: 0.55;
+}
+
+/* Polished metal markers */
+.pw-applied {
   stroke: rgba(0, 0, 0, 0.45);
   stroke-width: 0.5;
 }
 
-.pw-bridge {
-  fill: #9aa1ab;
-  stroke: rgba(0, 0, 0, 0.4);
-  stroke-width: 0.5;
+.pocket-watch-svg {
+  --pw-metal-a: #ffffff;
+  --pw-metal-b: #c4c9d0;
+  --pw-metal-c: #7d848d;
 }
 
-.pw-jewel {
-  fill: #b3122e;
-  stroke: #ff8b9a;
-  stroke-width: 0.4;
+.pocket-watch-face-rose {
+  --pw-metal-a: #fff1e8;
+  --pw-metal-b: #d7a08b;
+  --pw-metal-c: #8e5847;
 }
 
-.pw-screw {
-  fill: #3a5a9a;
+.pocket-watch-face-void {
+  --pw-metal-a: #fff2c9;
+  --pw-metal-b: #d9b66b;
+  --pw-metal-c: #8f6c2a;
 }
 
-.pw-screw-slot {
-  stroke: #142443;
+.pw-metal-a { stop-color: var(--pw-metal-a); }
+.pw-metal-b { stop-color: var(--pw-metal-b); }
+.pw-metal-c { stop-color: var(--pw-metal-c); }
+
+/* Case */
+.pw-bezel-edge {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.35);
+  stroke-width: 0.8;
+}
+
+.pw-case-part {
+  stroke: rgba(0, 0, 0, 0.3);
+  stroke-width: 0.6;
+}
+
+.pw-knurl {
+  stroke: rgba(0, 0, 0, 0.28);
   stroke-width: 0.7;
 }
 
-.pw-balance-rim {
-  fill: none;
-  stroke: #d4b46a;
-  stroke-width: 2.4;
+.pw-glass {
+  pointer-events: none;
 }
 
-.pw-balance-spoke {
-  stroke: #d4b46a;
-  stroke-width: 1.4;
+/* Movement window */
+.pw-window-rim {
+  stroke-width: 2.6;
 }
 
-.pw-hairspring {
+.pw-mv-perlage {
+  fill: rgba(255, 255, 255, 0.05);
+  stroke: rgba(0, 0, 0, 0.12);
+  stroke-width: 0.4;
+}
+
+.pw-mv-wheel {
+  fill: #d8b766;
+  stroke: rgba(70, 45, 10, 0.6);
+  stroke-width: 0.4;
+}
+
+.pw-mv-steel {
+  fill: #cfd4da;
+  stroke: rgba(0, 0, 0, 0.55);
+  stroke-width: 0.4;
+}
+
+.pw-mv-lever {
   fill: none;
-  stroke: #9ab0d6;
+  stroke: #b9c0c8;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pw-mv-stripe {
+  opacity: 0.55;
+}
+
+.pw-mv-edge {
+  fill: none;
+  stroke: rgba(0, 0, 0, 0.45);
+  stroke-width: 0.8;
+}
+
+.pw-mv-cock {
+  stroke: rgba(0, 0, 0, 0.45);
   stroke-width: 0.5;
 }
 
-.pw-chapter {
-  fill: none;
-  stroke: var(--pw-chapter);
+.pw-mv-rim {
+  stroke-width: 2.8;
 }
 
-.pw-gear-wrap,
-.pw-balance,
+.pw-mv-arm {
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.pw-mv-rim-screw {
+  fill: #8c6526;
+}
+
+.pw-mv-hairspring {
+  fill: none;
+  stroke: #5b7fc4;
+  stroke-width: 0.45;
+}
+
+.pw-mv-chaton {
+  stroke: rgba(70, 45, 10, 0.5);
+  stroke-width: 0.3;
+}
+
+.pw-mv-ruby {
+  fill: #b3122e;
+}
+
+.pw-mv-glint {
+  fill: #ffffff;
+  opacity: 0.75;
+}
+
+.pw-mv-screw {
+  fill: #2f4f8f;
+  stroke: rgba(0, 0, 0, 0.5);
+  stroke-width: 0.3;
+}
+
+.pw-mv-slot {
+  stroke: #0f1d3a;
+  stroke-width: 0.6;
+}
+
+.pw-mv-balance,
+.pw-mv-fork,
+.pw-mv-spin {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.pw-motion .pw-mv-balance {
+  animation: pocket-watch-balance 1.25s ease-in-out infinite alternate;
+}
+
+.pw-motion .pw-mv-fork {
+  animation: pocket-watch-fork 1.25s ease-in-out infinite alternate;
+}
+
+.pw-motion .pw-mv-spin.is-escape {
+  animation: pocket-watch-spin 30s steps(30) infinite;
+}
+
+.pw-motion .pw-mv-spin.is-train {
+  animation: pocket-watch-spin 240s linear infinite reverse;
+}
+
 .pw-turn {
   transform-box: view-box;
-}
-
-.pw-motion .pw-spin {
-  animation-name: pocket-watch-spin;
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
-}
-
-.pw-motion .pw-balance {
-  animation: pocket-watch-balance 1.6s ease-in-out infinite alternate;
 }
 
 @keyframes pocket-watch-spin {
@@ -441,8 +540,13 @@
 }
 
 @keyframes pocket-watch-balance {
-  from { transform: rotate(-38deg); }
-  to { transform: rotate(38deg); }
+  from { transform: rotate(-75deg); }
+  to { transform: rotate(75deg); }
+}
+
+@keyframes pocket-watch-fork {
+  from { transform: rotate(-9deg); }
+  to { transform: rotate(9deg); }
 }
 
 /* Complications */
@@ -478,13 +582,6 @@
   fill: var(--pw-ink-soft);
   font-weight: 600;
   letter-spacing: 0.12em;
-}
-
-.pocket-watch-face-skeleton .pw-reading,
-.pocket-watch-face-skeleton .pw-caption {
-  paint-order: stroke;
-  stroke: var(--pw-chapter);
-  stroke-width: 3px;
 }
 
 .pw-subdial {
@@ -523,19 +620,37 @@
   stroke-linecap: round;
 }
 
-.pw-moon-frame {
+.pw-moon-arch {
   fill: none;
   stroke: var(--pw-ink-soft);
-  stroke-width: 1;
-}
-
-.pw-moon-sky {
-  fill: #142039;
+  stroke-width: 0.9;
 }
 
 .pw-moon-star {
-  fill: #dfe6f5;
-  opacity: 0.7;
+  fill: #f1d78f;
+}
+
+.pw-moon {
+  stroke: rgba(120, 85, 25, 0.5);
+  stroke-width: 0.3;
+}
+
+.pw-crater {
+  fill: #a87a2c;
+  opacity: 0.22;
+}
+
+.pw-date-shade {
+  fill: none;
+  stroke: rgba(0, 0, 0, 0.14);
+  stroke-width: 1;
+}
+
+.pw-snailing {
+  fill: none;
+  stroke: var(--pw-ink-soft);
+  stroke-width: 0.25;
+  opacity: 0.35;
 }
 
 .pw-moon-dark {
@@ -877,8 +992,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pw-motion .pw-spin,
-  .pw-motion .pw-balance,
+  .pw-motion .pw-mv-balance,
+  .pw-motion .pw-mv-fork,
+  .pw-motion .pw-mv-spin,
   .pw-blink .pw-d-colon {
     animation: none;
   }
