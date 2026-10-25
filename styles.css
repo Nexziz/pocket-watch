@@ -12,17 +12,24 @@
   user-select: none;
   touch-action: none;
   filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.28)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
-  transition: left 280ms cubic-bezier(0.2, 0.8, 0.2, 1), top 280ms cubic-bezier(0.2, 0.8, 0.2, 1), transform 160ms ease;
-}
-
-.pocket-watch-float:hover {
-  transform: scale(1.03);
+  transition: left 280ms cubic-bezier(0.2, 0.8, 0.2, 1), top 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .pocket-watch-float.is-dragging {
   cursor: grabbing;
-  transform: scale(1.06);
+  transition: none;
+}
+
+.pocket-watch-float.is-dragging .pocket-watch-face {
+  transform: scale(1.05);
+}
+
+.pocket-watch-face {
   transition: transform 160ms ease;
+}
+
+.pocket-watch-float.is-resizing {
+  transition: none;
 }
 
 .pocket-watch-float.is-hidden {
@@ -37,7 +44,42 @@
   display: block;
 }
 
-/* Where the watch will land while you drag it over a pane. */
+/* Resize handle: appears on the corner facing away from where the watch is snapped. */
+.pocket-watch-grip {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border-hover);
+  box-shadow: var(--shadow-s);
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+.pocket-watch-grip::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-right: 1.5px solid var(--text-muted);
+  border-bottom: 1.5px solid var(--text-muted);
+}
+
+.pocket-watch-float:hover .pocket-watch-grip,
+.pocket-watch-float.is-resizing .pocket-watch-grip {
+  opacity: 1;
+}
+
+.pocket-watch-float.is-dragging .pocket-watch-grip {
+  opacity: 0;
+}
+
+.pocket-watch-grip[data-corner="br"] { right: -4px; bottom: -4px; cursor: nwse-resize; }
+.pocket-watch-grip[data-corner="bl"] { left: -4px; bottom: -4px; cursor: nesw-resize; transform: scaleX(-1); }
+.pocket-watch-grip[data-corner="tr"] { right: -4px; top: -4px; cursor: nesw-resize; transform: scaleY(-1); }
+.pocket-watch-grip[data-corner="tl"] { left: -4px; top: -4px; cursor: nwse-resize; transform: scale(-1); }
+
+/* Where the watch will land while you drag it. */
 .pocket-watch-ghost {
   position: fixed;
   z-index: var(--layer-popover);
@@ -48,60 +90,141 @@
   transition: left 140ms ease, top 140ms ease;
 }
 
-.pocket-watch-ghost[data-face="digital"] {
+.pocket-watch-ghost[data-type="digital"] {
   border-radius: 16px;
 }
 
-/* Dials. Each face sets its own colours, like a real watch, whatever the theme. */
+/* ---------------------------------------------------------------------------
+   Analog faces. Each face sets its own colours, like a real watch.
+   --------------------------------------------------------------------------- */
+
+.pocket-watch-svg {
+  --pw-hand-edge: none;
+  --pw-hand-shade: color-mix(in srgb, var(--pw-hand) 70%, #000);
+  --pw-numeral-font: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --pw-subdial: rgba(0, 0, 0, 0.05);
+}
+
 .pocket-watch-face-porcelain {
-  --pw-bezel-a: #f6f4f0;
-  --pw-bezel-b: #cdc8c0;
-  --pw-bezel-c: #8e887f;
-  --pw-dial-a: #fcfaf5;
-  --pw-dial-b: #ebe3d3;
-  --pw-ink: #3b3936;
-  --pw-ink-soft: #aaa398;
-  --pw-hand: #2e2d2b;
-  --pw-lume: #f4efe4;
-  --pw-accent: #b0563e;
-  --pw-ring: #7e9d88;
-  --pw-ring-track: rgba(0, 0, 0, 0.13);
-  --pw-date-bg: #fffdf9;
-  --pw-date-ink: #3b3936;
+  --pw-bezel-a: #f6f4f0; --pw-bezel-b: #cdc8c0; --pw-bezel-c: #8e887f;
+  --pw-dial-a: #fcfaf5; --pw-dial-b: #ebe3d3;
+  --pw-ink: #3b3936; --pw-ink-soft: #aaa398;
+  --pw-hand: #2e2d2b; --pw-lume: #f4efe4; --pw-accent: #b0563e;
+  --pw-ring: #7e9d88; --pw-ring-track: rgba(0, 0, 0, 0.13);
+  --pw-date-bg: #fffdf9; --pw-date-ink: #3b3936;
+}
+
+.pocket-watch-face-linen {
+  --pw-bezel-a: #f3e6c4; --pw-bezel-b: #c9a86a; --pw-bezel-c: #7f6232;
+  --pw-dial-a: #f6efe1; --pw-dial-b: #e5d8bf;
+  --pw-ink: #4a3f33; --pw-ink-soft: #a8987d;
+  --pw-hand: #284a86; --pw-lume: #f6efe1; --pw-accent: #284a86;
+  --pw-ring: #284a86; --pw-ring-track: rgba(0, 0, 0, 0.14);
+  --pw-date-bg: #fbf6ea; --pw-date-ink: #4a3f33;
 }
 
 .pocket-watch-face-slate {
-  --pw-bezel-a: #737881;
-  --pw-bezel-b: #3d4147;
-  --pw-bezel-c: #1d2024;
-  --pw-dial-a: #3c4148;
-  --pw-dial-b: #212429;
-  --pw-ink: #e7dac0;
-  --pw-ink-soft: #8a8679;
-  --pw-hand: #ede0c6;
-  --pw-lume: #2a2d32;
-  --pw-accent: #e1a65c;
-  --pw-ring: #e1a65c;
-  --pw-ring-track: rgba(255, 255, 255, 0.1);
-  --pw-date-bg: #1a1d21;
-  --pw-date-ink: #e7dac0;
+  --pw-bezel-a: #737881; --pw-bezel-b: #3d4147; --pw-bezel-c: #1d2024;
+  --pw-dial-a: #3c4148; --pw-dial-b: #212429;
+  --pw-ink: #e7dac0; --pw-ink-soft: #8a8679;
+  --pw-hand: #ede0c6; --pw-lume: #2a2d32; --pw-accent: #e1a65c;
+  --pw-ring: #e1a65c; --pw-ring-track: rgba(255, 255, 255, 0.1);
+  --pw-date-bg: #1a1d21; --pw-date-ink: #e7dac0;
+  --pw-subdial: rgba(0, 0, 0, 0.2);
 }
 
 .pocket-watch-face-midnight {
-  --pw-bezel-a: #eceef2;
-  --pw-bezel-b: #aab0ba;
-  --pw-bezel-c: #636a76;
-  --pw-dial-a: #253a63;
-  --pw-dial-b: #0a1326;
-  --pw-ink: #e4eaf5;
-  --pw-ink-soft: #4d5f88;
-  --pw-hand: #f2f5fa;
-  --pw-lume: #253a63;
-  --pw-accent: #a3c0ff;
-  --pw-ring: #a3c0ff;
-  --pw-ring-track: rgba(0, 0, 0, 0.2);
-  --pw-date-bg: #0d172d;
-  --pw-date-ink: #e4eaf5;
+  --pw-bezel-a: #eceef2; --pw-bezel-b: #aab0ba; --pw-bezel-c: #636a76;
+  --pw-dial-a: #253a63; --pw-dial-b: #0a1326;
+  --pw-ink: #e4eaf5; --pw-ink-soft: #4d5f88;
+  --pw-hand: #f2f5fa; --pw-lume: #253a63; --pw-accent: #a3c0ff;
+  --pw-ring: #a3c0ff; --pw-ring-track: rgba(0, 0, 0, 0.2);
+  --pw-date-bg: #0d172d; --pw-date-ink: #e4eaf5;
+  --pw-subdial: rgba(0, 0, 0, 0.25);
+}
+
+.pocket-watch-face-skeleton {
+  --pw-bezel-a: #eef0f3; --pw-bezel-b: #a9afb8; --pw-bezel-c: #5c626c;
+  --pw-dial-a: rgba(40, 42, 48, 0.55); --pw-dial-b: rgba(12, 13, 16, 0.78);
+  --pw-ink: #2c2c2e; --pw-ink-soft: #8e8c88;
+  --pw-hand: #f1f2f4; --pw-lume: #c9ced6; --pw-accent: #c8463c;
+  --pw-hand-edge: rgba(0, 0, 0, 0.55);
+  --pw-ring: #c9a35c; --pw-ring-track: rgba(0, 0, 0, 0.18);
+  --pw-date-bg: #f1eee8; --pw-date-ink: #2c2c2e;
+  --pw-chapter: #ece8e0;
+  --pw-subdial: rgba(236, 232, 224, 0.92);
+}
+
+.pocket-watch-face-bauhaus {
+  --pw-bezel-a: #e9eaec; --pw-bezel-b: #b8bbc0; --pw-bezel-c: #7c8086;
+  --pw-dial-a: #f4f2ed; --pw-dial-b: #ebe8e1;
+  --pw-ink: #232323; --pw-ink-soft: #9b988f;
+  --pw-hand: #232323; --pw-lume: #f4f2ed; --pw-accent: #c8452e;
+  --pw-ring: #c8452e; --pw-ring-track: rgba(0, 0, 0, 0.1);
+  --pw-date-bg: #ffffff; --pw-date-ink: #232323;
+  --pw-numeral-font: "Avenir Next", Futura, "Century Gothic", var(--font-interface);
+}
+
+.pocket-watch-face-void {
+  --pw-bezel-a: #3a3a3d; --pw-bezel-b: #1b1b1d; --pw-bezel-c: #050506;
+  --pw-dial-a: #141416; --pw-dial-b: #0a0a0b;
+  --pw-ink: #d9b66b; --pw-ink-soft: #4a4740;
+  --pw-hand: #e6e1d6; --pw-lume: #141416; --pw-accent: #d9b66b;
+  --pw-ring: #d9b66b; --pw-ring-track: rgba(255, 255, 255, 0.06);
+  --pw-date-bg: #0a0a0b; --pw-date-ink: #d8d2c4;
+  --pw-subdial: rgba(255, 255, 255, 0.04);
+}
+
+.pocket-watch-face-field {
+  --pw-bezel-a: #c4c8cb; --pw-bezel-b: #858a8f; --pw-bezel-c: #474b50;
+  --pw-dial-a: #3f4a38; --pw-dial-b: #252c22;
+  --pw-ink: #efe7d2; --pw-ink-soft: #8d917f;
+  --pw-hand: #efe7d2; --pw-lume: #c9d6a8; --pw-accent: #e49c48;
+  --pw-ring: #e49c48; --pw-ring-track: rgba(0, 0, 0, 0.2);
+  --pw-date-bg: #1d231a; --pw-date-ink: #efe7d2;
+  --pw-numeral-font: "DIN Alternate", "Bahnschrift", "Arial Narrow", var(--font-interface);
+  --pw-subdial: rgba(0, 0, 0, 0.2);
+}
+
+.pocket-watch-face-sector {
+  --pw-bezel-a: #f2f3f5; --pw-bezel-b: #b9bcc1; --pw-bezel-c: #72767c;
+  --pw-dial-a: #efebe2; --pw-dial-b: #e1dacb;
+  --pw-ink: #2b2a28; --pw-ink-soft: #8f8a7f;
+  --pw-hand: #223d6b; --pw-lume: #efebe2; --pw-accent: #223d6b;
+  --pw-ring: #223d6b; --pw-ring-track: rgba(0, 0, 0, 0.12);
+  --pw-date-bg: #f8f5ee; --pw-date-ink: #2b2a28;
+  --pw-sector: #d8d0bf;
+}
+
+.pocket-watch-face-diver {
+  --pw-bezel-a: #e3e6ea; --pw-bezel-b: #9aa1aa; --pw-bezel-c: #555b63;
+  --pw-dial-a: #134a72; --pw-dial-b: #062039;
+  --pw-ink: #eef3e6; --pw-ink-soft: #4f7391;
+  --pw-hand: #eef1f4; --pw-lume: #e8f0d8; --pw-accent: #ff8a4c;
+  --pw-hand-edge: rgba(0, 0, 0, 0.35);
+  --pw-ring: #6fc3d6; --pw-ring-track: rgba(0, 0, 0, 0.25);
+  --pw-date-bg: #f3f5f6; --pw-date-ink: #1b2730;
+  --pw-insert: #0c2136; --pw-insert-ink: #e8eef5;
+  --pw-subdial: rgba(0, 0, 0, 0.22);
+}
+
+.pocket-watch-face-rose {
+  --pw-bezel-a: #f6dccf; --pw-bezel-b: #cf9682; --pw-bezel-c: #8b5747;
+  --pw-dial-a: #f6e3da; --pw-dial-b: #e8c7b8;
+  --pw-ink: #6b4a40; --pw-ink-soft: #bf9a8c;
+  --pw-hand: #9c5f50; --pw-lume: #f6e3da; --pw-accent: #9c5f50;
+  --pw-ring: #9c5f50; --pw-ring-track: rgba(0, 0, 0, 0.1);
+  --pw-date-bg: #fbf0ea; --pw-date-ink: #6b4a40;
+}
+
+.pocket-watch-face-theme {
+  --pw-bezel-a: var(--background-modifier-border-hover); --pw-bezel-b: var(--background-modifier-border); --pw-bezel-c: var(--background-modifier-border-focus);
+  --pw-dial-a: var(--background-primary); --pw-dial-b: var(--background-secondary);
+  --pw-ink: var(--text-normal); --pw-ink-soft: var(--text-faint);
+  --pw-hand: var(--text-normal); --pw-lume: var(--background-primary); --pw-accent: var(--interactive-accent);
+  --pw-ring: var(--interactive-accent); --pw-ring-track: var(--background-modifier-border);
+  --pw-date-bg: var(--background-primary); --pw-date-ink: var(--text-normal);
+  --pw-numeral-font: var(--font-interface);
 }
 
 .pw-bezel-a { stop-color: var(--pw-bezel-a); }
@@ -118,7 +241,6 @@
 .pw-ring-track,
 .pw-ring {
   fill: none;
-  stroke-width: 3;
 }
 
 .pw-ring-track {
@@ -131,12 +253,47 @@
   transition: opacity 400ms ease;
 }
 
-/* The ring dims while the timer isn't counting. */
+/* The goal ring and bar dim while the timer isn't counting. */
 .pocket-watch-float:not([data-state="tracking"]) .pw-ring,
-.pocket-watch-float:not([data-state="tracking"]) .pocket-watch-digital-fill {
+.pocket-watch-float:not([data-state="tracking"]) .pw-goal-arc,
+.pocket-watch-float:not([data-state="tracking"]) .pw-d-fill {
   opacity: 0.35;
 }
 
+/* Diver's bezel */
+.pw-insert {
+  fill: none;
+  stroke: var(--pw-insert);
+}
+
+.pw-insert-tick {
+  stroke: var(--pw-insert-ink);
+  stroke-width: 0.9;
+}
+
+.pw-insert-tick.is-major {
+  stroke-width: 1.8;
+}
+
+.pw-insert-num {
+  fill: var(--pw-insert-ink);
+  font-family: var(--font-interface);
+  font-weight: 600;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.pw-insert-pip {
+  fill: var(--pw-insert-ink);
+}
+
+.pw-insert-pearl {
+  fill: var(--pw-lume);
+  stroke: #9aa3a8;
+  stroke-width: 0.6;
+}
+
+/* Markers */
 .pw-index {
   stroke: var(--pw-ink);
   stroke-width: 2;
@@ -161,12 +318,35 @@
   stroke-width: 2.2;
 }
 
-.pw-numeral {
+.pw-numeral,
+.pw-numeral-24 {
   fill: var(--pw-ink);
-  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-  font-size: 21px;
+  font-family: var(--pw-numeral-font);
   text-anchor: middle;
   dominant-baseline: central;
+}
+
+.pw-numeral.is-roman {
+  letter-spacing: 0.02em;
+}
+
+.pocket-watch-face-field .pw-numeral {
+  font-weight: 700;
+}
+
+.pw-numeral-24 {
+  fill: var(--pw-accent);
+  font-weight: 600;
+}
+
+.pw-dot-index {
+  fill: var(--pw-ink);
+}
+
+.pw-lume {
+  fill: var(--pw-lume);
+  stroke: rgba(0, 0, 0, 0.45);
+  stroke-width: 0.8;
 }
 
 .pw-star {
@@ -179,10 +359,93 @@
   stroke-width: 0.7;
 }
 
-.pw-dot-index {
-  fill: var(--pw-ink);
+.pw-sector-band {
+  fill: none;
+  stroke: var(--pw-sector);
 }
 
+.pw-sector-line {
+  fill: none;
+  stroke: var(--pw-ink-soft);
+  stroke-width: 0.6;
+}
+
+/* Skeleton movement */
+.pw-gear {
+  fill: #c3c8cf;
+  stroke: rgba(0, 0, 0, 0.45);
+  stroke-width: 0.5;
+}
+
+.pw-bridge {
+  fill: #9aa1ab;
+  stroke: rgba(0, 0, 0, 0.4);
+  stroke-width: 0.5;
+}
+
+.pw-jewel {
+  fill: #b3122e;
+  stroke: #ff8b9a;
+  stroke-width: 0.4;
+}
+
+.pw-screw {
+  fill: #3a5a9a;
+}
+
+.pw-screw-slot {
+  stroke: #142443;
+  stroke-width: 0.7;
+}
+
+.pw-balance-rim {
+  fill: none;
+  stroke: #d4b46a;
+  stroke-width: 2.4;
+}
+
+.pw-balance-spoke {
+  stroke: #d4b46a;
+  stroke-width: 1.4;
+}
+
+.pw-hairspring {
+  fill: none;
+  stroke: #9ab0d6;
+  stroke-width: 0.5;
+}
+
+.pw-chapter {
+  fill: none;
+  stroke: var(--pw-chapter);
+}
+
+.pw-gear-wrap,
+.pw-balance,
+.pw-turn {
+  transform-box: view-box;
+}
+
+.pw-motion .pw-spin {
+  animation-name: pocket-watch-spin;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.pw-motion .pw-balance {
+  animation: pocket-watch-balance 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes pocket-watch-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pocket-watch-balance {
+  from { transform: rotate(-38deg); }
+  to { transform: rotate(38deg); }
+}
+
+/* Complications */
 .pw-date-bg {
   fill: var(--pw-date-bg);
   stroke: var(--pw-ink-soft);
@@ -192,21 +455,72 @@
 .pw-date {
   fill: var(--pw-date-ink);
   font-family: var(--font-interface);
-  font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-anchor: middle;
   dominant-baseline: central;
 }
 
-.pw-focus-text {
-  fill: var(--pw-ink-soft);
+.pw-reading,
+.pw-caption {
+  fill: var(--pw-ink);
   font-family: var(--font-interface);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
   text-anchor: middle;
   dominant-baseline: central;
+}
+
+.pw-reading {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.pw-caption {
+  fill: var(--pw-ink-soft);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.pocket-watch-face-skeleton .pw-reading,
+.pocket-watch-face-skeleton .pw-caption {
+  paint-order: stroke;
+  stroke: var(--pw-chapter);
+  stroke-width: 3px;
+}
+
+.pw-subdial {
+  fill: var(--pw-subdial);
+  stroke: var(--pw-ink-soft);
+  stroke-width: 0.7;
+}
+
+.pw-subdial-tick {
+  stroke: var(--pw-ink-soft);
+  stroke-width: 0.8;
+}
+
+.pw-subsec-hand {
+  stroke: var(--pw-accent);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+}
+
+.pw-subsec-pin {
+  fill: var(--pw-accent);
+}
+
+.pw-goal-track,
+.pw-goal-arc {
+  fill: none;
+  stroke-width: 2.6;
+}
+
+.pw-goal-track {
+  stroke: var(--pw-ring-track);
+}
+
+.pw-goal-arc {
+  stroke: var(--pw-ring);
+  stroke-linecap: round;
 }
 
 .pw-moon-frame {
@@ -232,12 +546,24 @@
   fill: #f3e8c4;
 }
 
+/* Hands */
 .pw-hands {
   filter: drop-shadow(0 1.5px 1.2px rgba(0, 0, 0, 0.35));
 }
 
-.pw-hand-body {
+.pw-turn {
+  transform-origin: 100px 100px;
+}
+
+.pw-hand-body,
+.pw-hand-shade {
   fill: var(--pw-hand);
+  stroke: var(--pw-hand-edge);
+  stroke-width: 0.6;
+}
+
+.pw-hand-shade {
+  fill: var(--pw-hand-shade);
 }
 
 .pw-hand-lume {
@@ -261,61 +587,301 @@
   fill: var(--pw-accent);
 }
 
+.pw-sweep {
+  animation: pocket-watch-spin 60s linear infinite;
+}
+
 .pw-cap {
   fill: var(--pw-hand);
+  stroke: var(--pw-hand-edge);
+  stroke-width: 0.6;
 }
 
 .pw-cap-dot {
   fill: var(--pw-accent);
 }
 
-/* Digital face: a small slate tile. */
-.pocket-watch-digital {
-  min-width: 7.6em;
-  padding: 0.55em 0.95em 0.65em;
-  border-radius: 1.1em;
-  color: #ede0c6;
-  background: linear-gradient(160deg, #40454c, #1f2226);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-  text-align: center;
-}
+/* ---------------------------------------------------------------------------
+   Digital
+   --------------------------------------------------------------------------- */
 
-.pocket-watch-digital-time {
-  font-size: 2.3em;
-  font-weight: 300;
-  line-height: 1.1;
-  font-variant-numeric: tabular-nums;
+.pocket-watch-digital {
+  --pw-d-bg: linear-gradient(160deg, #40454c, #1f2226);
+  --pw-d-ink: #ede0c6;
+  --pw-d-soft: #a8a194;
+  --pw-d-accent: #e1a65c;
+  --pw-d-track: rgba(255, 255, 255, 0.1);
+  --pw-d-edge: rgba(255, 255, 255, 0.08);
+  position: relative;
+  color: var(--pw-d-ink);
+  background: var(--pw-d-bg);
+  box-shadow: inset 0 0 0 1px var(--pw-d-edge);
+  text-align: center;
   white-space: nowrap;
 }
 
-.pocket-watch-digital-meta {
+.pw-d-time {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.pw-d-hh,
+.pw-d-mm,
+.pw-d-ss {
+  position: relative;
+}
+
+.pw-d-colon.is-small,
+.pw-d-ss {
+  font-size: 0.5em;
+}
+
+.pw-d-ampm {
+  font-size: 0.32em;
+  margin-left: 0.3em;
+  letter-spacing: 0.05em;
+  color: var(--pw-d-soft);
+  align-self: flex-start;
+  margin-top: 0.5em;
+}
+
+.pw-blink .pw-d-colon {
+  animation: pocket-watch-blink 2s steps(1) infinite;
+}
+
+@keyframes pocket-watch-blink {
+  50% { opacity: 0.15; }
+}
+
+.pw-d-meta {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.55em;
-  margin-top: 0.15em;
   font-size: 0.85em;
-  color: #a8a194;
-  white-space: nowrap;
+  color: var(--pw-d-soft);
 }
 
-.pocket-watch-digital-moon {
+.pw-d-moon {
   display: block;
 }
 
-.pocket-watch-digital-bar {
+.pw-d-bar {
   height: 3px;
-  margin-top: 0.5em;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--pw-d-track);
   overflow: hidden;
 }
 
-.pocket-watch-digital-fill {
+.pw-d-fill {
   height: 100%;
   border-radius: 2px;
-  background: #e1a65c;
+  background: var(--pw-d-accent);
   transition: width 400ms ease, opacity 400ms ease;
+}
+
+/* Layouts */
+.pw-l-wide {
+  min-width: 7.6em;
+  padding: 0.55em 0.95em 0.65em;
+  border-radius: 1.1em;
+}
+
+.pw-l-wide .pw-d-time {
+  font-size: 2.3em;
+  font-weight: 300;
+}
+
+.pw-l-wide .pw-d-meta {
+  margin-top: 0.15em;
+}
+
+.pw-l-wide .pw-d-bar {
+  margin-top: 0.5em;
+}
+
+.pw-l-slim {
+  display: flex;
+  align-items: center;
+  gap: 0.75em;
+  padding: 0.3em 0.95em 0.55em;
+  border-radius: 999px;
+}
+
+.pw-l-slim .pw-d-time {
+  font-size: 1.45em;
+  font-weight: 500;
+}
+
+.pw-l-slim .pw-d-meta {
+  padding-left: 0.75em;
+  border-left: 1px solid var(--pw-d-track);
+}
+
+.pw-l-slim .pw-d-bar {
+  position: absolute;
+  left: 1.1em;
+  right: 1.1em;
+  bottom: 0.22em;
+  height: 1.5px;
+}
+
+.pw-l-tall {
+  min-width: 5.4em;
+  padding: 0.6em 0.9em 0.7em;
+  border-radius: 1.2em;
+}
+
+.pw-l-tall .pw-d-time {
+  flex-direction: column;
+  align-items: center;
+  font-size: 2.7em;
+  font-weight: 300;
+  line-height: 0.98;
+}
+
+.pw-l-tall .pw-d-ss {
+  font-size: 0.32em;
+  margin-top: 0.25em;
+  color: var(--pw-d-soft);
+}
+
+.pw-l-tall .pw-d-ampm {
+  align-self: center;
+  margin: 0.3em 0 0;
+}
+
+.pw-l-tall .pw-d-meta {
+  flex-wrap: wrap;
+  margin-top: 0.35em;
+}
+
+.pw-l-tall .pw-d-bar {
+  margin-top: 0.5em;
+}
+
+.pw-l-compact {
+  padding: 0.25em 0.7em 0.3em;
+  border-radius: 0.8em;
+}
+
+.pw-l-compact .pw-d-time {
+  font-size: 1.7em;
+  font-weight: 400;
+}
+
+/* Styles */
+.pw-d-lcd {
+  --pw-d-bg: linear-gradient(170deg, #c4cdab, #a9b48d);
+  --pw-d-ink: #1f2a1a;
+  --pw-d-soft: #4d5a3f;
+  --pw-d-accent: #2f3d26;
+  --pw-d-track: rgba(31, 42, 26, 0.15);
+  --pw-d-edge: rgba(0, 0, 0, 0.35);
+  font-family: "DSEG7 Classic", "Courier New", ui-monospace, monospace;
+}
+
+.pw-d-lcd .pw-d-time {
+  font-weight: 700;
+  font-style: italic;
+}
+
+/* The unlit segments behind each digit. */
+.pw-d-lcd .pw-d-hh::before,
+.pw-d-lcd .pw-d-mm::before,
+.pw-d-lcd .pw-d-ss::before {
+  content: attr(data-ghost);
+  position: absolute;
+  inset: 0;
+  opacity: 0.1;
+}
+
+.pw-d-nixie {
+  --pw-d-bg: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1.2px) 0 0 / 4px 4px, linear-gradient(170deg, #1c1512, #0d0908);
+  --pw-d-ink: #ffb46e;
+  --pw-d-soft: #b9805a;
+  --pw-d-accent: #ff9440;
+  --pw-d-track: rgba(255, 148, 64, 0.15);
+  --pw-d-edge: rgba(255, 160, 90, 0.18);
+  font-family: "Iowan Old Style", Georgia, serif;
+}
+
+.pw-d-nixie .pw-d-time {
+  font-weight: 300;
+  text-shadow: 0 0 0.12em rgba(255, 170, 90, 0.9), 0 0 0.45em rgba(255, 110, 20, 0.55);
+}
+
+.pw-d-flip {
+  --pw-d-bg: linear-gradient(170deg, #3a3a3d, #1c1c1e);
+  --pw-d-ink: #f4f4f2;
+  --pw-d-soft: #a3a3a0;
+  --pw-d-accent: #f4f4f2;
+}
+
+.pw-d-flip .pw-d-time {
+  gap: 0.08em;
+  font-weight: 700;
+}
+
+.pw-d-flip .pw-d-hh,
+.pw-d-flip .pw-d-mm,
+.pw-d-flip .pw-d-ss {
+  padding: 0.02em 0.14em;
+  border-radius: 0.14em;
+  background: linear-gradient(#2c2c2f 50%, #232326 50%);
+  box-shadow: 0 0.04em 0.08em rgba(0, 0, 0, 0.5);
+}
+
+/* The split across the middle of each card. */
+.pw-d-flip .pw-d-hh::after,
+.pw-d-flip .pw-d-mm::after,
+.pw-d-flip .pw-d-ss::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.pw-d-flip .pw-d-colon {
+  opacity: 0.5;
+  font-weight: 400;
+}
+
+.pw-d-eink {
+  --pw-d-bg: linear-gradient(170deg, #ecebe6, #dedcd5);
+  --pw-d-ink: #1e1e1e;
+  --pw-d-soft: #5c5b57;
+  --pw-d-accent: #1e1e1e;
+  --pw-d-track: rgba(0, 0, 0, 0.12);
+  --pw-d-edge: rgba(0, 0, 0, 0.2);
+  font-family: "Iowan Old Style", Georgia, serif;
+}
+
+.pw-d-eink .pw-d-time {
+  font-weight: 500;
+}
+
+.pw-d-theme {
+  --pw-d-bg: var(--background-secondary);
+  --pw-d-ink: var(--text-normal);
+  --pw-d-soft: var(--text-muted);
+  --pw-d-accent: var(--interactive-accent);
+  --pw-d-track: var(--background-modifier-border);
+  --pw-d-edge: var(--background-modifier-border);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pw-motion .pw-spin,
+  .pw-motion .pw-balance,
+  .pw-blink .pw-d-colon {
+    animation: none;
+  }
 }
 
 /* Shelf */
