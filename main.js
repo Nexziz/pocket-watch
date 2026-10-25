@@ -2,24 +2,119 @@
 
 const { Plugin, PluginSettingTab, Setting, MarkdownView, Notice } = require('obsidian');
 
-const FACES = { porcelain: 'Porcelain', slate: 'Slate', midnight: 'Midnight', digital: 'Digital' };
-const HANDS = { leaf: 'Leaf', baton: 'Baton', breguet: 'Breguet' };
+// ---------------------------------------------------------------------------
+// Options
+// ---------------------------------------------------------------------------
+
+// Each analog face picks a case, its own hour markers and an optional decoration.
+// Its colours live in styles.css under .pocket-watch-face-<key>.
+const ANALOG_FACES = {
+  porcelain: { name: 'Porcelain', case: 'polished', markers: 'batons', decor: 'minute-dots' },
+  linen: { name: 'Linen', case: 'polished', markers: 'roman', decor: 'railroad' },
+  slate: { name: 'Slate', case: 'polished', markers: 'quarters', decor: null },
+  midnight: { name: 'Midnight', case: 'polished', markers: 'dots', decor: 'stars' },
+  skeleton: { name: 'Skeleton', case: 'polished', markers: 'batons', decor: 'skeleton' },
+  bauhaus: { name: 'Bauhaus', case: 'thin', markers: 'arabic', decor: 'minute-ticks' },
+  void: { name: 'Void', case: 'thin', markers: 'minimal', decor: null },
+  field: { name: 'Field', case: 'polished', markers: 'arabic', decor: 'inner-24' },
+  sector: { name: 'Sector', case: 'polished', markers: 'arabic', decor: 'sector' },
+  diver: { name: 'Diver', case: 'dive', markers: 'lume', decor: null },
+  rose: { name: 'Rosé', case: 'polished', markers: 'batons', decor: 'minute-ticks' },
+  theme: { name: 'Match theme', case: 'thin', markers: 'batons', decor: 'minute-dots' },
+};
+
+const MARKERS = {
+  face: "Face's own",
+  batons: 'Batons',
+  arabic: 'Numerals',
+  quarters: '12, 3, 6 and 9',
+  roman: 'Roman numerals',
+  dots: 'Dots',
+  lume: 'Diver',
+  minimal: 'A single dot',
+  none: 'None',
+};
+
+const HANDS = {
+  leaf: 'Leaf',
+  baton: 'Baton',
+  breguet: 'Breguet',
+  dauphine: 'Dauphine',
+  sword: 'Sword',
+  pencil: 'Pencil',
+  arrow: 'Arrow',
+};
+
+const SECONDS = { off: 'Off', tick: 'Ticking', sweep: 'Sweeping' };
+
+const COMPLICATIONS = {
+  none: 'Nothing',
+  date: 'Date',
+  'weekday-date': 'Weekday and date',
+  month: 'Month',
+  moon: 'Moon phase',
+  focus: "Today's time",
+  words: "Today's words",
+  streak: 'Streak',
+  goal: 'Goal dial',
+  seconds: 'Small seconds',
+};
+
+// The four places on the dial that can hold a complication, and the hour they sit at.
+const SLOTS = [
+  { key: 'slotTop', name: "12 o'clock", hour: 0 },
+  { key: 'slotRight', name: "3 o'clock", hour: 3 },
+  { key: 'slotBottom', name: "6 o'clock", hour: 6 },
+  { key: 'slotLeft', name: "9 o'clock", hour: 9 },
+];
+
+const DIGITAL_STYLES = {
+  slate: 'Slate',
+  lcd: 'LCD',
+  nixie: 'Nixie',
+  flip: 'Flip',
+  eink: 'E-ink',
+  theme: 'Match theme',
+};
+
+const DIGITAL_LAYOUTS = { wide: 'Wide', slim: 'Slim', tall: 'Tall', compact: 'Compact' };
+
+const CLOCKS = { system: 'Follow system', 12: '12-hour', 24: '24-hour' };
 
 const DEFAULT_SETTINGS = {
   idleMinutes: 30,
   onlyWhenFocused: true,
   discardIdleTime: false,
   weekStartsMonday: true,
-  showWatch: true,
-  face: 'porcelain',
-  hands: 'leaf',
-  watchSize: 120,
-  showSeconds: false,
-  showDate: true,
-  showMoon: true,
-  showFocus: true,
   dailyGoalMinutes: 120,
-  // The pane (tab group) the watch is snapped to, and which corner: { group, corner }.
+
+  showWatch: true,
+  watchType: 'analog',
+  watchSize: 120,
+
+  face: 'porcelain',
+  markers: 'face',
+  hands: 'leaf',
+  seconds: 'off',
+  slotTop: 'none',
+  slotRight: 'weekday-date',
+  slotBottom: 'moon',
+  slotLeft: 'none',
+  goalRing: true,
+  motion: true,
+
+  digitalStyle: 'slate',
+  digitalLayout: 'wide',
+  clock: 'system',
+  digitalSeconds: false,
+  blinkColon: false,
+  digitalDate: true,
+  digitalMoon: true,
+  digitalFocus: true,
+  digitalBar: true,
+
+  // Where the watch is snapped: { group, spot } for a pane, or { window: true, spot }.
+  // A spot is a row (t, m, b) and a column (l, c, r), such as "br" for bottom right.
   watchAnchor: null,
   // Where the watch sits when dropped freely (Alt), as fractions of the free space
   // to its left and above it, so it keeps its spot when the window is resized.
@@ -28,9 +123,16 @@ const DEFAULT_SETTINGS = {
 
 const DEFAULT_WATCH_POS = { fx: 0.97, fy: 0.9 };
 const SNAP_INSET = 14;
+const SPOTS = ['tl', 'tc', 'tr', 'ml', 'mr', 'bl', 'bc', 'br'];
+const MIN_SIZE = 64;
+const MAX_SIZE = 260;
 
 // A day counts toward the streak and "active days" once it has at least a minute.
 const ACTIVE_DAY_MS = 60 * 1000;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 // Chinese, Japanese and Korean have no spaces, so each character counts as one word,
 // the same way Obsidian's own word count does it.
@@ -80,8 +182,25 @@ function fmtNum(n) {
   return n.toLocaleString();
 }
 
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
 function clamp(v, lo, hi) {
   return Math.min(Math.max(v, lo), Math.max(lo, hi));
+}
+
+function uses24h(clock) {
+  if (clock === '24') return true;
+  if (clock === '12') return false;
+  const cycle = new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hourCycle;
+  return cycle === 'h23' || cycle === 'h24';
+}
+
+function fmtTime(date, h24) {
+  const h = date.getHours();
+  const mm = pad2(date.getMinutes());
+  return h24 ? `${pad2(h)}:${mm}` : `${h % 12 || 12}:${mm} ${h < 12 ? 'AM' : 'PM'}`;
 }
 
 // Point on the dial at radius r and angle a (degrees clockwise from 12), on a 200 x 200 face.
@@ -112,6 +231,30 @@ function moonPath(cx, cy, r, p) {
   return `M ${cx} ${cy - r} A ${r} ${r} 0 0 ${outer} ${cx} ${cy + r} A ${rx} ${r} 0 0 ${inner} ${cx} ${cy - r} Z`;
 }
 
+function circlePath(cx, cy, r) {
+  return `M ${cx - r} ${cy} a ${r} ${r} 0 1 0 ${2 * r} 0 a ${r} ${r} 0 1 0 ${-2 * r} 0 Z`;
+}
+
+// A toothed wheel with a centre hole and five windows, drawn with the even-odd rule.
+function gearPath(cx, cy, r, teeth) {
+  const inner = r - 2.6;
+  const step = (2 * Math.PI) / teeth;
+  const at = (rr, a) => `${(cx + rr * Math.cos(a)).toFixed(2)} ${(cy + rr * Math.sin(a)).toFixed(2)}`;
+  const pts = [];
+  for (let i = 0; i < teeth; i++) {
+    const a = i * step;
+    pts.push(at(inner, a), at(r, a + step * 0.2), at(r, a + step * 0.5), at(inner, a + step * 0.7));
+  }
+  let d = `M ${pts.join(' L ')} Z ${circlePath(cx, cy, r * 0.14)}`;
+  for (let i = 0; i < 5; i++) {
+    const a = (i * 2 * Math.PI) / 5;
+    d += ` ${circlePath(cx + r * 0.52 * Math.cos(a), cy + r * 0.52 * Math.sin(a), r * 0.2)}`;
+  }
+  return d;
+}
+
+const ROMAN = ['XII', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI'];
+
 const EMPTY_DAY = Object.freeze({ ms: 0, written: 0, deleted: 0 });
 
 const STATE_LABELS = {
@@ -121,10 +264,32 @@ const STATE_LABELS = {
   paused: 'Paused',
 };
 
+// Settings saved by earlier versions, turned into today's options.
+function migrateSettings(s) {
+  if (!s) return {};
+  if (s.face === 'digital') {
+    s.watchType = 'digital';
+    s.face = 'porcelain';
+  }
+  if ('showSeconds' in s) s.seconds = s.showSeconds ? 'tick' : 'off';
+  if ('showDate' in s) s.slotRight = s.showDate ? 'weekday-date' : 'none';
+  if ('showMoon' in s) s.slotBottom = s.showMoon ? 'moon' : 'none';
+  if ('showFocus' in s) s.goalRing = s.showFocus;
+  for (const k of ['showSeconds', 'showDate', 'showMoon', 'showFocus', 'watchStyle']) delete s[k];
+  if (s.watchAnchor && s.watchAnchor.corner) {
+    s.watchAnchor = { group: s.watchAnchor.group, spot: s.watchAnchor.corner };
+  }
+  return s;
+}
+
+// ---------------------------------------------------------------------------
+// Plugin
+// ---------------------------------------------------------------------------
+
 module.exports = class PocketWatchPlugin extends Plugin {
   async onload() {
     const saved = (await this.loadData()) || {};
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, saved.settings);
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, migrateSettings(saved.settings));
     this.days = saved.days || {};
 
     this.paused = false;
@@ -145,6 +310,11 @@ module.exports = class PocketWatchPlugin extends Plugin {
     this.addCommand({ id: 'toggle-shelf', name: 'Open or close the stats shelf', callback: () => this.watch && this.watch.toggleShelf() });
     this.addCommand({ id: 'toggle-watch', name: 'Show or hide the watch', callback: () => this.updateWatch({ showWatch: !this.settings.showWatch }) });
     this.addCommand({ id: 'toggle-pause', name: 'Pause or resume the timer', callback: () => this.togglePause() });
+    this.addCommand({
+      id: 'toggle-type',
+      name: 'Switch between analog and digital',
+      callback: () => this.updateWatch({ watchType: this.settings.watchType === 'digital' ? 'analog' : 'digital' }),
+    });
 
     this.statusEl = this.addStatusBarItem();
     this.statusEl.addClass('pocket-watch-status', 'mod-clickable');
@@ -345,8 +515,19 @@ module.exports = class PocketWatchPlugin extends Plugin {
     return sum;
   }
 
+  streak() {
+    // Today not counting yet shouldn't break a streak that ran through yesterday.
+    let i = this.getDay(dayKey(daysAgo(0))).ms >= ACTIVE_DAY_MS ? 0 : 1;
+    let n = 0;
+    while (this.getDay(dayKey(daysAgo(i))).ms >= ACTIVE_DAY_MS) {
+      n++;
+      i++;
+    }
+    return n;
+  }
+
   stats() {
-    const s = { ms: 0, written: 0, deleted: 0, activeDays: 0, bestKey: null, bestMs: 0, streak: 0 };
+    const s = { ms: 0, written: 0, deleted: 0, activeDays: 0, bestKey: null, bestMs: 0, streak: this.streak() };
     for (const [key, d] of Object.entries(this.days)) {
       s.ms += d.ms;
       s.written += d.written;
@@ -357,19 +538,18 @@ module.exports = class PocketWatchPlugin extends Plugin {
         s.bestKey = key;
       }
     }
-    // Today not counting yet shouldn't break a streak that ran through yesterday.
-    let i = this.getDay(dayKey(daysAgo(0))).ms >= ACTIVE_DAY_MS ? 0 : 1;
-    while (this.getDay(dayKey(daysAgo(i))).ms >= ACTIVE_DAY_MS) {
-      s.streak++;
-      i++;
-    }
     return s;
   }
 };
 
-// The watch that sits on top of your panes. It shows the time of day; today's time in
-// Obsidian is the ring on the bezel and the small text on the dial. Drag it onto a pane
-// and it snaps to that pane's nearest corner; click it to open the shelf.
+// ---------------------------------------------------------------------------
+// The watch
+// ---------------------------------------------------------------------------
+
+// The watch that sits on top of your panes. It shows the time of day; your time in
+// Obsidian today can sit on the bezel and in the dial's complications. Drag it onto a
+// pane and it snaps to the nearest corner or edge; drag its handle to resize it; click
+// it to open the shelf.
 class FloatingWatch {
   constructor(plugin) {
     this.plugin = plugin;
@@ -378,13 +558,17 @@ class FloatingWatch {
     this.dashboard = null;
     this.ghostEl = null;
     this.dragging = false;
+    this.resizing = false;
     this.built = '';
     this.parts = {};
     this.anchorEl = null;
     this.anchorId = null;
     this.el = document.body.createDiv('pocket-watch-float');
     this.faceEl = this.el.createDiv('pocket-watch-face');
+    this.gripEl = this.el.createDiv({ cls: 'pocket-watch-grip', attr: { 'aria-label': 'Drag to resize' } });
     this.el.addEventListener('pointerdown', (e) => this.onPointerDown(e));
+    this.gripEl.addEventListener('pointerdown', (e) => this.onResizeStart(e));
+    this.el.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
     // Place it again whenever its size changes: when the plugin's styles arrive, or the face changes.
     this.resizeObserver = new ResizeObserver(() => this.place());
     this.resizeObserver.observe(this.el);
@@ -393,6 +577,7 @@ class FloatingWatch {
 
   destroy() {
     this.resizeObserver.disconnect();
+    window.clearTimeout(this.saveTimer);
     this.closeShelf();
     this.removeGhost();
     this.el.remove();
@@ -409,11 +594,15 @@ class FloatingWatch {
   }
 
   // Called every second. The face is only rebuilt when an option or the date changes;
-  // otherwise just the hands, the ring and the text move.
+  // otherwise just the hands and the live readings move.
   refresh() {
     const s = this.plugin.settings;
     const now = new Date();
-    const key = [s.face, s.hands, s.watchSize, s.showSeconds, s.showDate, s.showMoon, s.showFocus, dayKey(now)].join('|');
+    const key = JSON.stringify([
+      s.watchType, s.watchSize, s.face, s.markers, s.hands, s.seconds, s.slotTop, s.slotRight, s.slotBottom, s.slotLeft,
+      s.goalRing, s.motion, s.digitalStyle, s.digitalLayout, s.clock, s.digitalSeconds, s.blinkColon,
+      s.digitalDate, s.digitalMoon, s.digitalFocus, s.digitalBar, dayKey(now),
+    ]);
     if (key !== this.built) {
       this.build(now);
       this.built = key;
@@ -426,48 +615,79 @@ class FloatingWatch {
   build(now) {
     const s = this.plugin.settings;
     this.faceEl.empty();
-    this.parts = {};
-    this.el.setAttr('data-face', s.face);
-    if (s.face === 'digital') this.buildDigital(now);
+    this.parts = { live: [] };
+    this.h24 = uses24h(s.clock);
+    this.el.setAttr('data-type', s.watchType);
+    if (s.watchType === 'digital') this.buildDigital(now);
     else this.buildAnalog(now);
   }
 
   update(now) {
     const p = this.plugin;
     const s = p.settings;
-    const ms = p.getDay(dayKey(now)).ms;
+    const day = p.getDay(dayKey(now));
     const parts = this.parts;
     const h = now.getHours();
     const m = now.getMinutes();
     const sec = now.getSeconds();
-    const time = now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    const goal = Math.min(1, day.ms / (Math.max(1, s.dailyGoalMinutes) * 60000));
 
     this.el.setAttr('data-state', p.state);
-    const date = now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
-    const label = [time, date];
-    if (s.showMoon) label.push(moonName(moonPhase(now)));
-    label.push(`${fmtShort(ms)} in Obsidian today (${STATE_LABELS[p.state].toLowerCase()})`);
-    this.el.setAttr('aria-label', label.join('\n'));
+    const label = [
+      fmtTime(now, this.h24),
+      now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' }),
+      moonName(moonPhase(now)),
+      `${fmtShort(day.ms)} in Obsidian today (${STATE_LABELS[p.state].toLowerCase()})`,
+    ].join('\n');
+    if (this.el.getAttribute('aria-label') !== label) this.el.setAttr('aria-label', label);
 
-    const goal = Math.min(1, ms / (Math.max(1, s.dailyGoalMinutes) * 60000));
     if (parts.hour) {
-      rotate(parts.hour, ((h % 12) + m / 60) * 30);
-      rotate(parts.minute, m * 6 + sec * 0.1);
-      if (parts.second) rotate(parts.second, sec * 6);
+      turn(parts.hour, ((h % 12) + m / 60) * 30);
+      turn(parts.minute, m * 6 + sec * 0.1);
+      if (parts.second && s.seconds === 'tick') turn(parts.second, sec * 6);
       if (parts.ring) setIfChanged(parts.ring, 'stroke-dasharray', `${(goal * 100).toFixed(2)} 100`);
     }
-    if (parts.time && parts.time.textContent !== time) parts.time.textContent = time;
-    if (parts.focusText && parts.focusText.textContent !== fmtShort(ms)) parts.focusText.textContent = fmtShort(ms);
+    for (const live of parts.live) {
+      if (live.type === 'focus') setText(live.el, fmtShort(day.ms));
+      else if (live.type === 'words') setText(live.el, fmtNum(day.written));
+      else if (live.type === 'streak') setText(live.el, `${p.streak()}d`);
+      else if (live.type === 'goal') setIfChanged(live.el, 'stroke-dasharray', `${(goal * 100).toFixed(2)} 100`);
+      else if (live.type === 'subsec' && s.seconds !== 'sweep') turn(live.el, sec * 6);
+    }
+
+    const d = parts.digital;
+    if (d) {
+      setDigits(d.hh, this.h24 ? pad2(h) : String(h % 12 || 12));
+      setDigits(d.mm, pad2(m));
+      if (d.ss) setDigits(d.ss, pad2(sec));
+      if (d.ampm) setText(d.ampm, h < 12 ? 'AM' : 'PM');
+    }
+    if (parts.focusText) setText(parts.focusText, fmtShort(day.ms));
     if (parts.fill) parts.fill.style.width = `${goal * 100}%`;
   }
 
+  // --- Analog -------------------------------------------------------------
+
   buildAnalog(now) {
     const s = this.plugin.settings;
+    const faceKey = ANALOG_FACES[s.face] ? s.face : 'porcelain';
+    const face = ANALOG_FACES[faceKey];
+    const R = face.case === 'thin' ? 95 : face.case === 'dive' ? 80 : 89.5;
+    const k = R / 89.5;
+    const used = {};
+    for (const slot of SLOTS) used[slot.hour] = s[slot.key] !== 'none';
+
     const svg = this.faceEl.createSvg('svg', {
       attr: { viewBox: '0 0 200 200', width: s.watchSize, height: s.watchSize },
-      cls: ['pocket-watch-svg', `pocket-watch-face-${s.face}`],
+      cls: ['pocket-watch-svg', `pocket-watch-face-${faceKey}`, `pw-case-${face.case}`],
     });
+    if (s.motion) svg.addClass('pw-motion');
     const add = (parent, tag, attr, cls) => parent.createSvg(tag, { attr, cls });
+    const text = (parent, x, y, size, value, cls) => {
+      const t = add(parent, 'text', { x, y, 'font-size': size }, cls);
+      t.textContent = value;
+      return t;
+    };
 
     const defs = add(svg, 'defs');
     const bezel = add(defs, 'linearGradient', { id: 'pocket-watch-bezel', x1: 0, y1: 0, x2: 1, y2: 1 });
@@ -478,138 +698,377 @@ class FloatingWatch {
     add(dial, 'stop', { offset: '0%' }, 'pw-dial-a');
     add(dial, 'stop', { offset: '100%' }, 'pw-dial-b');
 
+    // Case
     add(svg, 'circle', { cx: 100, cy: 100, r: 99, fill: 'url(#pocket-watch-bezel)' }, 'pw-bezel');
-    if (s.showFocus) {
-      add(svg, 'circle', { cx: 100, cy: 100, r: 94.5 }, 'pw-ring-track');
+    if (face.case === 'dive') this.drawDiveBezel(svg, add, text);
+    if (s.goalRing) {
+      const [ringR, ringW] = face.case === 'thin' ? [97, 2] : face.case === 'dive' ? [81.2, 2] : [94.3, 3];
+      add(svg, 'circle', { cx: 100, cy: 100, r: ringR, 'stroke-width': ringW }, 'pw-ring-track');
       this.parts.ring = add(svg, 'circle', {
-        cx: 100, cy: 100, r: 94.5, pathLength: 100, transform: 'rotate(-90 100 100)', 'stroke-dasharray': '0 100',
+        cx: 100, cy: 100, r: ringR, 'stroke-width': ringW, pathLength: 100, transform: 'rotate(-90 100 100)', 'stroke-dasharray': '0 100',
       }, 'pw-ring');
     }
-    add(svg, 'circle', { cx: 100, cy: 100, r: 89.5, fill: 'url(#pocket-watch-dial)' }, 'pw-dial');
+    add(svg, 'circle', { cx: 100, cy: 100, r: R, fill: 'url(#pocket-watch-dial)' }, 'pw-dial');
 
-    if (s.face === 'slate') this.drawSlate(svg, add);
-    else if (s.face === 'midnight') this.drawMidnight(svg, add);
-    else this.drawPorcelain(svg, add);
+    // Dial
+    if (face.decor) this.drawDecor(svg, add, text, face.decor, R, k, used);
+    const markers = s.markers === 'face' || !MARKERS[s.markers] ? face.markers : s.markers;
+    this.drawMarkers(svg, add, text, markers, R, k, used);
 
-    if (s.showDate) {
-      const weekday = now.toLocaleDateString(undefined, { weekday: 'short' }).replace('.', '').slice(0, 3).toUpperCase();
-      add(svg, 'rect', { x: 121, y: 91, width: 44, height: 18, rx: 3 }, 'pw-date-bg');
-      add(svg, 'text', { x: 143, y: 100.5 }, 'pw-date').textContent = `${weekday} ${now.getDate()}`;
+    for (const slot of SLOTS) {
+      const type = s[slot.key];
+      if (!type || type === 'none' || !COMPLICATIONS[type]) continue;
+      const [cx, cy] = polar(R * 0.47, slot.hour * 30);
+      this.drawComplication(svg, add, text, type, cx, cy, k, now);
     }
-    if (s.showMoon) this.drawMoon(svg, add, now);
-    if (s.showFocus) this.parts.focusText = add(svg, 'text', { x: 100, y: 66 }, 'pw-focus-text');
 
+    // Hands
     const hands = add(svg, 'g', {}, 'pw-hands');
-    this.parts.hour = add(hands, 'g', {}, 'pw-hand');
-    this.drawHand(this.parts.hour, add, s.hands, 'hour');
-    this.parts.minute = add(hands, 'g', {}, 'pw-hand');
-    this.drawHand(this.parts.minute, add, s.hands, 'minute');
-    if (s.showSeconds) {
-      this.parts.second = add(hands, 'g', {}, 'pw-second');
-      add(this.parts.second, 'line', { x1: 0, y1: 20, x2: 0, y2: -80 });
-      add(this.parts.second, 'circle', { cx: 0, cy: 15, r: 2.6 });
+    const hand = (kind) => {
+      const turnEl = add(hands, 'g', {}, 'pw-turn');
+      const body = add(turnEl, 'g', { transform: 'translate(100 100)' }, kind === 'second' ? 'pw-second' : 'pw-hand');
+      return [turnEl, body];
+    };
+    const style = HANDS[s.hands] ? s.hands : 'leaf';
+    let body;
+    [this.parts.hour, body] = hand('hour');
+    this.drawHand(body, add, style, R * 0.52, k, true);
+    [this.parts.minute, body] = hand('minute');
+    this.drawHand(body, add, style, R * 0.8, k, false);
+    if (s.seconds !== 'off') {
+      [this.parts.second, body] = hand('second');
+      add(body, 'line', { x1: 0, y1: 18 * k, x2: 0, y2: -R * 0.88 });
+      add(body, 'circle', { cx: 0, cy: 13 * k, r: 2.6 * k });
+      add(body, 'circle', { cx: 0, cy: 0, r: 2.6 * k });
+      if (s.seconds === 'sweep') sweep(this.parts.second, now);
     }
-    add(svg, 'circle', { cx: 100, cy: 100, r: 4.6 }, 'pw-cap');
-    add(svg, 'circle', { cx: 100, cy: 100, r: 1.6 }, 'pw-cap-dot');
+    add(svg, 'circle', { cx: 100, cy: 100, r: 4.6 * k }, 'pw-cap');
+    add(svg, 'circle', { cx: 100, cy: 100, r: 1.6 * k }, 'pw-cap-dot');
   }
 
-  // Ivory dial, thin batons and a dotted minute track.
-  drawPorcelain(svg, add) {
+  // A rotating diver's bezel: a dark insert with a 60 minute scale and a marker at 12.
+  drawDiveBezel(svg, add, text) {
+    add(svg, 'circle', { cx: 100, cy: 100, r: 89.6, 'stroke-width': 15.6 }, 'pw-insert');
     for (let i = 0; i < 60; i++) {
-      if (i % 5 === 0) continue;
-      const [x, y] = polar(83, i * 6);
-      add(svg, 'circle', { cx: x, cy: y, r: 0.9 }, 'pw-minute-dot');
+      if (i % 10 === 0) continue;
+      const [x1, y1] = polar(96, i * 6);
+      const [x2, y2] = polar(i < 15 || i % 5 === 0 ? 91.5 : 94, i * 6);
+      add(svg, 'line', { x1, y1, x2, y2 }, i % 5 === 0 ? ['pw-insert-tick', 'is-major'] : 'pw-insert-tick');
     }
-    for (let i = 1; i < 12; i++) {
-      const [x1, y1] = polar(84, i * 30);
-      const [x2, y2] = polar(i % 3 === 0 ? 67 : 72, i * 30);
-      add(svg, 'line', { x1, y1, x2, y2 }, i % 3 === 0 ? ['pw-index', 'is-major'] : 'pw-index');
+    for (const n of [10, 20, 30, 40, 50]) {
+      const [x, y] = polar(89.4, n * 6);
+      text(svg, x, y, 9.5, String(n), 'pw-insert-num');
     }
-    for (const dx of [-3.6, 3.6]) {
-      add(svg, 'line', { x1: 100 + dx, y1: 16, x2: 100 + dx, y2: 33 }, ['pw-index', 'is-major']);
+    add(svg, 'path', { d: 'M 94 4.4 L 106 4.4 L 100 15.6 Z' }, 'pw-insert-pip');
+    add(svg, 'circle', { cx: 100, cy: 8.6, r: 1.7 }, 'pw-insert-pearl');
+  }
+
+  drawDecor(svg, add, text, decor, R, k, used) {
+    if (decor === 'minute-dots') {
+      for (let i = 0; i < 60; i++) {
+        if (i % 5 === 0) continue;
+        const [x, y] = polar(R - 6.5, i * 6);
+        add(svg, 'circle', { cx: x, cy: y, r: 0.9 }, 'pw-minute-dot');
+      }
+    } else if (decor === 'minute-ticks') {
+      for (let i = 0; i < 60; i++) {
+        const [x1, y1] = polar(R - 2.5, i * 6);
+        const [x2, y2] = polar(R - (i % 5 ? 6 : 8), i * 6);
+        add(svg, 'line', { x1, y1, x2, y2 }, 'pw-tick');
+      }
+    } else if (decor === 'railroad') {
+      add(svg, 'circle', { cx: 100, cy: 100, r: R - 3.5 }, 'pw-track');
+      add(svg, 'circle', { cx: 100, cy: 100, r: R - 8.5 }, 'pw-track');
+      for (let i = 0; i < 60; i++) {
+        const [x1, y1] = polar(R - 3.5, i * 6);
+        const [x2, y2] = polar(R - 8.5, i * 6);
+        add(svg, 'line', { x1, y1, x2, y2 }, i % 5 ? 'pw-tick' : ['pw-tick', 'is-hour']);
+      }
+    } else if (decor === 'stars') {
+      let seed = 11;
+      const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      for (let i = 0; i < 36; i++) {
+        const [x, y] = polar(18 + rand() * (R - 28), rand() * 360);
+        add(svg, 'circle', { cx: x, cy: y, r: 0.35 + rand() * 0.75, opacity: 0.2 + rand() * 0.6 }, 'pw-star');
+      }
+      add(svg, 'circle', { cx: 100, cy: 100, r: R - 5 }, 'pw-track');
+    } else if (decor === 'sector') {
+      add(svg, 'circle', { cx: 100, cy: 100, r: R * 0.63, 'stroke-width': R * 0.2 }, 'pw-sector-band');
+      add(svg, 'circle', { cx: 100, cy: 100, r: R * 0.42 }, 'pw-sector-line');
+      add(svg, 'circle', { cx: 100, cy: 100, r: R * 0.84 }, 'pw-sector-line');
+      add(svg, 'line', { x1: 100, y1: 100 - R * 0.84, x2: 100, y2: 100 + R * 0.84 }, 'pw-sector-line');
+      add(svg, 'line', { x1: 100 - R * 0.84, y1: 100, x2: 100 + R * 0.84, y2: 100 }, 'pw-sector-line');
+      for (let i = 0; i < 60; i++) {
+        const [x1, y1] = polar(R - 2.5, i * 6);
+        const [x2, y2] = polar(R - (i % 5 ? 5.5 : 8), i * 6);
+        add(svg, 'line', { x1, y1, x2, y2 }, 'pw-tick');
+      }
+    } else if (decor === 'inner-24') {
+      for (let i = 0; i < 60; i++) {
+        const [x1, y1] = polar(R - 2.5, i * 6);
+        const [x2, y2] = polar(R - (i % 5 ? 5.5 : 8), i * 6);
+        add(svg, 'line', { x1, y1, x2, y2 }, 'pw-tick');
+      }
+      for (let i = 0; i < 12; i++) {
+        if (used[i]) continue;
+        const [x, y] = polar(R - 33, i * 30);
+        text(svg, x, y, 7.5 * k, String(i === 0 ? 24 : i + 12), 'pw-numeral-24');
+      }
+    } else if (decor === 'skeleton') {
+      this.drawMovement(svg, add, R);
     }
   }
 
-  // Charcoal dial with sand-coloured numerals; the date and moon take the place of 3 and 6.
-  drawSlate(svg, add) {
-    const s = this.plugin.settings;
-    for (let i = 0; i < 60; i++) {
-      const [x1, y1] = polar(85, i * 6);
-      const [x2, y2] = polar(i % 5 ? 81.5 : 76, i * 6);
-      add(svg, 'line', { x1, y1, x2, y2 }, i % 5 ? 'pw-tick' : ['pw-tick', 'is-hour']);
+  // The visible movement behind a skeleton dial: wheels, bridges, jewels and a balance wheel.
+  drawMovement(svg, add, R) {
+    const spin = (el, cx, cy, seconds, reverse) => {
+      el.style.transformOrigin = `${cx}px ${cy}px`;
+      el.style.animationDuration = `${seconds}s`;
+      if (reverse) el.style.animationDirection = 'reverse';
+      el.addClass('pw-spin');
+    };
+    const gears = [
+      [127, 125, 23, 30, 48, false],
+      [91, 133, 14.5, 19, 30, true],
+      [137, 91, 11.5, 15, 24, true],
+      [100, 100, 12, 16, 60, false],
+    ];
+    for (const [cx, cy, r, teeth, secs, rev] of gears) {
+      const g = add(svg, 'g', {}, 'pw-gear-wrap');
+      add(g, 'path', { d: gearPath(cx, cy, r, teeth), 'fill-rule': 'evenodd' }, 'pw-gear');
+      spin(g, cx, cy, secs, rev);
     }
-    for (const [i, n] of [[0, '12'], [3, '3'], [6, '6'], [9, '9']]) {
-      if ((i === 3 && s.showDate) || (i === 6 && s.showMoon)) continue;
-      const [x, y] = polar(62, i * 30);
-      add(svg, 'text', { x, y }, 'pw-numeral').textContent = n;
+    add(svg, 'rect', { x: 78, y: 118, width: 66, height: 9, rx: 4.5, transform: 'rotate(-14 111 122)' }, 'pw-bridge');
+    add(svg, 'rect', { x: 52, y: 64, width: 46, height: 8, rx: 4, transform: 'rotate(32 75 68)' }, 'pw-bridge');
+    // Balance wheel with a hairspring, swinging gently.
+    const bx = 70;
+    const by = 72;
+    const balance = add(svg, 'g', {}, 'pw-balance');
+    balance.style.transformOrigin = `${bx}px ${by}px`;
+    add(balance, 'circle', { cx: bx, cy: by, r: 15 }, 'pw-balance-rim');
+    for (let i = 0; i < 3; i++) {
+      const a = (i * 2 * Math.PI) / 3;
+      add(balance, 'line', { x1: bx, y1: by, x2: bx + 15 * Math.cos(a), y2: by + 15 * Math.sin(a) }, 'pw-balance-spoke');
+    }
+    let spiral = `M ${bx} ${by}`;
+    for (let t = 0; t <= 4 * Math.PI; t += 0.3) spiral += ` L ${(bx + 1.6 * t * Math.cos(t)).toFixed(2)} ${(by + 1.6 * t * Math.sin(t)).toFixed(2)}`;
+    add(svg, 'path', { d: spiral }, 'pw-hairspring');
+    for (const [x, y] of [[127, 125], [91, 133], [137, 91], [bx, by], [62, 58], [139, 117]]) {
+      add(svg, 'circle', { cx: x, cy: y, r: 2.3 }, 'pw-jewel');
+    }
+    for (const [x, y] of [[84, 128], [88, 78]]) {
+      add(svg, 'circle', { cx: x, cy: y, r: 2.6 }, 'pw-screw');
+      add(svg, 'line', { x1: x - 1.8, y1: y - 1.2, x2: x + 1.8, y2: y + 1.2 }, 'pw-screw-slot');
+    }
+    // The chapter ring that carries the hour markers.
+    add(svg, 'circle', { cx: 100, cy: 100, r: R - 8.5, 'stroke-width': 17 }, 'pw-chapter');
+  }
+
+  drawMarkers(svg, add, text, markers, R, k, used) {
+    if (markers === 'batons') {
+      for (let i = 1; i < 12; i++) {
+        const [x1, y1] = polar(R - 5.5, i * 30);
+        const [x2, y2] = polar(R - (i % 3 === 0 ? 22 : 17), i * 30);
+        add(svg, 'line', { x1, y1, x2, y2 }, i % 3 === 0 ? ['pw-index', 'is-major'] : 'pw-index');
+      }
+      for (const dx of [-3.6, 3.6]) {
+        add(svg, 'line', { x1: 100 + dx * k, y1: 100 - R + 5.5, x2: 100 + dx * k, y2: 100 - R + 22 }, ['pw-index', 'is-major']);
+      }
+    } else if (markers === 'arabic') {
+      for (let i = 0; i < 12; i++) {
+        const [x, y] = polar(R - 16.5, i * 30);
+        text(svg, x, y, 14.5 * k, String(i === 0 ? 12 : i), 'pw-numeral');
+      }
+    } else if (markers === 'quarters') {
+      for (let i = 0; i < 60; i++) {
+        const [x1, y1] = polar(R - 4.5, i * 6);
+        const [x2, y2] = polar(i % 5 ? R - 8 : R - 13.5, i * 6);
+        add(svg, 'line', { x1, y1, x2, y2 }, i % 5 ? 'pw-tick' : ['pw-tick', 'is-hour']);
+      }
+      for (const i of [0, 3, 6, 9]) {
+        if (used[i]) continue;
+        const [x, y] = polar(R - 27.5, i * 30);
+        text(svg, x, y, 21 * k, String(i === 0 ? 12 : i), 'pw-numeral');
+      }
+    } else if (markers === 'roman') {
+      for (let i = 0; i < 12; i++) {
+        const [x, y] = polar(R - 18.5, i * 30);
+        text(svg, x, y, 12 * k, ROMAN[i], ['pw-numeral', 'is-roman']);
+      }
+    } else if (markers === 'dots') {
+      for (let i = 0; i < 12; i++) {
+        const [x, y] = polar(R - 12.5, i * 30);
+        add(svg, 'circle', { cx: x, cy: y, r: (i === 0 ? 4 : i % 3 === 0 ? 3 : 2.1) * k }, 'pw-dot-index');
+      }
+    } else if (markers === 'lume') {
+      for (let i = 1; i < 12; i++) {
+        if (i % 3 === 0) {
+          add(svg, 'rect', { x: 100 - 2.6 * k, y: 100 - R + 4, width: 5.2 * k, height: 14 * k, rx: 1, transform: `rotate(${i * 30} 100 100)` }, 'pw-lume');
+        } else {
+          const [x, y] = polar(R - 9.5 * k, i * 30);
+          add(svg, 'circle', { cx: x, cy: y, r: 4.2 * k }, 'pw-lume');
+        }
+      }
+      const top = 100 - R + 4;
+      add(svg, 'path', { d: `M ${100 - 7 * k} ${top} L ${100 + 7 * k} ${top} L 100 ${top + 14 * k} Z` }, 'pw-lume');
+    } else if (markers === 'minimal') {
+      add(svg, 'circle', { cx: 100, cy: 100 - R + 12 * k, r: 3.6 * k }, 'pw-dot-index');
     }
   }
 
-  // Deep blue dial with a scatter of faint stars and round indices.
-  drawMidnight(svg, add) {
-    let seed = 11;
-    const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    for (let i = 0; i < 36; i++) {
-      const [x, y] = polar(18 + rand() * 62, rand() * 360);
-      add(svg, 'circle', { cx: x, cy: y, r: 0.35 + rand() * 0.75, opacity: 0.2 + rand() * 0.6 }, 'pw-star');
-    }
-    add(svg, 'circle', { cx: 100, cy: 100, r: 84.5 }, 'pw-track');
-    for (let i = 0; i < 12; i++) {
-      const [x, y] = polar(77, i * 30);
-      add(svg, 'circle', { cx: x, cy: y, r: i === 0 ? 4 : i % 3 === 0 ? 3 : 2.1 }, 'pw-dot-index');
-    }
-  }
+  // Something useful at 12, 3, 6 or 9 o'clock.
+  drawComplication(svg, add, text, type, cx, cy, k, now) {
+    const live = this.parts.live;
+    const windowed = (w, value) => {
+      add(svg, 'rect', { x: cx - (w * k) / 2, y: cy - 8.5 * k, width: w * k, height: 17 * k, rx: 2.5 * k }, 'pw-date-bg');
+      text(svg, cx, cy + 0.4 * k, 11 * k, value, 'pw-date');
+    };
+    const reading = (caption, liveType) => {
+      const value = text(svg, cx, cy - 2 * k, 11.5 * k, '', 'pw-reading');
+      text(svg, cx, cy + 8 * k, 5.6 * k, caption, 'pw-caption');
+      live.push({ type: liveType, el: value });
+    };
+    const subdial = () => {
+      add(svg, 'circle', { cx, cy, r: 17 * k }, 'pw-subdial');
+      for (let i = 0; i < 12; i++) {
+        const [x1, y1] = [cx + 15.5 * k * Math.sin((i * Math.PI) / 6), cy - 15.5 * k * Math.cos((i * Math.PI) / 6)];
+        const len = i % 3 === 0 ? 3.4 : 2;
+        const [x2, y2] = [cx + (15.5 - len) * k * Math.sin((i * Math.PI) / 6), cy - (15.5 - len) * k * Math.cos((i * Math.PI) / 6)];
+        add(svg, 'line', { x1, y1, x2, y2 }, 'pw-subdial-tick');
+      }
+    };
 
-  // A small window at 6 o'clock with tonight's moon.
-  drawMoon(svg, add, now) {
-    const cx = 100;
-    const cy = 141;
-    add(svg, 'circle', { cx, cy, r: 20.5 }, 'pw-moon-frame');
-    add(svg, 'circle', { cx, cy, r: 19 }, 'pw-moon-sky');
-    for (const [x, y, r] of [[-12, -6, 0.7], [11, -9, 0.55], [13, 6, 0.6], [-9, 10, 0.5], [3, -14, 0.45]]) {
-      add(svg, 'circle', { cx: cx + x, cy: cy + y, r }, 'pw-moon-star');
+    if (type === 'date') {
+      windowed(22, String(now.getDate()));
+    } else if (type === 'weekday-date') {
+      const weekday = now.toLocaleDateString(undefined, { weekday: 'short' }).replace('.', '').slice(0, 3).toUpperCase();
+      windowed(44, `${weekday} ${now.getDate()}`);
+    } else if (type === 'month') {
+      windowed(30, now.toLocaleDateString(undefined, { month: 'short' }).replace('.', '').slice(0, 3).toUpperCase());
+    } else if (type === 'moon') {
+      add(svg, 'circle', { cx, cy, r: 20.5 * k }, 'pw-moon-frame');
+      add(svg, 'circle', { cx, cy, r: 19 * k }, 'pw-moon-sky');
+      for (const [x, y, r] of [[-12, -6, 0.7], [11, -9, 0.55], [13, 6, 0.6], [-9, 10, 0.5], [3, -14, 0.45]]) {
+        add(svg, 'circle', { cx: cx + x * k, cy: cy + y * k, r: r * k }, 'pw-moon-star');
+      }
+      add(svg, 'circle', { cx, cy, r: 9.5 * k }, 'pw-moon-dark');
+      add(svg, 'path', { d: moonPath(cx, cy, 9.5 * k, moonPhase(now)) }, 'pw-moon-lit');
+    } else if (type === 'focus') {
+      reading('TODAY', 'focus');
+    } else if (type === 'words') {
+      reading('WORDS', 'words');
+    } else if (type === 'streak') {
+      reading('STREAK', 'streak');
+    } else if (type === 'goal') {
+      add(svg, 'circle', { cx, cy, r: 17 * k }, 'pw-subdial');
+      add(svg, 'circle', { cx, cy, r: 12.5 * k }, 'pw-goal-track');
+      const arc = add(svg, 'circle', {
+        cx, cy, r: 12.5 * k, pathLength: 100, transform: `rotate(-90 ${cx} ${cy})`, 'stroke-dasharray': '0 100',
+      }, 'pw-goal-arc');
+      live.push({ type: 'goal', el: arc });
+      text(svg, cx, cy + 0.5 * k, 5.4 * k, 'GOAL', 'pw-caption');
+    } else if (type === 'seconds') {
+      subdial();
+      const turnEl = add(svg, 'g', {}, 'pw-turn');
+      turnEl.style.transformOrigin = `${cx}px ${cy}px`;
+      add(turnEl, 'line', { x1: cx, y1: cy + 3 * k, x2: cx, y2: cy - 14 * k }, 'pw-subsec-hand');
+      add(svg, 'circle', { cx, cy, r: 1.6 * k }, 'pw-subsec-pin');
+      live.push({ type: 'subsec', el: turnEl });
+      if (this.plugin.settings.seconds === 'sweep') sweep(turnEl, now);
     }
-    add(svg, 'circle', { cx, cy, r: 9.5 }, 'pw-moon-dark');
-    add(svg, 'path', { d: moonPath(cx, cy, 9.5, moonPhase(now)) }, 'pw-moon-lit');
   }
 
   // Hands are drawn pointing at 12 around (0, 0) and turned into place by update().
-  drawHand(g, add, style, kind) {
-    const hour = kind === 'hour';
+  drawHand(g, add, style, len, k, hour) {
     if (style === 'baton') {
-      const [w, len, tail] = hour ? [7.2, 46, 10] : [5.2, 71, 12];
+      const w = (hour ? 7.2 : 5.2) * k;
+      const tail = (hour ? 10 : 12) * k;
       add(g, 'rect', { x: -w / 2, y: -len, width: w, height: len + tail, rx: w / 2 }, 'pw-hand-body');
-      add(g, 'rect', { x: -w / 2 + 1.6, y: -len + 4, width: w - 3.2, height: len * 0.55, rx: (w - 3.2) / 2 }, 'pw-hand-lume');
+      add(g, 'rect', { x: -w / 2 + 1.6 * k, y: -len + 4 * k, width: w - 3.2 * k, height: len * 0.55, rx: (w - 3.2 * k) / 2 }, 'pw-hand-lume');
     } else if (style === 'breguet') {
-      const [len, ringY, ringR, w] = hour ? [47, -32, 5.6, 2.8] : [74, -60, 4.4, 2.2];
-      add(g, 'rect', { x: -w / 2, y: ringY + ringR - 0.5, width: w, height: -ringY - ringR + 10.5, rx: w / 2 }, 'pw-hand-body');
+      const ringY = -len * (hour ? 0.68 : 0.81);
+      const ringR = (hour ? 5.6 : 4.4) * k;
+      const w = (hour ? 2.8 : 2.2) * k;
+      add(g, 'rect', { x: -w / 2, y: ringY + ringR - 0.5, width: w, height: -ringY - ringR + 10.5 * k, rx: w / 2 }, 'pw-hand-body');
       add(g, 'circle', { cx: 0, cy: ringY, r: ringR }, 'pw-hand-ring');
       add(g, 'path', { d: `M ${-w * 0.6} ${ringY - ringR + 0.5} L 0 ${-len} L ${w * 0.6} ${ringY - ringR + 0.5} Z` }, 'pw-hand-body');
+    } else if (style === 'dauphine') {
+      const w = (hour ? 8 : 6.2) * k;
+      const tail = 7 * k;
+      add(g, 'path', { d: `M 0 ${tail} L ${-w / 2} ${-len * 0.06} L 0 ${-len} Z` }, 'pw-hand-body');
+      add(g, 'path', { d: `M 0 ${tail} L ${w / 2} ${-len * 0.06} L 0 ${-len} Z` }, 'pw-hand-shade');
+    } else if (style === 'sword') {
+      const w = (hour ? 7.4 : 5.6) * k;
+      const tail = 10 * k;
+      add(g, 'path', { d: `M ${-w * 0.28} ${tail} L ${-w / 2} ${-len * 0.74} L 0 ${-len} L ${w / 2} ${-len * 0.74} L ${w * 0.28} ${tail} Z` }, 'pw-hand-body');
+      add(g, 'path', { d: `M ${-w * 0.14} ${-len * 0.12} L ${-w * 0.27} ${-len * 0.72} L 0 ${-len * 0.88} L ${w * 0.27} ${-len * 0.72} L ${w * 0.14} ${-len * 0.12} Z` }, 'pw-hand-lume');
+    } else if (style === 'pencil') {
+      const w = (hour ? 3.6 : 2.6) * k;
+      const tail = 8 * k;
+      add(g, 'path', { d: `M ${-w / 2} ${tail} L ${-w / 2} ${-len + 6 * k} L 0 ${-len} L ${w / 2} ${-len + 6 * k} L ${w / 2} ${tail} Z` }, 'pw-hand-body');
+    } else if (style === 'arrow') {
+      if (hour) {
+        const w = 3.2 * k;
+        const head = 13 * k;
+        add(g, 'rect', { x: -w / 2, y: -len + head - 1, width: w, height: len - head + 10 * k, rx: w / 2 }, 'pw-hand-body');
+        add(g, 'path', { d: `M ${-6.5 * k} ${-len + head} L 0 ${-len} L ${6.5 * k} ${-len + head} Z` }, 'pw-hand-body');
+        add(g, 'path', { d: `M ${-3.4 * k} ${-len + head - 2 * k} L 0 ${-len + 5 * k} L ${3.4 * k} ${-len + head - 2 * k} Z` }, 'pw-hand-lume');
+      } else {
+        const w = 3.4 * k;
+        add(g, 'rect', { x: -w / 2, y: -len, width: w, height: len + 12 * k, rx: w / 2 }, 'pw-hand-body');
+        add(g, 'rect', { x: -0.7 * k, y: -len + 4 * k, width: 1.4 * k, height: len * 0.6, rx: 0.7 * k }, 'pw-hand-lume');
+      }
     } else {
-      const [w, len, tail] = hour ? [6.6, 46, 11] : [4.8, 72, 13];
+      const w = (hour ? 6.6 : 4.8) * k;
+      const tail = (hour ? 11 : 13) * k;
       add(g, 'path', {
         d: `M 0 ${tail} C ${w} ${-len * 0.15} ${w * 0.7} ${-len * 0.62} 0 ${-len} C ${-w * 0.7} ${-len * 0.62} ${-w} ${-len * 0.15} 0 ${tail} Z`,
       }, 'pw-hand-body');
     }
   }
 
+  // --- Digital ------------------------------------------------------------
+
   buildDigital(now) {
     const s = this.plugin.settings;
-    const box = this.faceEl.createDiv('pocket-watch-digital');
+    const style = DIGITAL_STYLES[s.digitalStyle] ? s.digitalStyle : 'slate';
+    const layout = DIGITAL_LAYOUTS[s.digitalLayout] ? s.digitalLayout : 'wide';
+    const box = this.faceEl.createDiv({ cls: ['pocket-watch-digital', `pw-d-${style}`, `pw-l-${layout}`] });
+    if (s.blinkColon) box.addClass('pw-blink');
     box.style.fontSize = `${(s.watchSize / 120) * 13}px`;
-    this.parts.time = box.createDiv('pocket-watch-digital-time');
-    const meta = box.createDiv('pocket-watch-digital-meta');
-    if (s.showDate) meta.createSpan({ text: now.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' }) });
-    if (s.showMoon) {
-      const moon = meta.createSvg('svg', { attr: { viewBox: '0 0 20 20', width: '1.1em', height: '1.1em' }, cls: 'pocket-watch-digital-moon' });
-      moon.createSvg('circle', { attr: { cx: 10, cy: 10, r: 8 }, cls: 'pw-moon-dark' });
-      moon.createSvg('path', { attr: { d: moonPath(10, 10, 8, moonPhase(now)) }, cls: 'pw-moon-lit' });
+
+    const d = (this.parts.digital = {});
+    const time = box.createDiv('pw-d-time');
+    if (layout === 'tall') {
+      d.hh = time.createDiv('pw-d-hh');
+      d.mm = time.createDiv('pw-d-mm');
+      if (s.digitalSeconds) d.ss = time.createDiv('pw-d-ss');
+    } else {
+      d.hh = time.createSpan('pw-d-hh');
+      time.createSpan({ cls: 'pw-d-colon', text: ':' });
+      d.mm = time.createSpan('pw-d-mm');
+      if (s.digitalSeconds) {
+        time.createSpan({ cls: ['pw-d-colon', 'is-small'], text: ':' });
+        d.ss = time.createSpan('pw-d-ss');
+      }
     }
-    if (s.showFocus) {
-      this.parts.focusText = meta.createSpan('pocket-watch-digital-focus');
-      this.parts.fill = box.createDiv('pocket-watch-digital-bar').createDiv('pocket-watch-digital-fill');
+    if (!this.h24) d.ampm = time.createSpan('pw-d-ampm');
+
+    if (layout !== 'compact') {
+      const meta = box.createDiv('pw-d-meta');
+      if (s.digitalDate) meta.createSpan({ text: now.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' }) });
+      if (s.digitalMoon) {
+        const moon = meta.createSvg('svg', { attr: { viewBox: '0 0 20 20', width: '1.1em', height: '1.1em' }, cls: 'pw-d-moon' });
+        moon.createSvg('circle', { attr: { cx: 10, cy: 10, r: 8 }, cls: 'pw-moon-dark' });
+        moon.createSvg('path', { attr: { d: moonPath(10, 10, 8, moonPhase(now)) }, cls: 'pw-moon-lit' });
+      }
+      if (s.digitalFocus) this.parts.focusText = meta.createSpan('pw-d-focus');
+      if (!meta.childElementCount) meta.remove();
+      if (s.digitalBar) this.parts.fill = box.createDiv('pw-d-bar').createDiv('pw-d-fill');
     }
   }
+
+  // --- Placement ----------------------------------------------------------
 
   // The tab group under the pointer, if it lives in this window.
   groupAt(x, y) {
@@ -645,38 +1104,55 @@ class FloatingWatch {
     const ws = this.app.workspace;
     const leaf = ws.getMostRecentLeaf(ws.rootSplit);
     if (!leaf || !leaf.parent || !leaf.parent.id) return null;
-    return { group: leaf.parent.id, corner: 'br' };
+    return { group: leaf.parent.id, spot: 'br' };
   }
 
-  // The spot in a corner of a pane, below its header and clear of the status bar.
-  // Null when the pane is hidden, such as in a collapsed sidebar.
-  snapSpot(groupEl, corner) {
+  // The part of a pane the watch can sit in: below its header.
+  paneBox(groupEl) {
     const content = groupEl.querySelector(':scope > .workspace-tab-container') || groupEl;
     const r = content.getBoundingClientRect();
+    const header = Array.from(content.querySelectorAll('.view-header')).find((e) => e.offsetParent !== null);
+    return { left: r.left, top: r.top + (header ? header.offsetHeight : 0), right: r.right, bottom: r.bottom, scrollbar: 6 };
+  }
+
+  windowBox() {
+    const r = (document.querySelector('.app-container') || document.body).getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, scrollbar: 0 };
+  }
+
+  // A spot in a box: a row (t, m, b) and a column (l, c, r). Bottom spots keep clear of
+  // the status bar. Null when the box is too small, such as a collapsed sidebar.
+  spotXY(box, spot) {
     const w = this.el.offsetWidth;
     const h = this.el.offsetHeight;
-    if (r.width < w + SNAP_INSET * 2 || r.height < h + SNAP_INSET * 2) return null;
-    const header = Array.from(content.querySelectorAll('.view-header')).find((e) => e.offsetParent !== null);
-    const x = corner[1] === 'l' ? r.left + SNAP_INSET : r.right - SNAP_INSET - 6 - w;
-    let y = corner[0] === 't' ? r.top + (header ? header.offsetHeight : 0) + SNAP_INSET : r.bottom - SNAP_INSET - h;
+    if (box.right - box.left < w + SNAP_INSET * 2 || box.bottom - box.top < h + SNAP_INSET * 2) return null;
+    const col = spot[1];
+    const row = spot[0];
+    const x = col === 'l' ? box.left + SNAP_INSET
+      : col === 'r' ? box.right - SNAP_INSET - box.scrollbar - w
+        : box.left + (box.right - box.left - w) / 2;
+    let y = row === 't' ? box.top + SNAP_INSET
+      : row === 'b' ? box.bottom - SNAP_INSET - h
+        : box.top + (box.bottom - box.top - h) / 2;
     const bar = document.querySelector('.status-bar');
-    if (bar && corner[0] === 'b') {
+    if (bar && row === 'b') {
       const b = bar.getBoundingClientRect();
       if (b.width && x + w > b.left && x < b.right && y + h > b.top - 6) y = b.top - 6 - h;
     }
     return { x, y };
   }
 
+  // Over a pane, the nearest of its eight spots; anywhere else, the nearest spot of the window.
   snapTarget(px, py, left, top) {
     const el = this.groupAt(px, py);
     const id = el && this.groupId(el);
-    if (!id) return null;
+    const box = id ? this.paneBox(el) : this.windowBox();
     let best = null;
-    for (const corner of ['tl', 'tr', 'bl', 'br']) {
-      const spot = this.snapSpot(el, corner);
-      if (!spot) continue;
-      const d = Math.hypot(spot.x - left, spot.y - top);
-      if (!best || d < best.d) best = { el, id, corner, spot, d };
+    for (const spot of SPOTS) {
+      const xy = this.spotXY(box, spot);
+      if (!xy) continue;
+      const d = Math.hypot(xy.x - left, xy.y - top);
+      if (!best || d < best.d) best = { id, spot, xy, d };
     }
     return best;
   }
@@ -684,10 +1160,10 @@ class FloatingWatch {
   place() {
     const s = this.plugin.settings;
     if (this.dragging || !s.showWatch) return;
-    let spot = null;
+    let xy = null;
     let tucked = false;
     if (!s.watchAnchor && s.watchPos) {
-      spot = this.freeSpot(s.watchPos);
+      xy = this.freeSpot(s.watchPos);
     } else {
       if (!s.watchAnchor) {
         const anchor = this.defaultAnchor();
@@ -696,23 +1172,40 @@ class FloatingWatch {
           this.plugin.saveSettings();
         }
       }
-      const el = s.watchAnchor && this.resolveGroup(s.watchAnchor.group);
-      if (el) {
-        spot = this.snapSpot(el, s.watchAnchor.corner);
-        tucked = !spot;
+      const a = s.watchAnchor;
+      const spot = a && SPOTS.includes(a.spot) ? a.spot : 'br';
+      if (a && a.window) {
+        xy = this.spotXY(this.windowBox(), spot);
       } else {
-        // The pane it was snapped to is gone: use the bottom right of the window.
-        spot = this.freeSpot(DEFAULT_WATCH_POS);
+        const el = a && this.resolveGroup(a.group);
+        if (el) {
+          xy = this.spotXY(this.paneBox(el), spot);
+          tucked = !xy;
+        } else {
+          // The pane it was snapped to is gone: use the bottom right of the window.
+          xy = this.freeSpot(DEFAULT_WATCH_POS);
+        }
       }
     }
     this.el.classList.toggle('is-tucked', tucked);
-    if (spot) {
-      const left = `${Math.round(spot.x)}px`;
-      const top = `${Math.round(spot.y)}px`;
+    if (xy) {
+      const left = `${Math.round(xy.x)}px`;
+      const top = `${Math.round(xy.y)}px`;
       if (this.el.style.left !== left) this.el.style.left = left;
       if (this.el.style.top !== top) this.el.style.top = top;
     }
+    this.placeGrip();
     if (this.shelfEl) this.placeShelf();
+  }
+
+  // The resize handle sits on the corner facing away from where the watch is snapped,
+  // so dragging it outward makes the watch bigger.
+  placeGrip() {
+    const a = this.plugin.settings.watchAnchor;
+    // Placed freely: the handle goes bottom right.
+    const spot = a && a.spot ? a.spot : 'tl';
+    const corner = `${spot[0] === 'b' ? 't' : 'b'}${spot[1] === 'r' ? 'l' : 'r'}`;
+    setIfChanged(this.gripEl, 'data-corner', corner);
   }
 
   freeSpot(pos) {
@@ -721,19 +1214,19 @@ class FloatingWatch {
     return { x: pos.fx * Math.max(0, window.innerWidth - w), y: pos.fy * Math.max(0, window.innerHeight - h) };
   }
 
-  showGhost(spot) {
-    if (!spot) {
+  showGhost(xy) {
+    if (!xy) {
       this.removeGhost();
       return;
     }
     if (!this.ghostEl) {
       this.ghostEl = document.body.createDiv('pocket-watch-ghost');
-      this.ghostEl.setAttr('data-face', this.plugin.settings.face);
+      this.ghostEl.setAttr('data-type', this.plugin.settings.watchType);
       this.ghostEl.style.width = `${this.el.offsetWidth}px`;
       this.ghostEl.style.height = `${this.el.offsetHeight}px`;
     }
-    this.ghostEl.style.left = `${spot.x}px`;
-    this.ghostEl.style.top = `${spot.y}px`;
+    this.ghostEl.style.left = `${xy.x}px`;
+    this.ghostEl.style.top = `${xy.y}px`;
   }
 
   removeGhost() {
@@ -741,10 +1234,11 @@ class FloatingWatch {
     this.ghostEl = null;
   }
 
-  // A short press opens the shelf. Pressing and moving drags the watch; let go over a pane
-  // and it snaps to the nearest corner, or hold Alt to leave it exactly where it is.
+  // A short press opens the shelf. Pressing and moving drags the watch; let go and it
+  // snaps to the nearest spot of the pane under the pointer (or of the window). Hold Alt
+  // to leave it exactly where it is.
   onPointerDown(e) {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || this.gripEl.contains(e.target)) return;
     e.preventDefault();
     const r = this.el.getBoundingClientRect();
     const start = { x: e.clientX, y: e.clientY };
@@ -766,7 +1260,7 @@ class FloatingWatch {
       this.el.style.left = `${left}px`;
       this.el.style.top = `${top}px`;
       target = ev.altKey ? null : this.snapTarget(ev.clientX, ev.clientY, left, top);
-      this.showGhost(target && target.spot);
+      this.showGhost(target && target.xy);
       if (this.shelfEl) this.placeShelf();
     };
     const up = () => {
@@ -782,7 +1276,7 @@ class FloatingWatch {
       this.removeGhost();
       const s = this.plugin.settings;
       if (target) {
-        s.watchAnchor = { group: target.id, corner: target.corner };
+        s.watchAnchor = target.id ? { group: target.id, spot: target.spot } : { window: true, spot: target.spot };
         s.watchPos = null;
       } else {
         const freeX = window.innerWidth - r.width;
@@ -797,6 +1291,55 @@ class FloatingWatch {
     this.el.addEventListener('pointerup', up);
     this.el.addEventListener('pointercancel', up);
   }
+
+  onResizeStart(e) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const s = this.plugin.settings;
+    const startSize = s.watchSize;
+    const start = { x: e.clientX, y: e.clientY };
+    const corner = this.gripEl.getAttribute('data-corner') || 'br';
+    const sx = corner[1] === 'r' ? 1 : -1;
+    const sy = corner[0] === 'b' ? 1 : -1;
+    this.resizing = true;
+    this.el.addClass('is-resizing');
+    this.gripEl.setPointerCapture(e.pointerId);
+
+    const move = (ev) => {
+      const grow = (sx * (ev.clientX - start.x) + sy * (ev.clientY - start.y)) / 2;
+      this.setSize(startSize + grow);
+    };
+    const up = () => {
+      this.gripEl.removeEventListener('pointermove', move);
+      this.gripEl.removeEventListener('pointerup', up);
+      this.gripEl.removeEventListener('pointercancel', up);
+      this.resizing = false;
+      this.el.removeClass('is-resizing');
+      this.plugin.saveSettings();
+    };
+    this.gripEl.addEventListener('pointermove', move);
+    this.gripEl.addEventListener('pointerup', up);
+    this.gripEl.addEventListener('pointercancel', up);
+  }
+
+  // Alt and the scroll wheel over the watch resize it too.
+  onWheel(e) {
+    if (!e.altKey) return;
+    e.preventDefault();
+    this.setSize(this.plugin.settings.watchSize + (e.deltaY < 0 ? 6 : -6));
+    window.clearTimeout(this.saveTimer);
+    this.saveTimer = window.setTimeout(() => this.plugin.saveSettings(), 400);
+  }
+
+  setSize(value) {
+    const size = Math.round(clamp(value, MIN_SIZE, MAX_SIZE) / 2) * 2;
+    if (size === this.plugin.settings.watchSize) return;
+    this.plugin.settings.watchSize = size;
+    this.refresh();
+  }
+
+  // --- Shelf --------------------------------------------------------------
 
   toggleShelf() {
     if (this.shelfEl) this.closeShelf();
@@ -850,13 +1393,35 @@ class FloatingWatch {
   }
 }
 
-function rotate(g, angle) {
-  setIfChanged(g, 'transform', `translate(100 100) rotate(${angle.toFixed(2)})`);
+function turn(el, angle) {
+  const v = `rotate(${angle.toFixed(2)}deg)`;
+  if (el.style.transform !== v) el.style.transform = v;
+}
+
+// A seconds hand that glides instead of ticking: a CSS animation started at the right second.
+function sweep(el, now) {
+  el.addClass('pw-sweep');
+  el.style.animationDelay = `-${now.getSeconds() + now.getMilliseconds() / 1000}s`;
 }
 
 function setIfChanged(el, name, value) {
   if (el.getAttribute(name) !== value) el.setAttribute(name, value);
 }
+
+function setText(el, value) {
+  if (el.textContent !== value) el.textContent = value;
+}
+
+// The LCD style shows faint unlit "8"s behind each digit.
+function setDigits(el, value) {
+  if (el.textContent === value) return;
+  el.textContent = value;
+  el.setAttribute('data-ghost', '8'.repeat(value.length));
+}
+
+// ---------------------------------------------------------------------------
+// The shelf
+// ---------------------------------------------------------------------------
 
 // Everything on the shelf: today, the calendar, the selected day, the stats and the watch options.
 class Dashboard {
@@ -1060,20 +1625,43 @@ class Dashboard {
     }
   }
 
+  // Quick changes to the watch; everything else is in the plugin settings.
   renderWatchOptions(el) {
     const p = this.plugin;
+    const s = p.settings;
+    const change = async (patch) => {
+      await p.updateWatch(patch);
+      this.render();
+    };
     el.createEl('h4', { text: 'Watch' });
-    new Setting(el).setName('Face').addDropdown((d) => {
-      for (const [k, v] of Object.entries(FACES)) d.addOption(k, v);
-      d.setValue(p.settings.face).onChange((v) => p.updateWatch({ face: v }));
-    });
-    new Setting(el).setName('Hands').addDropdown((d) => {
-      for (const [k, v] of Object.entries(HANDS)) d.addOption(k, v);
-      d.setValue(p.settings.hands).onChange((v) => p.updateWatch({ hands: v }));
-    });
-    el.createDiv({ cls: 'pocket-watch-compare', text: 'Date, moon phase, seconds and size are in the plugin settings.' });
+    dropdown(new Setting(el).setName('Type'), { analog: 'Analog', digital: 'Digital' }, s.watchType, (v) => change({ watchType: v }));
+    if (s.watchType === 'digital') {
+      dropdown(new Setting(el).setName('Style'), DIGITAL_STYLES, s.digitalStyle, (v) => change({ digitalStyle: v }));
+      dropdown(new Setting(el).setName('Layout'), DIGITAL_LAYOUTS, s.digitalLayout, (v) => change({ digitalLayout: v }));
+    } else {
+      dropdown(new Setting(el).setName('Face'), faceNames(), s.face, (v) => change({ face: v }));
+      dropdown(new Setting(el).setName('Hands'), HANDS, s.hands, (v) => change({ hands: v }));
+    }
+    el.createDiv({ cls: 'pocket-watch-compare', text: 'More options, like what shows at 12, 3, 6 and 9 o\'clock, are in the plugin settings.' });
   }
 }
+
+function faceNames() {
+  const names = {};
+  for (const [k, f] of Object.entries(ANALOG_FACES)) names[k] = f.name;
+  return names;
+}
+
+function dropdown(setting, options, value, onChange) {
+  return setting.addDropdown((d) => {
+    for (const [k, v] of Object.entries(options)) d.addOption(k, v);
+    d.setValue(String(value)).onChange(onChange);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
 
 class PocketWatchSettingTab extends PluginSettingTab {
   constructor(app, plugin) {
@@ -1086,51 +1674,61 @@ class PocketWatchSettingTab extends PluginSettingTab {
     const s = p.settings;
     const el = this.containerEl;
     el.empty();
+    const set = (patch, redraw) => p.updateWatch(patch).then(() => redraw && this.display());
+    const toggle = (name, key, desc) => {
+      const setting = new Setting(el).setName(name);
+      if (desc) setting.setDesc(desc);
+      setting.addToggle((t) => t.setValue(s[key]).onChange((v) => set({ [key]: v })));
+    };
 
     new Setting(el)
       .setName('Show watch')
-      .setDesc('Drag it onto any pane and it snaps to the nearest corner. Hold Alt while dropping to place it freely. Click it to open the stats shelf.')
-      .addToggle((t) => t.setValue(s.showWatch).onChange((v) => p.updateWatch({ showWatch: v })));
-
-    new Setting(el)
-      .setName('Face')
-      .addDropdown((d) => {
-        for (const [k, v] of Object.entries(FACES)) d.addOption(k, v);
-        d.setValue(s.face).onChange((v) => p.updateWatch({ face: v }));
-      });
-
-    new Setting(el)
-      .setName('Hands')
-      .setDesc('Not used by the digital face.')
-      .addDropdown((d) => {
-        for (const [k, v] of Object.entries(HANDS)) d.addOption(k, v);
-        d.setValue(s.hands).onChange((v) => p.updateWatch({ hands: v }));
-      });
-
+      .setDesc('Click the watch to open the stats shelf.')
+      .addToggle((t) => t.setValue(s.showWatch).onChange((v) => set({ showWatch: v })));
+    dropdown(new Setting(el).setName('Type'), { analog: 'Analog', digital: 'Digital' }, s.watchType, (v) => set({ watchType: v }, true));
     new Setting(el)
       .setName('Size')
+      .setDesc('You can also drag the handle that appears on the watch when you point at it, or hold Alt and scroll over the watch.')
       .addSlider((sl) => sl
-        .setLimits(64, 180, 4)
+        .setLimits(MIN_SIZE, MAX_SIZE, 2)
         .setValue(s.watchSize)
         .setDynamicTooltip()
-        .onChange((v) => p.updateWatch({ watchSize: v })));
+        .onChange((v) => set({ watchSize: v })));
 
-    new Setting(el)
-      .setName('Date')
-      .addToggle((t) => t.setValue(s.showDate).onChange((v) => p.updateWatch({ showDate: v })));
+    if (s.watchType === 'digital') {
+      new Setting(el).setName('Digital').setHeading();
+      dropdown(new Setting(el).setName('Style'), DIGITAL_STYLES, s.digitalStyle, (v) => set({ digitalStyle: v }));
+      dropdown(
+        new Setting(el).setName('Layout').setDesc('Wide has the time over a line of details, slim is a single line, tall stacks the hours over the minutes, and compact is just the time.'),
+        DIGITAL_LAYOUTS, s.digitalLayout, (v) => set({ digitalLayout: v }),
+      );
+      dropdown(new Setting(el).setName('Clock'), CLOCKS, s.clock, (v) => set({ clock: v }));
+      toggle('Seconds', 'digitalSeconds');
+      toggle('Blinking colon', 'blinkColon');
+      toggle('Date', 'digitalDate');
+      toggle('Moon phase', 'digitalMoon');
+      toggle("Today's time", 'digitalFocus', 'Your time in Obsidian today.');
+      toggle('Goal bar', 'digitalBar', 'A thin bar that fills up toward your daily goal.');
+    } else {
+      new Setting(el).setName('Analog').setHeading();
+      dropdown(new Setting(el).setName('Face'), faceNames(), s.face, (v) => set({ face: v }));
+      dropdown(new Setting(el).setName('Hour markers'), MARKERS, s.markers, (v) => set({ markers: v }));
+      dropdown(new Setting(el).setName('Hands'), HANDS, s.hands, (v) => set({ hands: v }));
+      dropdown(new Setting(el).setName('Seconds hand'), SECONDS, s.seconds, (v) => set({ seconds: v }));
+      for (const slot of SLOTS) {
+        dropdown(new Setting(el).setName(slot.name), COMPLICATIONS, s[slot.key], (v) => set({ [slot.key]: v }));
+      }
+      toggle('Goal ring', 'goalRing', 'A ring on the bezel that fills up toward your daily goal, and dims while the timer is paused.');
+      toggle('Gentle motion', 'motion', 'Lets the wheels of the skeleton face turn and its balance wheel swing.');
+    }
 
+    new Setting(el).setName('Placement').setHeading();
     new Setting(el)
-      .setName('Moon phase')
-      .addToggle((t) => t.setValue(s.showMoon).onChange((v) => p.updateWatch({ showMoon: v })));
+      .setName('Reset watch position')
+      .setDesc('Drag the watch over a pane and it snaps to the nearest corner or edge. Drop it outside a pane, such as on the ribbon or status bar, to snap it to the edge of the window. Hold Alt while dropping to place it freely.')
+      .addButton((b) => b.setButtonText('Reset').onClick(() => set({ watchAnchor: null, watchPos: null })));
 
-    new Setting(el)
-      .setName('Seconds hand')
-      .addToggle((t) => t.setValue(s.showSeconds).onChange((v) => p.updateWatch({ showSeconds: v })));
-
-    new Setting(el)
-      .setName("Today's time")
-      .setDesc('Shows your time in Obsidian today on the dial, and a ring on the bezel that fills up toward your daily goal.')
-      .addToggle((t) => t.setValue(s.showFocus).onChange((v) => p.updateWatch({ showFocus: v })));
+    new Setting(el).setName('Tracking').setHeading();
 
     new Setting(el)
       .setName('Daily goal (minutes)')
@@ -1138,14 +1736,7 @@ class PocketWatchSettingTab extends PluginSettingTab {
         .setLimits(15, 480, 15)
         .setValue(s.dailyGoalMinutes)
         .setDynamicTooltip()
-        .onChange((v) => p.updateWatch({ dailyGoalMinutes: v })));
-
-    new Setting(el)
-      .setName('Reset watch position')
-      .setDesc('Snap the watch back to the bottom right corner of the note you are working in.')
-      .addButton((b) => b.setButtonText('Reset').onClick(() => p.updateWatch({ watchAnchor: null, watchPos: null })));
-
-    new Setting(el).setName('Tracking').setHeading();
+        .onChange((v) => set({ dailyGoalMinutes: v })));
 
     new Setting(el)
       .setName('Idle limit (minutes)')
