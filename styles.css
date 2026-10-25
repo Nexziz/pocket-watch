@@ -1,0 +1,221 @@
+.inkwatch-status[data-state="idle"],
+.inkwatch-status[data-state="away"],
+.inkwatch-status[data-state="paused"] {
+  opacity: 0.55;
+}
+
+.inkwatch-view {
+  padding: 12px;
+}
+
+.inkwatch-section {
+  margin-bottom: 20px;
+}
+
+.inkwatch-section h4 {
+  margin: 0 0 8px;
+}
+
+.inkwatch-label {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
+/* Watch */
+.inkwatch-watch {
+  text-align: center;
+  padding: 16px 8px;
+  border-radius: 12px;
+  background: var(--background-secondary);
+}
+
+.inkwatch-clock {
+  font-size: 2.6em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.inkwatch-state-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 6px 0 10px;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+.inkwatch-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex: none;
+}
+
+.inkwatch-watch[data-state="tracking"] .inkwatch-dot {
+  background: var(--color-green);
+}
+
+.inkwatch-watch[data-state="idle"] .inkwatch-dot {
+  background: var(--color-orange);
+}
+
+.inkwatch-watch:not([data-state="tracking"]) .inkwatch-clock {
+  color: var(--text-muted);
+}
+
+/* Calendar */
+.inkwatch-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.inkwatch-month {
+  font-weight: 600;
+}
+
+.inkwatch-nav {
+  padding: 2px 10px;
+}
+
+.inkwatch-cal {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.inkwatch-wd {
+  text-align: center;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+}
+
+.inkwatch-cell {
+  min-height: 40px;
+  border-radius: 6px;
+  padding: 3px 2px;
+  text-align: center;
+  cursor: pointer;
+  background: var(--background-secondary);
+  border: 1px solid transparent;
+}
+
+.inkwatch-cell.is-blank {
+  background: none;
+  cursor: default;
+}
+
+.inkwatch-cell:not(.is-blank):hover {
+  border-color: var(--background-modifier-border-hover);
+}
+
+.inkwatch-l1 { background: color-mix(in srgb, var(--interactive-accent) 18%, var(--background-secondary)); }
+.inkwatch-l2 { background: color-mix(in srgb, var(--interactive-accent) 38%, var(--background-secondary)); }
+.inkwatch-l3 { background: color-mix(in srgb, var(--interactive-accent) 62%, var(--background-secondary)); }
+.inkwatch-l4 { background: var(--interactive-accent); color: var(--text-on-accent); }
+
+.inkwatch-cell.is-today .inkwatch-daynum {
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.inkwatch-cell.is-selected {
+  border-color: var(--text-normal);
+}
+
+.inkwatch-daynum {
+  font-size: var(--font-ui-small);
+}
+
+.inkwatch-daytime {
+  font-size: 0.68em;
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Selected day */
+.inkwatch-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.inkwatch-val {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.inkwatch-compare {
+  margin-top: 8px;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+/* Stats */
+.inkwatch-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.inkwatch-tile {
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--background-secondary);
+}
+
+.inkwatch-tile-val {
+  font-size: 1.2em;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.inkwatch-tile-label {
+  font-size: var(--font-ui-small);
+}
+
+.inkwatch-tile-sub {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+}
+
+.inkwatch-bars {
+  display: flex;
+  gap: 3px;
+  height: 90px;
+}
+
+.inkwatch-bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.inkwatch-bar-track {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.inkwatch-bar {
+  width: 100%;
+  min-height: 1px;
+  border-radius: 3px 3px 0 0;
+  background: var(--interactive-accent);
+}
+
+.inkwatch-bar-day {
+  font-size: 0.65em;
+  color: var(--text-faint);
+}
