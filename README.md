@@ -1,6 +1,8 @@
 # Pocket Watch
 
-An Obsidian plugin that tracks how long you spend in Obsidian.
+A calm little timepiece that sits on top of your notes and keeps track of how long you spend in Obsidian.
+
+![The faces and hand styles](images/faces.png)
 
 - **A small timepiece over your notes**: it shows the time of day. Drag it onto any pane and it snaps to that pane's nearest corner, then stays there when you resize or rearrange things. Hold Alt while dropping to place it anywhere.
 - **Faces**: Porcelain (ivory dial with thin batons), Slate (charcoal with sand-coloured numerals), Midnight (deep blue with faint stars), or Digital.
@@ -12,6 +14,10 @@ An Obsidian plugin that tracks how long you spend in Obsidian.
 - **Stats**: last 7 and 30 days, all time, daily average, streak, best day, words written and deleted, and a 14-day bar chart.
 - Today's time also shows in the status bar. The clock icon in the ribbon opens the shelf, and there are commands to open the shelf, show or hide the watch, and pause the timer.
 
+![Click the watch to open the shelf with the calendar and stats](images/shelf.png)
+
+![Drag the watch onto a pane and it snaps to the nearest corner](images/snapping.png)
+
 ## Install
 
 1. In your vault, open the folder `.obsidian/plugins/` (create `plugins` if it's missing).
@@ -19,6 +25,10 @@ An Obsidian plugin that tracks how long you spend in Obsidian.
 3. In Obsidian, open Settings → Community plugins, turn off Restricted mode if it's on, and enable **Pocket Watch**.
 
 Your data is stored in `.obsidian/plugins/pocket-watch/data.json`.
+
+## Privacy
+
+Pocket Watch works entirely offline. It makes no network requests, collects no telemetry, and only reads and writes its own `data.json` inside your vault. It doesn't read or change your notes, apart from counting words in the note you're editing.
 
 ## Settings
 
