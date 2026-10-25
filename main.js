@@ -51,6 +51,13 @@ const SECONDS = { off: 'Off', tick: 'Ticking', sweep: 'Sweeping' };
 
 const CASES = { crown: 'Crown', bow: 'Pocket watch bow', none: 'Plain' };
 
+const TIMES_UP = {
+  glow: 'Glow: a soft halo that breathes',
+  colour: 'Colour: the ring and dial take on the colour',
+  dot: 'Dot: a small dot on the edge',
+  off: 'Off',
+};
+
 const MOVEMENTS = { lifelike: 'Lifelike, 18,000 beats an hour', gentle: 'Gentle', still: 'Still' };
 
 const COMPLICATIONS = {
@@ -103,6 +110,7 @@ const DEFAULT_SETTINGS = {
   autoStartFocus: false,
   chime: true,
   showCountdown: true,
+  timesUp: 'glow',
 
   showWatch: true,
   watchType: 'analog',
@@ -349,6 +357,9 @@ module.exports = class PocketWatchPlugin extends Plugin {
     this.session = saved.session || null;
     // Focus sessions finished since the last long break.
     this.cycle = saved.cycle || 0;
+    // When a session or break has ended: { kind, endedAt, until }. The watch shows it until you
+    // respond, or until its `until` time when the next one started on its own.
+    this.alert = saved.alert || null;
 
     this.paused = false;
     this.state = 'tracking';
@@ -385,6 +396,15 @@ module.exports = class PocketWatchPlugin extends Plugin {
       checkCallback: (checking) => {
         if (!this.session) return false;
         if (!checking) this.stopSession();
+        return true;
+      },
+    });
+    this.addCommand({
+      id: 'dismiss-times-up',
+      name: "Dismiss the time's up highlight",
+      checkCallback: (checking) => {
+        if (!this.alert) return false;
+        if (!checking) this.dismissAlert();
         return true;
       },
     });
@@ -506,9 +526,11 @@ module.exports = class PocketWatchPlugin extends Plugin {
     // A session that ran out while Obsidian was closed for a while is counted, quietly.
     const x = this.session;
     if (x && !x.paused && now >= x.endsAt) this.completeSession(now - x.endsAt > 5 * 60000);
+    if (this.alert && this.alert.until && now > this.alert.until) this.alert = null;
 
     const ms = this.getDay(dayKey(new Date())).ms;
-    this.statusEl.setText(this.session ? `⏱ ${fmtShort(ms)} · ${this.sessionLabel()}` : `⏱ ${fmtShort(ms)}`);
+    const extra = this.session ? this.sessionLabel() : this.alertLabel();
+    this.statusEl.setText(extra ? `⏱ ${fmtShort(ms)} · ${extra}` : `⏱ ${fmtShort(ms)}`);
     this.statusEl.setAttr('data-state', state);
     this.statusEl.setAttr('aria-label', `Pocket Watch: ${STATE_LABELS[state]}. Click for stats.`);
     if (this.watch) this.watch.refresh();
@@ -532,6 +554,7 @@ module.exports = class PocketWatchPlugin extends Plugin {
     const minutes = this.sessionMinutes(kind);
     const total = minutes * 60000;
     this.session = { kind, total, endsAt: Date.now() + total, paused: false, remaining: total };
+    this.alert = null;
     this.markActive();
     if (!quiet) new Notice(kind === 'focus' ? `Focus for ${minutes} minutes` : `${SESSION_NAMES[kind]}, ${minutes} minutes`);
     this.saveSettings();
@@ -567,7 +590,29 @@ module.exports = class PocketWatchPlugin extends Plugin {
 
   stopSession() {
     this.session = null;
+    this.alert = null;
     this.saveSettings();
+    this.tick();
+  }
+
+  // "Focus done +3 min" or "Break over +1 min": how far past the set time you are.
+  alertLabel() {
+    const a = this.alert;
+    if (!a) return '';
+    const over = Math.floor((Date.now() - a.endedAt) / 60000);
+    return `${a.kind === 'focus' ? 'Focus done' : 'Break over'}${over >= 1 ? ` +${over} min` : ''}`;
+  }
+
+  dismissAlert() {
+    this.alert = null;
+    this.saveSettings();
+    this.tick();
+  }
+
+  // Shows the time's-up highlight for a few seconds, to try the styles.
+  previewAlert() {
+    // A real time's up already shows the new style.
+    if (!(this.alert && !this.alert.until)) this.alert = { kind: 'focus', endedAt: Date.now(), until: Date.now() + 8000 };
     this.tick();
   }
 
@@ -598,17 +643,15 @@ module.exports = class PocketWatchPlugin extends Plugin {
       return;
     }
     if (this.settings.chime) chime();
-    if (this.watch) this.watch.ring();
-    if (x.kind === 'focus') {
-      const next = this.nextBreak();
-      new Notice(`Focus session done. Time for a ${next === 'long' ? 'long' : 'short'} break.`);
-      if (this.settings.autoStartBreaks) this.startSession(next, true);
-      else this.saveSettings();
-    } else {
-      new Notice("Break's over. Ready to focus again?");
-      if (this.settings.autoStartFocus) this.startSession('focus', true);
-      else this.saveSettings();
-    }
+    const next = x.kind === 'focus' ? this.nextBreak() : 'focus';
+    const auto = x.kind === 'focus' ? this.settings.autoStartBreaks : this.settings.autoStartFocus;
+    new Notice(x.kind === 'focus' ? `Focus session done. Time for a ${next === 'long' ? 'long' : 'short'} break.` : "Break's over. Ready to focus again?");
+    if (auto) this.startSession(next, true);
+    // The watch shows that the time is up: until you respond, or for a minute when the next
+    // one started on its own.
+    const now = Date.now();
+    this.alert = auto ? { kind: x.kind, endedAt: now, until: now + 60000 } : { kind: x.kind, endedAt: now };
+    this.saveSettings();
   }
 
   // Right-click on the watch.
@@ -620,6 +663,15 @@ module.exports = class PocketWatchPlugin extends Plugin {
       menu.addItem((i) => i.setTitle(x.paused ? 'Resume the session' : 'Pause the session').setIcon(x.paused ? 'play' : 'pause').onClick(() => this.toggleSessionPause()));
       menu.addItem((i) => i.setTitle(x.kind === 'focus' ? 'Skip to a break' : 'Skip to focus').setIcon('skip-forward').onClick(() => this.skipSession()));
       menu.addItem((i) => i.setTitle('Stop the session').setIcon('square').onClick(() => this.stopSession()));
+    } else if (this.alert && this.alert.kind === 'focus') {
+      const next = this.nextBreak();
+      menu.addItem((i) => i.setTitle(`${next === 'long' ? 'Long' : 'Short'} break, ${this.sessionMinutes(next)} minutes`).setIcon('coffee').onClick(() => this.startSession(next)));
+      menu.addItem((i) => i.setTitle(`Focus again, ${s.focusMinutes} minutes`).setIcon('play').onClick(() => this.startSession('focus')));
+      menu.addItem((i) => i.setTitle('Dismiss').setIcon('check').onClick(() => this.dismissAlert()));
+    } else if (this.alert) {
+      menu.addItem((i) => i.setTitle(`Focus for ${s.focusMinutes} minutes`).setIcon('play').onClick(() => this.startSession('focus')));
+      menu.addItem((i) => i.setTitle(`Another break, ${s.shortBreakMinutes} minutes`).setIcon('coffee').onClick(() => this.startSession('short')));
+      menu.addItem((i) => i.setTitle('Dismiss').setIcon('check').onClick(() => this.dismissAlert()));
     } else {
       menu.addItem((i) => i.setTitle(`Focus for ${s.focusMinutes} minutes`).setIcon('play').onClick(() => this.startSession('focus')));
       menu.addItem((i) => i.setTitle(`Short break, ${s.shortBreakMinutes} minutes`).setIcon('coffee').onClick(() => this.startSession('short')));
@@ -684,7 +736,7 @@ module.exports = class PocketWatchPlugin extends Plugin {
   async flush() {
     if (!this.dirty) return;
     this.dirty = false;
-    await this.saveData({ settings: this.settings, days: this.days, session: this.session, cycle: this.cycle });
+    await this.saveData({ settings: this.settings, days: this.days, session: this.session, cycle: this.cycle, alert: this.alert });
   }
 
   async saveSettings() {
@@ -764,6 +816,7 @@ class FloatingWatch {
     this.faceEl = this.el.createDiv('pocket-watch-face');
     this.gripEl = this.el.createDiv({ cls: 'pocket-watch-grip', attr: { 'aria-label': 'Drag to resize' } });
     this.badgeEl = this.el.createDiv('pocket-watch-badge');
+    this.alertDotEl = this.el.createDiv('pocket-watch-alert-dot');
     this.el.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     this.el.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -780,19 +833,9 @@ class FloatingWatch {
   destroy() {
     this.resizeObserver.disconnect();
     window.clearTimeout(this.saveTimer);
-    window.clearTimeout(this.ringTimer);
     this.closeShelf();
     this.removeGhost();
     this.el.remove();
-  }
-
-  // A gentle glow when a session ends.
-  ring() {
-    this.el.removeClass('is-ringing');
-    void this.el.offsetWidth;
-    this.el.addClass('is-ringing');
-    window.clearTimeout(this.ringTimer);
-    this.ringTimer = window.setTimeout(() => this.el.removeClass('is-ringing'), 7000);
   }
 
   contains(target) {
@@ -830,8 +873,16 @@ class FloatingWatch {
     this.parts = { live: [] };
     this.h24 = uses24h(s.clock);
     this.el.setAttr('data-type', s.watchType);
-    if (s.watchType === 'digital') this.buildDigital(now);
-    else this.buildAnalog(now);
+    if (s.watchType === 'digital') {
+      this.buildDigital(now);
+      // On the digital case the dot sits on the curve of the top right corner (see styles.css).
+      this.faceEl.querySelector('.pocket-watch-digital').appendChild(this.alertDotEl);
+      this.alertDotEl.style.left = '';
+      this.alertDotEl.style.top = '';
+    } else {
+      this.el.appendChild(this.alertDotEl);
+      this.buildAnalog(now);
+    }
   }
 
   update(now) {
@@ -847,18 +898,26 @@ class FloatingWatch {
     this.el.setAttr('data-state', p.state);
     // During a session the ring and the bar count down instead of filling toward the goal.
     const x = p.session;
-    const ringMode = x ? (x.paused ? 'paused' : x.kind === 'focus' ? 'focus' : 'break') : s.goalRing ? 'goal' : 'off';
+    // When time is up, the chosen highlight shows; orange after focus, green after a break.
+    const alert = p.alert && s.timesUp !== 'off' ? (p.alert.kind === 'focus' ? 'focus' : 'break') : 'none';
+    setIfChanged(this.el, 'data-alert', alert);
+    setIfChanged(this.el, 'data-times-up', s.timesUp);
+    const ringMode = x ? (x.paused ? 'paused' : x.kind === 'focus' ? 'focus' : 'break')
+      : alert !== 'none' && s.timesUp === 'colour' ? 'over' : s.goalRing ? 'goal' : 'off';
     setIfChanged(this.el, 'data-ring', ringMode);
-    const progress = x ? p.sessionRemaining() / x.total : goal;
-    const badge = x && s.showCountdown ? p.sessionLabel() : '';
+    const progress = x ? p.sessionRemaining() / x.total : ringMode === 'over' ? 1 : goal;
+    const badge = !s.showCountdown ? '' : x ? p.sessionLabel() : p.alertLabel();
     setText(this.badgeEl, badge);
+    setIfChanged(this.badgeEl, 'data-tone', x ? (x.paused ? 'paused' : x.kind === 'focus' ? 'focus' : 'break') : p.alert && p.alert.kind !== 'focus' ? 'break' : 'focus');
     this.badgeEl.classList.toggle('is-shown', !!badge);
     const label = [
       fmtTime(now, this.h24),
       now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' }),
       moonName(moonPhase(now)),
       `${fmtShort(day.ms)} in Obsidian today (${STATE_LABELS[p.state].toLowerCase()})`,
-      ...(x ? [`${p.sessionLabel()} left. Right-click for session controls.`] : ['Right-click to start a focus session.']),
+      ...(x ? [`${p.sessionLabel()} left. Right-click for session controls.`]
+        : p.alert ? [`${p.alertLabel()}. Right-click to start the next one, or to dismiss.`]
+          : ['Right-click to start a focus session.']),
     ].join('\n');
     if (this.el.getAttribute('aria-label') !== label) this.el.setAttr('aria-label', label);
 
@@ -921,6 +980,9 @@ class FloatingWatch {
       attr: { viewBox: box.join(' '), width: (s.watchSize * box[2]) / 200, height: (s.watchSize * box[3]) / 200 },
       cls: ['pocket-watch-svg', `pocket-watch-face-${faceKey}`, `pw-case-${face.case}`],
     });
+    const [dotX, dotY] = polar(94, 45);
+    this.alertDotEl.style.left = `${((dotX - box[0]) / box[2]) * 100}%`;
+    this.alertDotEl.style.top = `${((dotY - box[1]) / box[3]) * 100}%`;
     if (s.movement !== 'still') svg.addClass('pw-motion');
     if (s.movement === 'gentle') svg.addClass('pw-movement-gentle');
     const add = (parent, tag, attr, cls) => parent.createSvg(tag, { attr, cls });
@@ -971,6 +1033,7 @@ class FloatingWatch {
     if (face.texture) this.drawTexture(svg, add, face.texture, R);
     if (face.decor) this.drawDecor(svg, add, text, face.decor, R, k, used);
     add(svg, 'circle', { cx: 100, cy: 100, r: R, fill: url('dial-shade') }, 'pw-dial-shade');
+    add(svg, 'circle', { cx: 100, cy: 100, r: R }, 'pw-alert-wash');
     if (face.flange) {
       add(svg, 'circle', { cx: 100, cy: 100, r: R - 2, 'stroke-width': 4 }, 'pw-flange');
       let d = '';
@@ -2036,7 +2099,7 @@ class Dashboard {
     }
     const p = this.plugin;
     const x = p.session;
-    if (this.sessionKey !== (x ? `${x.kind}|${x.paused}` : '')) {
+    if (this.sessionKey !== focusKey(p)) {
       this.render();
       return;
     }
@@ -2046,6 +2109,7 @@ class Dashboard {
       setText(this.focusLabelEl, x.paused ? 'Paused' : `${SESSION_NAMES[x.kind]} · until ${fmtTime(new Date(x.endsAt), uses24h(p.settings.clock))}`);
       this.focusFillEl.style.width = `${(left / x.total) * 100}%`;
     }
+    if (this.alertTextEl && p.alert) setText(this.alertTextEl, p.alertLabel());
     this.clockEl.setText(fmtShort(p.getDay(today).ms));
     this.stateEl.setText(STATE_LABELS[p.state]);
     this.headEl.setAttr('data-state', p.state);
@@ -2101,8 +2165,9 @@ class Dashboard {
     const p = this.plugin;
     const s = p.settings;
     const x = p.session;
-    this.sessionKey = x ? `${x.kind}|${x.paused}` : '';
+    this.sessionKey = focusKey(p);
     this.focusTimeEl = null;
+    this.alertTextEl = null;
     el.createEl('h4', { text: 'Focus' });
     const box = el.createDiv('pocket-watch-focus');
     const button = (row, label, onClick, cta) => {
@@ -2123,6 +2188,24 @@ class Dashboard {
       button(row, x.paused ? 'Resume' : 'Pause', () => p.toggleSessionPause(), true);
       button(row, x.kind === 'focus' ? 'Skip to break' : 'Skip to focus', () => p.skipSession());
       button(row, 'Stop', () => p.stopSession());
+    } else if (p.alert) {
+      // Time is up: say so, and offer what comes next.
+      const done = p.alert.kind === 'focus';
+      box.setAttr('data-kind', done ? 'focus' : 'short');
+      const top = box.createDiv('pocket-watch-focus-top');
+      this.alertTextEl = top.createDiv('pocket-watch-focus-time');
+      top.createDiv({ cls: 'pocket-watch-focus-label', text: done ? 'Time for a break' : 'Ready to focus again?' });
+      box.createDiv('pocket-watch-focus-bar').createDiv('pocket-watch-focus-fill');
+      const row = box.createDiv('pocket-watch-focus-buttons');
+      if (done) {
+        const next = p.nextBreak();
+        button(row, `Break ${p.sessionMinutes(next)} min`, () => p.startSession(next), true);
+        button(row, 'Focus again', () => p.startSession('focus'));
+      } else {
+        button(row, `Focus ${s.focusMinutes} min`, () => p.startSession('focus'), true);
+        button(row, 'Another break', () => p.startSession('short'));
+      }
+      button(row, 'Dismiss', () => p.dismissAlert());
     } else {
       const row = box.createDiv('pocket-watch-focus-buttons');
       button(row, `Focus ${s.focusMinutes} min`, () => p.startSession('focus'), true);
@@ -2286,6 +2369,13 @@ class Dashboard {
   }
 }
 
+// What the Focus section shows: a running session, time being up, or neither.
+function focusKey(p) {
+  const x = p.session;
+  if (x) return `${x.kind}|${x.paused}`;
+  return p.alert ? `alert|${p.alert.kind}` : '';
+}
+
 function faceNames() {
   const names = {};
   for (const [k, f] of Object.entries(ANALOG_FACES)) names[k] = f.name;
@@ -2395,7 +2485,15 @@ class PocketWatchSettingTab extends PluginSettingTab {
     };
     plain('Start breaks automatically', 'autoStartBreaks');
     plain('Start the next focus session automatically', 'autoStartFocus');
-    plain('Countdown under the watch', 'showCountdown', 'Shows the minutes left in a small label next to the watch.');
+    plain('Countdown under the watch', 'showCountdown', 'Shows the minutes left in a small label next to the watch, and how far past the time you are once it is up.');
+    dropdown(
+      new Setting(el).setName("When time is up").setDesc("How the watch shows that a focus session or break has ended: orange after focus, green after a break. It stays until you start the next one or dismiss it, or for a minute when the next one starts on its own."),
+      TIMES_UP, s.timesUp, async (v) => {
+        s.timesUp = v;
+        await p.saveSettings();
+        p.previewAlert();
+      },
+    ).addExtraButton((b) => b.setIcon('eye').setTooltip('Preview').onClick(() => p.previewAlert()));
     plain('Chime', 'chime', 'A soft bell when a session or break ends.')
       .addExtraButton((b) => b.setIcon('volume-2').setTooltip('Play the chime').onClick(() => chime()));
 

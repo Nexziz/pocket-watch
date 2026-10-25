@@ -17,13 +17,18 @@ A calm little timepiece that sits on top of your notes, and quietly keeps track 
 
 - **Pomodoro, built in.** Start a focus session from the shelf, the command palette, or by right-clicking the watch.
 - **The bezel counts down**, in a warm colour while you focus and in green during a break, and a small label next to the watch shows the minutes left.
-- **A soft chime** and a gentle glow mark the end of each session. Breaks can start on their own, with a long break after every few sessions.
+- **When time is up**, a soft chime plays and the watch lets you know until you respond: orange after focus, green after a break. Choose how it shows: a **glow** that slowly breathes, a wash of **colour** over the ring and dial, or a small **dot** on the edge. The label next to the watch counts the minutes past ("Focus done +3 min"), and right-clicking the watch or opening the shelf offers the next step: a break, another session, or dismiss.
+- **Breaks can start on their own**, with a long break after every few sessions. When they do, the highlight shows for a minute and then steps aside.
 - **Every session counts**: the shelf shows today's sessions and focus time, the calendar marks the days you focused, and the stats add them up.
 - Choose the length of focus sessions and short and long breaks, how many sessions come before a long break, and whether breaks and the next session start automatically.
 
 ![Focus sessions](images/focus.png)
 
 ![A focus session from start to finish](images/focus-demo.gif)
+
+![Glow, Colour and Dot: three ways the watch shows that time is up](images/times-up.png)
+
+![The three styles, live](images/times-up.gif)
 
 ## Make it yours
 
@@ -47,7 +52,7 @@ The open heart face shows a movement through a window in the dial: the balance w
 - **Idle limit**: the timer stops after a set time with no typing, clicking, scrolling or mouse movement (30 minutes by default). Any activity starts it again. Reading and scrolling count as activity.
 - **Calendar**: each day shows the time you spent. Click a day to see its time and word stats compared with today.
 - **Stats**: last 7 and 30 days, all time, daily average, streak, best day, words written and deleted, and a 14-day chart.
-- **Status bar and commands**: today's time also shows in the status bar, along with the minutes left in a focus session. The clock icon in the ribbon opens the shelf, and there are commands to open the shelf, show or hide the watch, switch between analog and digital, pause the timer, and start, pause or stop a focus session.
+- **Status bar and commands**: today's time also shows in the status bar, along with the minutes left in a focus session. The clock icon in the ribbon opens the shelf, and there are commands to open the shelf, show or hide the watch, switch between analog and digital, pause the timer, and start, pause or stop a focus session, and dismiss the time's-up highlight.
 
 ## Install
 
@@ -62,7 +67,7 @@ Search for **Pocket Watch** in Settings → Community plugins once it's listed. 
 - **Watch**: show or hide it, analog or digital, and its size.
 - **Analog**: face, case, name on the dial, hour markers, hands, seconds hand, what shows at 12, 3, 6 and 9 o'clock, the goal ring, and how the movement moves (lifelike, gentle or still).
 - **Digital**: style, layout, 12 or 24 hours, seconds, blinking colon, date, moon phase, today's time and the goal bar.
-- **Focus sessions**: focus, short break and long break lengths, how many sessions before a long break, starting breaks and the next session automatically, the countdown label, and the chime.
+- **Focus sessions**: focus, short break and long break lengths, how many sessions before a long break, starting breaks and the next session automatically, the countdown label, how the watch shows that time is up (glow, colour, dot or off, with a preview), and the chime.
 - **Placement**: reset the watch to the bottom right corner of the note you're working in.
 - **Tracking**: daily goal, idle limit, removing idle time, only counting while Obsidian is focused, the first day of the week, and resetting your data.
 
