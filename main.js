@@ -1,15 +1,20 @@
 'use strict';
 
-const { Plugin, ItemView, PluginSettingTab, Setting, MarkdownView, Notice } = require('obsidian');
-
-const VIEW_TYPE = 'pocket-watch-view';
+const { Plugin, PluginSettingTab, Setting, MarkdownView, Notice } = require('obsidian');
 
 const DEFAULT_SETTINGS = {
   idleMinutes: 30,
   onlyWhenFocused: true,
   discardIdleTime: false,
   weekStartsMonday: true,
+  showWatch: true,
+  watchStyle: 'analog',
+  // Where the floating watch sits, as fractions of the free space to its left and above it,
+  // so it stays in the same corner when the window is resized.
+  watchPos: null,
 };
+
+const DEFAULT_WATCH_POS = { fx: 0.97, fy: 0.9 };
 
 // A day counts toward the streak and "active days" once it has at least a minute.
 const ACTIVE_DAY_MS = 60 * 1000;
@@ -41,14 +46,6 @@ function daysAgo(n) {
   return new Date(t.getFullYear(), t.getMonth(), t.getDate() - n);
 }
 
-function fmtClock(ms) {
-  const s = Math.floor(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
-  const sec = String(s % 60).padStart(2, '0');
-  return `${h}:${m}:${sec}`;
-}
-
 function fmtShort(ms) {
   const totalMin = Math.floor(ms / 60000);
   const h = Math.floor(totalMin / 60);
@@ -57,8 +54,21 @@ function fmtShort(ms) {
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
+// Fits in a calendar cell: "45m", "2h", "1h58".
+function fmtCompact(ms) {
+  const totalMin = Math.floor(ms / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, '0')}`;
+}
+
 function fmtNum(n) {
   return n.toLocaleString();
+}
+
+function clamp(v, lo, hi) {
+  return Math.min(Math.max(v, lo), Math.max(lo, hi));
 }
 
 const EMPTY_DAY = Object.freeze({ ms: 0, written: 0, deleted: 0 });
@@ -86,20 +96,30 @@ module.exports = class PocketWatchPlugin extends Plugin {
     // Word count of each open note when we last looked, keyed by path.
     this.wordCounts = new Map();
     this.pendingCounts = new Map();
+    this.watch = null;
 
-    this.registerView(VIEW_TYPE, (leaf) => new PocketWatchView(leaf, this));
-    this.addRibbonIcon('clock', 'Open Pocket Watch', () => this.openView());
+    this.addRibbonIcon('clock', 'Open Pocket Watch', () => this.watch && this.watch.toggleShelf());
     this.addSettingTab(new PocketWatchSettingTab(this.app, this));
 
-    this.addCommand({ id: 'open', name: 'Open time and stats', callback: () => this.openView() });
+    this.addCommand({ id: 'toggle-shelf', name: 'Open or close the stats shelf', callback: () => this.watch && this.watch.toggleShelf() });
+    this.addCommand({ id: 'toggle-watch', name: 'Show or hide the floating watch', callback: () => this.setShowWatch(!this.settings.showWatch) });
     this.addCommand({ id: 'toggle-pause', name: 'Pause or resume the timer', callback: () => this.togglePause() });
 
     this.statusEl = this.addStatusBarItem();
     this.statusEl.addClass('pocket-watch-status', 'mod-clickable');
-    this.registerDomEvent(this.statusEl, 'click', () => this.openView());
+    this.registerDomEvent(this.statusEl, 'click', () => this.watch && this.watch.toggleShelf());
 
     this.watchWindow(window);
     this.registerEvent(this.app.workspace.on('window-open', (_w, win) => this.watchWindow(win)));
+
+    // Close the shelf when clicking anywhere outside it, or with Escape.
+    this.registerDomEvent(document, 'pointerdown', (e) => {
+      if (this.watch && this.watch.shelfEl && !this.watch.contains(e.target)) this.watch.closeShelf();
+    }, true);
+    this.registerDomEvent(document, 'keydown', (e) => {
+      if (e.key === 'Escape' && this.watch && this.watch.shelfEl) this.watch.closeShelf();
+    });
+    this.registerDomEvent(window, 'resize', () => this.watch && this.watch.place());
 
     this.registerEvent(this.app.workspace.on('editor-change', (editor, info) => this.onEditorChange(editor, info)));
     this.registerEvent(this.app.workspace.on('file-open', (file) => {
@@ -113,19 +133,21 @@ module.exports = class PocketWatchPlugin extends Plugin {
         this.wordCounts.delete(oldPath);
       }
     }));
+    this.registerInterval(window.setInterval(() => this.tick(), 1000));
+    this.registerInterval(window.setInterval(() => this.flush(), 30 * 1000));
+
     this.app.workspace.onLayoutReady(() => {
       for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
         if (leaf.view instanceof MarkdownView) this.seedWordCount(leaf.view.file);
       }
+      this.watch = new FloatingWatch(this);
+      this.tick();
     });
-
-    this.registerInterval(window.setInterval(() => this.tick(), 1000));
-    this.registerInterval(window.setInterval(() => this.flush(), 30 * 1000));
-    this.tick();
   }
 
   onunload() {
     for (const t of this.pendingCounts.values()) window.clearTimeout(t);
+    if (this.watch) this.watch.destroy();
     this.flush();
   }
 
@@ -182,16 +204,11 @@ module.exports = class PocketWatchPlugin extends Plugin {
     }
     this.state = state;
 
-    this.updateStatusBar();
-    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-      if (leaf.view instanceof PocketWatchView) leaf.view.refreshLive();
-    }
-  }
-
-  updateStatusBar() {
-    this.statusEl.setText(`⏱ ${fmtClock(this.getDay(dayKey(new Date())).ms)}`);
-    this.statusEl.setAttr('data-state', this.state);
-    this.statusEl.setAttr('aria-label', `Pocket Watch: ${STATE_LABELS[this.state]}. Click for stats.`);
+    const ms = this.getDay(dayKey(new Date())).ms;
+    this.statusEl.setText(`⏱ ${fmtShort(ms)}`);
+    this.statusEl.setAttr('data-state', state);
+    this.statusEl.setAttr('aria-label', `Pocket Watch: ${STATE_LABELS[state]}. Click for stats.`);
+    if (this.watch) this.watch.refresh();
   }
 
   togglePause() {
@@ -199,6 +216,18 @@ module.exports = class PocketWatchPlugin extends Plugin {
     if (!this.paused) this.markActive();
     new Notice(this.paused ? 'Pocket Watch paused' : 'Pocket Watch resumed');
     this.tick();
+  }
+
+  async setShowWatch(show) {
+    this.settings.showWatch = show;
+    await this.saveSettings();
+    if (this.watch) this.watch.applySettings();
+  }
+
+  async setWatchStyle(style) {
+    this.settings.watchStyle = style;
+    await this.saveSettings();
+    if (this.watch) this.watch.applySettings();
   }
 
   today() {
@@ -259,19 +288,7 @@ module.exports = class PocketWatchPlugin extends Plugin {
     this.days = {};
     await this.saveSettings();
     this.tick();
-    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-      if (leaf.view instanceof PocketWatchView) leaf.view.render();
-    }
-  }
-
-  async openView() {
-    const { workspace } = this.app;
-    let leaf = workspace.getLeavesOfType(VIEW_TYPE)[0];
-    if (!leaf) {
-      leaf = workspace.getRightLeaf(false) || workspace.getLeaf(true);
-      await leaf.setViewState({ type: VIEW_TYPE, active: true });
-    }
-    workspace.revealLeaf(leaf);
+    if (this.watch && this.watch.dashboard) this.watch.dashboard.render();
   }
 
   sumLastDays(n) {
@@ -307,10 +324,187 @@ module.exports = class PocketWatchPlugin extends Plugin {
   }
 };
 
-class PocketWatchView extends ItemView {
-  constructor(leaf, plugin) {
-    super(leaf);
+// The small watch that floats over the workspace. Drag it anywhere; click it to open the shelf.
+class FloatingWatch {
+  constructor(plugin) {
     this.plugin = plugin;
+    this.shelfEl = null;
+    this.dashboard = null;
+    this.drawn = '';
+    this.el = document.body.createDiv('pocket-watch-float');
+    this.faceEl = this.el.createDiv('pocket-watch-face');
+    this.el.addEventListener('pointerdown', (e) => this.onPointerDown(e));
+    // Place it again whenever its size changes: when the plugin's styles arrive, or the style switches.
+    this.resizeObserver = new ResizeObserver(() => this.place());
+    this.resizeObserver.observe(this.el);
+    this.applySettings();
+  }
+
+  destroy() {
+    this.resizeObserver.disconnect();
+    this.closeShelf();
+    this.el.remove();
+  }
+
+  contains(target) {
+    return this.el.contains(target) || (this.shelfEl && this.shelfEl.contains(target));
+  }
+
+  applySettings() {
+    this.el.classList.toggle('is-hidden', !this.plugin.settings.showWatch);
+    this.drawn = '';
+    this.refresh();
+    this.place();
+  }
+
+  // Called every second, but the face only redraws when the minute or the state changes.
+  refresh() {
+    const p = this.plugin;
+    const ms = p.getDay(dayKey(new Date())).ms;
+    const style = p.settings.watchStyle;
+    const key = `${style}|${Math.floor(ms / 60000)}|${p.state}`;
+    if (this.dashboard) this.dashboard.refreshLive();
+    if (key === this.drawn) return;
+    this.drawn = key;
+    this.el.setAttr('data-state', p.state);
+    this.el.setAttr('data-style', style);
+    this.el.setAttr('aria-label', `${fmtShort(ms)} today. ${STATE_LABELS[p.state]}`);
+    this.faceEl.empty();
+    if (style === 'digital') this.drawDigital(ms);
+    else this.drawAnalog(ms);
+  }
+
+  drawDigital(ms) {
+    this.faceEl.createSpan('pocket-watch-dot');
+    this.faceEl.createSpan({ cls: 'pocket-watch-digits', text: fmtShort(ms) });
+  }
+
+  // The hands show today's time like a stopwatch: the short hand counts hours, the long hand minutes.
+  drawAnalog(ms) {
+    const totalMin = Math.floor(ms / 60000);
+    const svg = this.faceEl.createSvg('svg', { attr: { viewBox: '0 -16 100 116' }, cls: 'pocket-watch-svg' });
+    svg.createSvg('circle', { attr: { cx: 50, cy: -7, r: 6 }, cls: 'pocket-watch-bow' });
+    svg.createSvg('rect', { attr: { x: 44, y: -2, width: 12, height: 7, rx: 2 }, cls: 'pocket-watch-crown' });
+    svg.createSvg('circle', { attr: { cx: 50, cy: 50, r: 46 }, cls: 'pocket-watch-case' });
+    for (let i = 0; i < 12; i++) {
+      const inner = i % 3 === 0 ? 33 : 37;
+      svg.createSvg('line', {
+        attr: { x1: 50, y1: 50 - inner, x2: 50, y2: 9, transform: `rotate(${i * 30} 50 50)` },
+        cls: i % 3 === 0 ? ['pocket-watch-tick', 'is-major'] : 'pocket-watch-tick',
+      });
+    }
+    const label = svg.createSvg('text', { attr: { x: 50, y: 73 }, cls: 'pocket-watch-face-text' });
+    label.textContent = fmtShort(ms);
+    const hourAngle = ((totalMin / 60) % 12) * 30;
+    const minuteAngle = (totalMin % 60) * 6;
+    svg.createSvg('line', { attr: { x1: 50, y1: 50, x2: 50, y2: 27, transform: `rotate(${hourAngle} 50 50)` }, cls: ['pocket-watch-hand', 'is-hour'] });
+    svg.createSvg('line', { attr: { x1: 50, y1: 50, x2: 50, y2: 15, transform: `rotate(${minuteAngle} 50 50)` }, cls: ['pocket-watch-hand', 'is-minute'] });
+    svg.createSvg('circle', { attr: { cx: 50, cy: 50, r: 4 }, cls: 'pocket-watch-pin' });
+  }
+
+  place() {
+    const pos = this.plugin.settings.watchPos || DEFAULT_WATCH_POS;
+    const r = this.el.getBoundingClientRect();
+    this.el.style.left = `${pos.fx * Math.max(0, window.innerWidth - r.width)}px`;
+    this.el.style.top = `${pos.fy * Math.max(0, window.innerHeight - r.height)}px`;
+    if (this.shelfEl) this.placeShelf();
+  }
+
+  // A short press opens the shelf; pressing and moving drags the watch.
+  onPointerDown(e) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const r = this.el.getBoundingClientRect();
+    const start = { x: e.clientX, y: e.clientY };
+    let dragging = false;
+    let left = r.left;
+    let top = r.top;
+    this.el.setPointerCapture(e.pointerId);
+
+    const move = (ev) => {
+      const dx = ev.clientX - start.x;
+      const dy = ev.clientY - start.y;
+      if (!dragging && Math.hypot(dx, dy) < 4) return;
+      dragging = true;
+      this.el.addClass('is-dragging');
+      left = clamp(r.left + dx, 0, window.innerWidth - r.width);
+      top = clamp(r.top + dy, 0, window.innerHeight - r.height);
+      this.el.style.left = `${left}px`;
+      this.el.style.top = `${top}px`;
+      if (this.shelfEl) this.placeShelf();
+    };
+    const up = () => {
+      this.el.removeEventListener('pointermove', move);
+      this.el.removeEventListener('pointerup', up);
+      this.el.removeEventListener('pointercancel', up);
+      this.el.removeClass('is-dragging');
+      if (!dragging) {
+        this.toggleShelf();
+        return;
+      }
+      const freeX = window.innerWidth - r.width;
+      const freeY = window.innerHeight - r.height;
+      this.plugin.settings.watchPos = {
+        fx: freeX > 0 ? left / freeX : 0,
+        fy: freeY > 0 ? top / freeY : 0,
+      };
+      this.plugin.saveSettings();
+    };
+    this.el.addEventListener('pointermove', move);
+    this.el.addEventListener('pointerup', up);
+    this.el.addEventListener('pointercancel', up);
+  }
+
+  toggleShelf() {
+    if (this.shelfEl) this.closeShelf();
+    else this.openShelf();
+  }
+
+  openShelf() {
+    this.shelfEl = document.body.createDiv('pocket-watch-shelf');
+    this.dashboard = new Dashboard(this.plugin, this.shelfEl, () => this.placeShelf());
+    this.dashboard.render();
+    this.el.addClass('is-open');
+  }
+
+  closeShelf() {
+    if (!this.shelfEl) return;
+    this.shelfEl.remove();
+    this.shelfEl = null;
+    this.dashboard = null;
+    this.el.removeClass('is-open');
+  }
+
+  // Open toward whichever side of the window has more room, next to the watch.
+  placeShelf() {
+    const s = this.shelfEl;
+    const gap = 8;
+    const sw = s.offsetWidth;
+    const sh = s.offsetHeight;
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    if (!this.plugin.settings.showWatch) {
+      s.style.left = `${W - sw - 16}px`;
+      s.style.top = `${clamp(48, gap, H - sh - gap)}px`;
+      s.setAttr('data-side', 'below');
+      return;
+    }
+    const w = this.el.getBoundingClientRect();
+    const below = w.top + w.height / 2 < H / 2;
+    const top = below ? w.bottom + gap : w.top - gap - sh;
+    const left = w.left + w.width / 2 > W / 2 ? w.right - sw : w.left;
+    s.style.top = `${clamp(top, gap, H - sh - gap)}px`;
+    s.style.left = `${clamp(left, gap, W - sw - gap)}px`;
+    s.setAttr('data-side', below ? 'below' : 'above');
+  }
+}
+
+// Everything on the shelf: today, the calendar, the selected day and the stats.
+class Dashboard {
+  constructor(plugin, el, onRender) {
+    this.plugin = plugin;
+    this.el = el;
+    this.onRender = onRender;
     const t = new Date();
     this.month = new Date(t.getFullYear(), t.getMonth(), 1);
     this.selected = dayKey(t);
@@ -318,23 +512,6 @@ class PocketWatchView extends ItemView {
     this.lastRender = 0;
   }
 
-  getViewType() {
-    return VIEW_TYPE;
-  }
-
-  getDisplayText() {
-    return 'Pocket Watch';
-  }
-
-  getIcon() {
-    return 'clock';
-  }
-
-  async onOpen() {
-    this.render();
-  }
-
-  // Called every second. Only the clock updates each second; the rest redraws every 15 seconds.
   refreshLive() {
     if (!this.clockEl) return;
     const today = dayKey(new Date());
@@ -344,53 +521,67 @@ class PocketWatchView extends ItemView {
       this.render();
       return;
     }
-    if (Date.now() - this.lastRender > 15000) {
+    // Redraw the rest once a minute, but not under the mouse while you're using it.
+    if (Date.now() - this.lastRender > 60000 && !this.el.matches(':hover')) {
       this.render();
       return;
     }
-    this.clockEl.setText(fmtClock(this.plugin.getDay(today).ms));
-    this.stateEl.setText(STATE_LABELS[this.plugin.state]);
-    this.watchEl.setAttr('data-state', this.plugin.state);
-    this.pauseBtn.setText(this.plugin.paused ? 'Resume' : 'Pause');
+    const p = this.plugin;
+    this.clockEl.setText(fmtShort(p.getDay(today).ms));
+    this.stateEl.setText(STATE_LABELS[p.state]);
+    this.headEl.setAttr('data-state', p.state);
+    this.pauseBtn.setText(p.paused ? 'Resume' : 'Pause');
   }
 
   render() {
-    const el = this.contentEl;
+    const el = this.el;
     el.empty();
-    el.addClass('pocket-watch-view');
     this.lastRender = Date.now();
     this.renderedDay = dayKey(new Date());
 
-    this.renderWatch(el.createDiv('pocket-watch-section'));
+    this.renderToday(el.createDiv('pocket-watch-section'));
     this.renderCalendar(el.createDiv('pocket-watch-section'));
     this.renderDay(el.createDiv('pocket-watch-section'));
     this.renderStats(el.createDiv('pocket-watch-section'));
     this.refreshLive();
+    if (this.onRender) this.onRender();
   }
 
-  renderWatch(el) {
+  renderToday(el) {
     const p = this.plugin;
-    this.watchEl = el.createDiv('pocket-watch-watch');
-    this.watchEl.createDiv({ cls: 'pocket-watch-label', text: 'Today' });
-    this.clockEl = this.watchEl.createDiv('pocket-watch-clock');
-    const row = this.watchEl.createDiv('pocket-watch-state-row');
+    this.headEl = el.createDiv('pocket-watch-head');
+    const left = this.headEl.createDiv();
+    left.createDiv({ cls: 'pocket-watch-label', text: 'Today' });
+    this.clockEl = left.createDiv('pocket-watch-clock');
+    const row = left.createDiv('pocket-watch-state-row');
     row.createSpan('pocket-watch-dot');
     this.stateEl = row.createSpan('pocket-watch-state');
-    this.pauseBtn = this.watchEl.createEl('button', { cls: 'pocket-watch-pause' });
-    this.pauseBtn.addEventListener('click', () => p.togglePause());
 
-    new Setting(el)
+    const right = this.headEl.createDiv('pocket-watch-head-actions');
+    this.pauseBtn = right.createEl('button');
+    this.pauseBtn.addEventListener('click', () => p.togglePause());
+    const styles = right.createDiv('pocket-watch-switch');
+    for (const [value, text] of [['analog', 'Analog'], ['digital', 'Digital']]) {
+      const b = styles.createEl('button', { text });
+      if (p.settings.watchStyle === value) b.addClass('is-active');
+      b.addEventListener('click', async () => {
+        await p.setWatchStyle(value);
+        this.render();
+      });
+    }
+
+    const idle = new Setting(el)
       .setName('Idle limit')
-      .setDesc(`Timer stops after ${p.settings.idleMinutes} min with no activity`)
-      .addSlider((s) => s
-        .setLimits(1, 120, 1)
-        .setValue(p.settings.idleMinutes)
-        .setDynamicTooltip()
-        .onChange(async (v) => {
-          p.settings.idleMinutes = v;
-          await p.saveSettings();
-          this.render();
-        }));
+      .setDesc(`Stops after ${p.settings.idleMinutes} min with no activity`);
+    idle.addSlider((s) => s
+      .setLimits(1, 120, 1)
+      .setValue(p.settings.idleMinutes)
+      .setDynamicTooltip()
+      .onChange(async (v) => {
+        p.settings.idleMinutes = v;
+        idle.setDesc(`Stops after ${v} min with no activity`);
+        await p.saveSettings();
+      }));
   }
 
   renderCalendar(el) {
@@ -420,7 +611,7 @@ class PocketWatchView extends ItemView {
     for (const n of names) grid.createDiv({ cls: 'pocket-watch-wd', text: n });
 
     const offset = (new Date(y, m, 1).getDay() - (mon ? 1 : 0) + 7) % 7;
-    for (let i = 0; i < offset; i++) grid.createDiv('pocket-watch-cell is-blank');
+    for (let i = 0; i < offset; i++) grid.createDiv({ cls: ['pocket-watch-cell', 'is-blank'] });
 
     const todayKey = dayKey(new Date());
     const daysInMonth = new Date(y, m + 1, 0).getDate();
@@ -428,11 +619,11 @@ class PocketWatchView extends ItemView {
       const key = dayKey(new Date(y, m, d));
       const ms = p.getDay(key).ms;
       const level = ms === 0 ? 0 : ms < 30 * 60000 ? 1 : ms < 90 * 60000 ? 2 : ms < 180 * 60000 ? 3 : 4;
-      const cell = grid.createDiv(`pocket-watch-cell pocket-watch-l${level}`);
+      const cell = grid.createDiv({ cls: ['pocket-watch-cell', `pocket-watch-l${level}`] });
       if (key === todayKey) cell.addClass('is-today');
       if (key === this.selected) cell.addClass('is-selected');
       cell.createDiv({ cls: 'pocket-watch-daynum', text: String(d) });
-      if (ms >= 60000) cell.createDiv({ cls: 'pocket-watch-daytime', text: fmtShort(ms) });
+      if (ms >= 60000) cell.createDiv({ cls: 'pocket-watch-daytime', text: fmtCompact(ms) });
       cell.setAttr('aria-label', `${key}: ${fmtShort(ms)}`);
       cell.addEventListener('click', () => {
         this.selected = key;
@@ -467,11 +658,13 @@ class PocketWatchView extends ItemView {
     if (this.selected !== todayKey) {
       const t = p.getDay(todayKey).ms;
       const diff = t - d.ms;
-      const text = diff === 0
-        ? 'Same time as today'
-        : diff > 0
-          ? `Today you've done ${fmtShort(diff)} more (${fmtShort(t)})`
-          : `Today you've done ${fmtShort(-diff)} less (${fmtShort(t)})`;
+      const text = d.ms === 0
+        ? `Nothing tracked that day. Today so far: ${fmtShort(t)}`
+        : diff === 0
+          ? 'Same time as today'
+          : diff > 0
+            ? `Today you've done ${fmtShort(diff)} more (${fmtShort(t)})`
+            : `Today you've done ${fmtShort(-diff)} less (${fmtShort(t)})`;
       el.createDiv({ cls: 'pocket-watch-compare', text });
     }
   }
@@ -527,6 +720,28 @@ class PocketWatchSettingTab extends PluginSettingTab {
     const p = this.plugin;
     const el = this.containerEl;
     el.empty();
+
+    new Setting(el)
+      .setName('Show floating watch')
+      .setDesc('A small watch you can drag anywhere over your notes. Click it to open the stats shelf.')
+      .addToggle((t) => t.setValue(p.settings.showWatch).onChange((v) => p.setShowWatch(v)));
+
+    new Setting(el)
+      .setName('Watch style')
+      .addDropdown((d) => d
+        .addOption('analog', 'Analog')
+        .addOption('digital', 'Digital')
+        .setValue(p.settings.watchStyle)
+        .onChange((v) => p.setWatchStyle(v)));
+
+    new Setting(el)
+      .setName('Reset watch position')
+      .setDesc('Move the watch back to the bottom right corner.')
+      .addButton((b) => b.setButtonText('Reset').onClick(async () => {
+        p.settings.watchPos = null;
+        await p.saveSettings();
+        if (p.watch) p.watch.place();
+      }));
 
     new Setting(el)
       .setName('Idle limit (minutes)')
