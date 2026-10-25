@@ -23,6 +23,8 @@ A calm little timepiece that sits on top of your notes, and quietly keeps track 
 
 ![Focus sessions](images/focus.png)
 
+![A focus session from start to finish](images/focus-demo.gif)
+
 ## Make it yours
 
 - **Twelve faces**, each with its own finish: Porcelain (glossy enamel), Linen (a guilloché centre and Roman numerals), Slate (brushed, with raised numerals), Midnight (aventurine on a sunburst), Open heart (with a window onto a ticking movement), Bauhaus, Void, Field (a matte grained dial), Sector, Diver (a wave dial with luminous markers in metal surrounds), Rosé (faceted rose gold markers), and one that matches your theme.
@@ -35,6 +37,10 @@ A calm little timepiece that sits on top of your notes, and quietly keeps track 
 - **Digital**: six styles (Slate, LCD, Nixie, Flip, E-ink, Match theme) in four layouts (Wide, Slim, Tall, Compact), in 12 or 24 hours, with optional seconds, a blinking colon, the date, the moon, today's time and a goal bar.
 
 ![Make it yours](images/make-it-yours.png)
+
+<p align="center"><img src="images/open-heart.gif" width="340" alt="The open heart movement at 18,000 beats an hour"></p>
+
+The open heart face shows a movement through a window in the dial: the balance wheel with its timing screws and blued Breguet hairspring swinging five times a second under a polished cock with its regulator, the pallet fork and escape wheel ticking with it, a wheel of the gear train turning once a minute, Geneva stripes, perlage, rubies and blued screws. You can slow it to a gentle swing or stop it in the settings.
 
 ## Time tracking
 
@@ -54,7 +60,7 @@ Search for **Pocket Watch** in Settings → Community plugins once it's listed. 
 ## Settings
 
 - **Watch**: show or hide it, analog or digital, and its size.
-- **Analog**: face, case, name on the dial, hour markers, hands, seconds hand, what shows at 12, 3, 6 and 9 o'clock, the goal ring, and gentle motion for the movement.
+- **Analog**: face, case, name on the dial, hour markers, hands, seconds hand, what shows at 12, 3, 6 and 9 o'clock, the goal ring, and how the movement moves (lifelike, gentle or still).
 - **Digital**: style, layout, 12 or 24 hours, seconds, blinking colon, date, moon phase, today's time and the goal bar.
 - **Focus sessions**: focus, short break and long break lengths, how many sessions before a long break, starting breaks and the next session automatically, the countdown label, and the chime.
 - **Placement**: reset the watch to the bottom right corner of the note you're working in.
