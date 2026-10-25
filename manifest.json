@@ -1,9 +1,10 @@
 {
-  "id": "inkwatch",
-  "name": "Inkwatch",
+  "id": "pocket-watch",
+  "name": "Pocket Watch",
   "version": "0.1.0",
   "minAppVersion": "1.4.0",
-  "description": "Tracks how long you spend in Obsidian, pauses itself when you go idle, and shows a calendar with time and word stats.",
-  "author": "",
-  "isDesktopOnly": false
+  "description": "A small watch that tracks your time in the vault, stops when you go idle, and opens into a calendar with time and word stats.",
+  "author": "Nexziz",
+  "isDesktopOnly": false,
+  "authorUrl": "https://github.com/Nexziz"
 }
