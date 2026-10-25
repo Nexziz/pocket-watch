@@ -9,13 +9,24 @@ A calm little timepiece that sits on top of your notes, and quietly keeps track 
 - **Shows the time of day**, with hands that move by the minute. Add a ticking or sweeping seconds hand if you like.
 - **Snaps where you put it.** Drag it over a pane and it snaps to the nearest corner or edge, then stays there when you resize or rearrange things. Drop it on the ribbon or status bar to snap it to the edge of the window, or hold Alt to place it anywhere.
 - **Any size.** Drag the handle that appears when you point at the watch, hold Alt and scroll over it, or use the slider in the settings.
-- **Click it** to open a shelf with your calendar and stats.
+- **Click it** to open a shelf with your calendar and stats. Right-click it for focus sessions and other quick actions.
 
 ![Sits on top of your notes](images/in-context.png)
 
+## Focus sessions
+
+- **Pomodoro, built in.** Start a focus session from the shelf, the command palette, or by right-clicking the watch.
+- **The bezel counts down**, in a warm colour while you focus and in green during a break, and a small label next to the watch shows the minutes left.
+- **A soft chime** and a gentle glow mark the end of each session. Breaks can start on their own, with a long break after every few sessions.
+- **Every session counts**: the shelf shows today's sessions and focus time, the calendar marks the days you focused, and the stats add them up.
+- Choose the length of focus sessions and short and long breaks, how many sessions come before a long break, and whether breaks and the next session start automatically.
+
+![Focus sessions](images/focus.png)
+
 ## Make it yours
 
-- **Twelve faces**: Porcelain, Linen, Slate, Midnight, Open heart (with a window onto a ticking movement), Bauhaus, Void, Field, Sector, Diver, Rosé, and one that matches your theme.
+- **Twelve faces**, each with its own finish: Porcelain (glossy enamel), Linen (a guilloché centre and Roman numerals), Slate (brushed, with raised numerals), Midnight (aventurine on a sunburst), Open heart (with a window onto a ticking movement), Bauhaus, Void, Field (a matte grained dial), Sector, Diver (a wave dial with luminous markers in metal surrounds), Rosé (faceted rose gold markers), and one that matches your theme.
+- **Watchmaking details**: a stepped bezel, faceted hands, polished applied markers, a minute track on the flange, a domed cap, reflections on the crystal, and the name printed on the dial (you can turn it off).
 - **Case**: a crown, a pocket watch bow, or plain.
 - **Hour markers**: the face's own, or batons, numerals, Roman numerals, dots, diver markers, a single dot, or none.
 - **Hands**: Leaf, Baton, Breguet, Dauphine, Sword, Pencil or Arrow.
@@ -30,7 +41,7 @@ A calm little timepiece that sits on top of your notes, and quietly keeps track 
 - **Idle limit**: the timer stops after a set time with no typing, clicking, scrolling or mouse movement (30 minutes by default). Any activity starts it again. Reading and scrolling count as activity.
 - **Calendar**: each day shows the time you spent. Click a day to see its time and word stats compared with today.
 - **Stats**: last 7 and 30 days, all time, daily average, streak, best day, words written and deleted, and a 14-day chart.
-- **Status bar and commands**: today's time also shows in the status bar. The clock icon in the ribbon opens the shelf, and there are commands to open the shelf, show or hide the watch, switch between analog and digital, and pause the timer.
+- **Status bar and commands**: today's time also shows in the status bar, along with the minutes left in a focus session. The clock icon in the ribbon opens the shelf, and there are commands to open the shelf, show or hide the watch, switch between analog and digital, pause the timer, and start, pause or stop a focus session.
 
 ## Install
 
@@ -43,8 +54,9 @@ Search for **Pocket Watch** in Settings → Community plugins once it's listed. 
 ## Settings
 
 - **Watch**: show or hide it, analog or digital, and its size.
-- **Analog**: face, case, hour markers, hands, seconds hand, what shows at 12, 3, 6 and 9 o'clock, the goal ring, and gentle motion for the movement.
+- **Analog**: face, case, name on the dial, hour markers, hands, seconds hand, what shows at 12, 3, 6 and 9 o'clock, the goal ring, and gentle motion for the movement.
 - **Digital**: style, layout, 12 or 24 hours, seconds, blinking colon, date, moon phase, today's time and the goal bar.
+- **Focus sessions**: focus, short break and long break lengths, how many sessions before a long break, starting breaks and the next session automatically, the countdown label, and the chime.
 - **Placement**: reset the watch to the bottom right corner of the note you're working in.
 - **Tracking**: daily goal, idle limit, removing idle time, only counting while Obsidian is focused, the first day of the week, and resetting your data.
 

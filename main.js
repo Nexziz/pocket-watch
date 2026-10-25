@@ -1,27 +1,28 @@
 'use strict';
 
-const { Plugin, PluginSettingTab, Setting, MarkdownView, Notice } = require('obsidian');
+const { Plugin, PluginSettingTab, Setting, MarkdownView, Notice, Menu } = require('obsidian');
 
 // ---------------------------------------------------------------------------
 // Options
 // ---------------------------------------------------------------------------
 
-// Each analog face picks a case, its own hour markers, and optionally a decoration, a dial
-// finish, polished metal (applied) markers, and a window onto the movement in one slot.
+// Each analog face picks a case and its own hour markers, and optionally a decoration, a dial
+// finish (texture), a flange with a minute track, polished metal (applied) markers, a window
+// onto the movement in one slot, serif printing, and whether its name is printed (plain, model).
 // Its colours live in styles.css under .pocket-watch-face-<key>.
 const ANALOG_FACES = {
-  porcelain: { name: 'Porcelain', case: 'polished', markers: 'batons', decor: 'minute-dots' },
-  linen: { name: 'Linen', case: 'polished', markers: 'roman', decor: 'railroad' },
-  slate: { name: 'Slate', case: 'polished', markers: 'quarters' },
-  midnight: { name: 'Midnight', case: 'polished', markers: 'dots', decor: 'stars', texture: 'sunburst', applied: true },
-  openheart: { name: 'Open heart', case: 'polished', markers: 'batons', texture: 'azurage', applied: true, window: 'slotBottom' },
+  porcelain: { name: 'Porcelain', case: 'polished', markers: 'batons', decor: 'minute-dots', texture: 'enamel', serif: true },
+  linen: { name: 'Linen', case: 'polished', markers: 'roman', decor: 'railroad', texture: 'guilloche', serif: true },
+  slate: { name: 'Slate', case: 'polished', markers: 'quarters', texture: 'brushed', flange: true, applied: true },
+  midnight: { name: 'Midnight', case: 'polished', markers: 'dots', decor: 'aventurine', texture: 'sunburst', flange: true, applied: true },
+  openheart: { name: 'Open heart', case: 'polished', markers: 'batons', texture: 'azurage', flange: true, applied: true, window: 'slotBottom' },
   bauhaus: { name: 'Bauhaus', case: 'thin', markers: 'arabic', decor: 'minute-ticks' },
-  void: { name: 'Void', case: 'thin', markers: 'minimal', applied: true },
-  field: { name: 'Field', case: 'polished', markers: 'arabic', decor: 'inner-24' },
-  sector: { name: 'Sector', case: 'polished', markers: 'arabic', decor: 'sector' },
-  diver: { name: 'Diver', case: 'dive', markers: 'lume', texture: 'sunburst' },
-  rose: { name: 'Rosé', case: 'polished', markers: 'batons', decor: 'minute-ticks', texture: 'sunburst', applied: true },
-  theme: { name: 'Match theme', case: 'thin', markers: 'batons', decor: 'minute-dots' },
+  void: { name: 'Void', case: 'thin', markers: 'minimal', applied: true, plain: true },
+  field: { name: 'Field', case: 'polished', markers: 'arabic', decor: 'inner-24', texture: 'grain' },
+  sector: { name: 'Sector', case: 'polished', markers: 'arabic', decor: 'sector', texture: 'grain', serif: true },
+  diver: { name: 'Diver', case: 'dive', markers: 'lume', texture: 'waves' },
+  rose: { name: 'Rosé', case: 'polished', markers: 'batons', texture: 'sunburst', flange: true, applied: true, serif: true },
+  theme: { name: 'Match theme', case: 'thin', markers: 'batons', decor: 'minute-dots', model: false },
 };
 
 const MARKERS = {
@@ -92,12 +93,22 @@ const DEFAULT_SETTINGS = {
   weekStartsMonday: true,
   dailyGoalMinutes: 120,
 
+  focusMinutes: 25,
+  shortBreakMinutes: 5,
+  longBreakMinutes: 15,
+  longBreakEvery: 4,
+  autoStartBreaks: true,
+  autoStartFocus: false,
+  chime: true,
+  showCountdown: true,
+
   showWatch: true,
   watchType: 'analog',
   watchSize: 120,
 
   face: 'porcelain',
   caseStyle: 'crown',
+  dialText: true,
   markers: 'face',
   hands: 'leaf',
   seconds: 'off',
@@ -272,6 +283,37 @@ const STATE_LABELS = {
   paused: 'Paused',
 };
 
+const SESSION_NAMES = { focus: 'Focus', short: 'Break', long: 'Long break' };
+
+// A soft two-note bell, made on the spot so the plugin needs no sound files.
+let audio = null;
+function chime() {
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === 'suspended') audio.resume();
+    const t = audio.currentTime;
+    const out = audio.createGain();
+    out.gain.value = 0.16;
+    out.connect(audio.destination);
+    for (const [freq, delay] of [[659.25, 0], [987.77, 0.22]]) {
+      for (const [mult, amp] of [[1, 1], [2.76, 0.22], [5.4, 0.06]]) {
+        const osc = audio.createOscillator();
+        const gain = audio.createGain();
+        osc.frequency.value = freq * mult;
+        gain.gain.setValueAtTime(0, t + delay);
+        gain.gain.linearRampToValueAtTime(amp, t + delay + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + delay + 2.4 / mult);
+        osc.connect(gain);
+        gain.connect(out);
+        osc.start(t + delay);
+        osc.stop(t + delay + 2.6);
+      }
+    }
+  } catch (e) {
+    // No sound available; the notice and the watch still say the session is done.
+  }
+}
+
 // Settings saved by earlier versions, turned into today's options.
 function migrateSettings(s) {
   if (!s) return {};
@@ -300,6 +342,10 @@ module.exports = class PocketWatchPlugin extends Plugin {
     const saved = (await this.loadData()) || {};
     this.settings = Object.assign({}, DEFAULT_SETTINGS, migrateSettings(saved.settings));
     this.days = saved.days || {};
+    // The running focus session or break, if any: { kind, total, endsAt, paused, remaining }.
+    this.session = saved.session || null;
+    // Focus sessions finished since the last long break.
+    this.cycle = saved.cycle || 0;
 
     this.paused = false;
     this.state = 'tracking';
@@ -319,6 +365,26 @@ module.exports = class PocketWatchPlugin extends Plugin {
     this.addCommand({ id: 'toggle-shelf', name: 'Open or close the stats shelf', callback: () => this.watch && this.watch.toggleShelf() });
     this.addCommand({ id: 'toggle-watch', name: 'Show or hide the watch', callback: () => this.updateWatch({ showWatch: !this.settings.showWatch }) });
     this.addCommand({ id: 'toggle-pause', name: 'Pause or resume the timer', callback: () => this.togglePause() });
+    this.addCommand({ id: 'start-focus', name: 'Start a focus session', callback: () => this.startSession('focus') });
+    this.addCommand({ id: 'start-break', name: 'Take a break', callback: () => this.startSession('short') });
+    this.addCommand({
+      id: 'toggle-session',
+      name: 'Pause or resume the focus session',
+      checkCallback: (checking) => {
+        if (!this.session) return false;
+        if (!checking) this.toggleSessionPause();
+        return true;
+      },
+    });
+    this.addCommand({
+      id: 'stop-session',
+      name: 'Stop the focus session',
+      checkCallback: (checking) => {
+        if (!this.session) return false;
+        if (!checking) this.stopSession();
+        return true;
+      },
+    });
     this.addCommand({
       id: 'toggle-type',
       name: 'Switch between analog and digital',
@@ -376,6 +442,8 @@ module.exports = class PocketWatchPlugin extends Plugin {
   onunload() {
     for (const t of this.pendingCounts.values()) window.clearTimeout(t);
     if (this.watch) this.watch.destroy();
+    if (audio) audio.close();
+    audio = null;
     this.flush();
   }
 
@@ -432,8 +500,12 @@ module.exports = class PocketWatchPlugin extends Plugin {
     }
     this.state = state;
 
+    // A session that ran out while Obsidian was closed for a while is counted, quietly.
+    const x = this.session;
+    if (x && !x.paused && now >= x.endsAt) this.completeSession(now - x.endsAt > 5 * 60000);
+
     const ms = this.getDay(dayKey(new Date())).ms;
-    this.statusEl.setText(`⏱ ${fmtShort(ms)}`);
+    this.statusEl.setText(this.session ? `⏱ ${fmtShort(ms)} · ${this.sessionLabel()}` : `⏱ ${fmtShort(ms)}`);
     this.statusEl.setAttr('data-state', state);
     this.statusEl.setAttr('aria-label', `Pocket Watch: ${STATE_LABELS[state]}. Click for stats.`);
     if (this.watch) this.watch.refresh();
@@ -444,6 +516,117 @@ module.exports = class PocketWatchPlugin extends Plugin {
     if (!this.paused) this.markActive();
     new Notice(this.paused ? 'Pocket Watch paused' : 'Pocket Watch resumed');
     this.tick();
+  }
+
+  // --- Focus sessions ---
+
+  sessionMinutes(kind) {
+    const s = this.settings;
+    return kind === 'focus' ? s.focusMinutes : kind === 'long' ? s.longBreakMinutes : s.shortBreakMinutes;
+  }
+
+  startSession(kind, quiet) {
+    const minutes = this.sessionMinutes(kind);
+    const total = minutes * 60000;
+    this.session = { kind, total, endsAt: Date.now() + total, paused: false, remaining: total };
+    this.markActive();
+    if (!quiet) new Notice(kind === 'focus' ? `Focus for ${minutes} minutes` : `${SESSION_NAMES[kind]}, ${minutes} minutes`);
+    this.saveSettings();
+    this.tick();
+  }
+
+  sessionRemaining() {
+    const x = this.session;
+    if (!x) return 0;
+    return x.paused ? x.remaining : Math.max(0, x.endsAt - Date.now());
+  }
+
+  // "Focus 18 min", "Break 4 min" or "Paused 18 min".
+  sessionLabel() {
+    const x = this.session;
+    if (!x) return '';
+    return `${x.paused ? 'Paused' : SESSION_NAMES[x.kind]} ${Math.ceil(this.sessionRemaining() / 60000)} min`;
+  }
+
+  toggleSessionPause() {
+    const x = this.session;
+    if (!x) return;
+    if (x.paused) {
+      x.endsAt = Date.now() + x.remaining;
+      x.paused = false;
+    } else {
+      x.remaining = this.sessionRemaining();
+      x.paused = true;
+    }
+    this.saveSettings();
+    this.tick();
+  }
+
+  stopSession() {
+    this.session = null;
+    this.saveSettings();
+    this.tick();
+  }
+
+  skipSession() {
+    const x = this.session;
+    if (!x) return;
+    this.startSession(x.kind === 'focus' ? 'short' : 'focus');
+  }
+
+  // After every few focus sessions the break is a long one.
+  nextBreak() {
+    return this.cycle > 0 && this.cycle % this.settings.longBreakEvery === 0 ? 'long' : 'short';
+  }
+
+  completeSession(quiet) {
+    const x = this.session;
+    this.session = null;
+    if (x.kind === 'focus') {
+      const d = this.today();
+      d.sessions = (d.sessions || 0) + 1;
+      d.focusMs = (d.focusMs || 0) + x.total;
+      this.cycle += 1;
+    } else if (x.kind === 'long') {
+      this.cycle = 0;
+    }
+    if (quiet) {
+      this.saveSettings();
+      return;
+    }
+    if (this.settings.chime) chime();
+    if (this.watch) this.watch.ring();
+    if (x.kind === 'focus') {
+      const next = this.nextBreak();
+      new Notice(`Focus session done. Time for a ${next === 'long' ? 'long' : 'short'} break.`);
+      if (this.settings.autoStartBreaks) this.startSession(next, true);
+      else this.saveSettings();
+    } else {
+      new Notice("Break's over. Ready to focus again?");
+      if (this.settings.autoStartFocus) this.startSession('focus', true);
+      else this.saveSettings();
+    }
+  }
+
+  // Right-click on the watch.
+  showWatchMenu(e) {
+    const s = this.settings;
+    const menu = new Menu();
+    if (this.session) {
+      const x = this.session;
+      menu.addItem((i) => i.setTitle(x.paused ? 'Resume the session' : 'Pause the session').setIcon(x.paused ? 'play' : 'pause').onClick(() => this.toggleSessionPause()));
+      menu.addItem((i) => i.setTitle(x.kind === 'focus' ? 'Skip to a break' : 'Skip to focus').setIcon('skip-forward').onClick(() => this.skipSession()));
+      menu.addItem((i) => i.setTitle('Stop the session').setIcon('square').onClick(() => this.stopSession()));
+    } else {
+      menu.addItem((i) => i.setTitle(`Focus for ${s.focusMinutes} minutes`).setIcon('play').onClick(() => this.startSession('focus')));
+      menu.addItem((i) => i.setTitle(`Short break, ${s.shortBreakMinutes} minutes`).setIcon('coffee').onClick(() => this.startSession('short')));
+      menu.addItem((i) => i.setTitle(`Long break, ${s.longBreakMinutes} minutes`).setIcon('armchair').onClick(() => this.startSession('long')));
+    }
+    menu.addSeparator();
+    menu.addItem((i) => i.setTitle('Open the shelf').setIcon('calendar-days').onClick(() => this.watch && !this.watch.shelfEl && this.watch.openShelf()));
+    menu.addItem((i) => i.setTitle(this.paused ? 'Resume tracking' : 'Pause tracking').setIcon('timer').onClick(() => this.togglePause()));
+    menu.addItem((i) => i.setTitle('Hide the watch').setIcon('eye-off').onClick(() => this.updateWatch({ showWatch: false })));
+    menu.showAtMouseEvent(e);
   }
 
   async updateWatch(patch) {
@@ -498,7 +681,7 @@ module.exports = class PocketWatchPlugin extends Plugin {
   async flush() {
     if (!this.dirty) return;
     this.dirty = false;
-    await this.saveData({ settings: this.settings, days: this.days });
+    await this.saveData({ settings: this.settings, days: this.days, session: this.session, cycle: this.cycle });
   }
 
   async saveSettings() {
@@ -536,9 +719,11 @@ module.exports = class PocketWatchPlugin extends Plugin {
   }
 
   stats() {
-    const s = { ms: 0, written: 0, deleted: 0, activeDays: 0, bestKey: null, bestMs: 0, streak: this.streak() };
+    const s = { ms: 0, written: 0, deleted: 0, activeDays: 0, bestKey: null, bestMs: 0, streak: this.streak(), sessions: 0, focusMs: 0 };
     for (const [key, d] of Object.entries(this.days)) {
       s.ms += d.ms;
+      s.sessions += d.sessions || 0;
+      s.focusMs += d.focusMs || 0;
       s.written += d.written;
       s.deleted += d.deleted;
       if (d.ms >= ACTIVE_DAY_MS) s.activeDays++;
@@ -575,7 +760,12 @@ class FloatingWatch {
     this.el = document.body.createDiv('pocket-watch-float');
     this.faceEl = this.el.createDiv('pocket-watch-face');
     this.gripEl = this.el.createDiv({ cls: 'pocket-watch-grip', attr: { 'aria-label': 'Drag to resize' } });
+    this.badgeEl = this.el.createDiv('pocket-watch-badge');
     this.el.addEventListener('pointerdown', (e) => this.onPointerDown(e));
+    this.el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      this.plugin.showWatchMenu(e);
+    });
     this.gripEl.addEventListener('pointerdown', (e) => this.onResizeStart(e));
     this.el.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
     // Place it again whenever its size changes: when the plugin's styles arrive, or the face changes.
@@ -587,9 +777,19 @@ class FloatingWatch {
   destroy() {
     this.resizeObserver.disconnect();
     window.clearTimeout(this.saveTimer);
+    window.clearTimeout(this.ringTimer);
     this.closeShelf();
     this.removeGhost();
     this.el.remove();
+  }
+
+  // A gentle glow when a session ends.
+  ring() {
+    this.el.removeClass('is-ringing');
+    void this.el.offsetWidth;
+    this.el.addClass('is-ringing');
+    window.clearTimeout(this.ringTimer);
+    this.ringTimer = window.setTimeout(() => this.el.removeClass('is-ringing'), 7000);
   }
 
   contains(target) {
@@ -608,7 +808,7 @@ class FloatingWatch {
     const s = this.plugin.settings;
     const now = new Date();
     const key = JSON.stringify([
-      s.watchType, s.watchSize, s.face, s.caseStyle, s.markers, s.hands, s.seconds, s.slotTop, s.slotRight, s.slotBottom, s.slotLeft,
+      s.watchType, s.watchSize, s.face, s.caseStyle, s.dialText, s.markers, s.hands, s.seconds, s.slotTop, s.slotRight, s.slotBottom, s.slotLeft,
       s.goalRing, s.motion, s.digitalStyle, s.digitalLayout, s.clock, s.digitalSeconds, s.blinkColon,
       s.digitalDate, s.digitalMoon, s.digitalFocus, s.digitalBar, dayKey(now),
     ]);
@@ -642,11 +842,20 @@ class FloatingWatch {
     const goal = Math.min(1, day.ms / (Math.max(1, s.dailyGoalMinutes) * 60000));
 
     this.el.setAttr('data-state', p.state);
+    // During a session the ring and the bar count down instead of filling toward the goal.
+    const x = p.session;
+    const ringMode = x ? (x.paused ? 'paused' : x.kind === 'focus' ? 'focus' : 'break') : s.goalRing ? 'goal' : 'off';
+    setIfChanged(this.el, 'data-ring', ringMode);
+    const progress = x ? p.sessionRemaining() / x.total : goal;
+    const badge = x && s.showCountdown ? p.sessionLabel() : '';
+    setText(this.badgeEl, badge);
+    this.badgeEl.classList.toggle('is-shown', !!badge);
     const label = [
       fmtTime(now, this.h24),
       now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' }),
       moonName(moonPhase(now)),
       `${fmtShort(day.ms)} in Obsidian today (${STATE_LABELS[p.state].toLowerCase()})`,
+      ...(x ? [`${p.sessionLabel()} left. Right-click for session controls.`] : ['Right-click to start a focus session.']),
     ].join('\n');
     if (this.el.getAttribute('aria-label') !== label) this.el.setAttr('aria-label', label);
 
@@ -654,7 +863,7 @@ class FloatingWatch {
       turn(parts.hour, ((h % 12) + m / 60) * 30);
       turn(parts.minute, m * 6 + sec * 0.1);
       if (parts.second && s.seconds === 'tick') turn(parts.second, sec * 6);
-      if (parts.ring) setIfChanged(parts.ring, 'stroke-dasharray', `${(goal * 100).toFixed(2)} 100`);
+      if (parts.ring) setIfChanged(parts.ring, 'stroke-dasharray', `${(progress * 100).toFixed(2)} 100`);
     }
     for (const live of parts.live) {
       if (live.type === 'focus') setText(live.el, fmtShort(day.ms));
@@ -672,7 +881,7 @@ class FloatingWatch {
       if (d.ampm) setText(d.ampm, h < 12 ? 'AM' : 'PM');
     }
     if (parts.focusText) setText(parts.focusText, fmtShort(day.ms));
-    if (parts.fill) parts.fill.style.width = `${goal * 100}%`;
+    if (parts.fill) parts.fill.style.width = `${progress * 100}%`;
   }
 
   // --- Analog -------------------------------------------------------------
@@ -720,37 +929,64 @@ class FloatingWatch {
 
     this.defs = add(svg, 'defs');
     this.gradient(add, 'linearGradient', 'bezel', { x1: 0, y1: 0, x2: 1, y2: 1 }, [['0%', 'pw-bezel-a'], ['55%', 'pw-bezel-b'], ['100%', 'pw-bezel-c']]);
+    this.gradient(add, 'linearGradient', 'bezel-rev', { x1: 1, y1: 1, x2: 0, y2: 0 }, [['0%', 'pw-bezel-a'], ['55%', 'pw-bezel-b'], ['100%', 'pw-bezel-c']]);
     this.gradient(add, 'radialGradient', 'dial', { cx: '50%', cy: '40%', r: '62%' }, [['0%', 'pw-dial-a'], ['100%', 'pw-dial-b']]);
+    this.gradient(add, 'radialGradient', 'dial-shade', { cx: '50%', cy: '50%', r: '50%' }, [['80%', 'rgba(0,0,0,0)'], ['100%', 'rgba(0,0,0,0.22)']]);
     this.gradient(add, 'linearGradient', 'metal', { x1: 0, y1: 0, x2: 1, y2: 1 }, [['0%', 'pw-metal-a'], ['50%', 'pw-metal-b'], ['100%', 'pw-metal-c']]);
     this.gradient(add, 'linearGradient', 'glass', { x1: 0, y1: 0, x2: 0.7, y2: 1 }, [['0%', 'rgba(255,255,255,0.13)'], ['100%', 'rgba(255,255,255,0)']]);
+    this.gradient(add, 'radialGradient', 'cap', { cx: '35%', cy: '30%', r: '75%' }, [['0%', 'pw-cap-a'], ['100%', 'pw-cap-b']]);
+    add(add(this.defs, 'clipPath', { id: this.id('dial-clip') }), 'circle', { cx: 100, cy: 100, r: R });
 
-    // Case
+    // Case: a polished bezel with a crisp outer edge and a stepped inner bevel.
     if (caseStyle === 'crown') {
       add(svg, 'rect', { x: 194, y: 95, width: 6, height: 10, rx: 1.5, fill: url('bezel') }, 'pw-case-part');
       add(svg, 'rect', { x: 198.5, y: 89, width: 8.5, height: 22, rx: 2.6, fill: url('bezel') }, 'pw-case-part');
-      for (let y = 92; y <= 108.5; y += 2.2) add(svg, 'line', { x1: 199.6, y1: y, x2: 206, y2: y }, 'pw-knurl');
+      for (let y = 91.6; y <= 108.6; y += 1.7) add(svg, 'line', { x1: 199.4, y1: y, x2: 206.2, y2: y }, 'pw-knurl');
+      add(svg, 'rect', { x: 205.2, y: 90, width: 1.4, height: 20, rx: 0.7 }, 'pw-crown-shine');
     } else if (caseStyle === 'bow') {
       add(svg, 'circle', { cx: 100, cy: -16.5, r: 9.5, fill: 'none', stroke: url('bezel'), 'stroke-width': 3.6 }, 'pw-bow');
+      add(svg, 'circle', { cx: 100, cy: -16.5, r: 9.5 }, 'pw-bow-shine');
       add(svg, 'rect', { x: 95.5, y: -9.5, width: 9, height: 6, rx: 2, fill: url('bezel') }, 'pw-case-part');
       add(svg, 'rect', { x: 93, y: -4.5, width: 14, height: 7, rx: 2, fill: url('bezel') }, 'pw-case-part');
+      for (let x = 94.6; x <= 105.6; x += 1.6) add(svg, 'line', { x1: x, y1: -3.8, x2: x, y2: 1.8 }, 'pw-knurl');
     }
     add(svg, 'circle', { cx: 100, cy: 100, r: 99, fill: url('bezel') }, 'pw-bezel');
     add(svg, 'circle', { cx: 100, cy: 100, r: 98.3 }, 'pw-bezel-edge');
     if (face.case === 'dive') this.drawDiveBezel(svg, add);
-    if (s.goalRing) {
-      const [ringR, ringW] = face.case === 'thin' ? [97, 2] : face.case === 'dive' ? [83, 1.8] : [94.3, 3];
-      add(svg, 'circle', { cx: 100, cy: 100, r: ringR, 'stroke-width': ringW }, 'pw-ring-track');
-      this.parts.ring = add(svg, 'circle', {
-        cx: 100, cy: 100, r: ringR, 'stroke-width': ringW, pathLength: 100, transform: 'rotate(-90 100 100)', 'stroke-dasharray': '0 100',
-      }, 'pw-ring');
-    }
+    else add(svg, 'circle', { cx: 100, cy: 100, r: R + 1.1, 'stroke-width': 2.2, stroke: url('bezel-rev') }, 'pw-bezel-step');
+
+    // The ring on the bezel shows the daily goal, or the countdown during a focus session.
+    const [ringR, ringW] = face.case === 'thin' ? [97, 2] : face.case === 'dive' ? [83, 1.8] : [94.6, 2.8];
+    add(svg, 'circle', { cx: 100, cy: 100, r: ringR, 'stroke-width': ringW }, 'pw-ring-track');
+    this.parts.ring = add(svg, 'circle', {
+      cx: 100, cy: 100, r: ringR, 'stroke-width': ringW, pathLength: 100, transform: 'rotate(-90 100 100)', 'stroke-dasharray': '0 100',
+    }, 'pw-ring');
     add(svg, 'circle', { cx: 100, cy: 100, r: R, fill: url('dial') }, 'pw-dial');
 
-    // Dial
+    // Dial: its finish, then shading where it meets the case, then the flange.
     if (face.texture) this.drawTexture(svg, add, face.texture, R);
     if (face.decor) this.drawDecor(svg, add, text, face.decor, R, k, used);
+    add(svg, 'circle', { cx: 100, cy: 100, r: R, fill: url('dial-shade') }, 'pw-dial-shade');
+    if (face.flange) {
+      add(svg, 'circle', { cx: 100, cy: 100, r: R - 2, 'stroke-width': 4 }, 'pw-flange');
+      let d = '';
+      for (let i = 0; i < 60; i++) {
+        const [x1, y1] = polar(R - 0.4, i * 6);
+        const [x2, y2] = polar(R - (i % 5 ? 2.6 : 3.8), i * 6);
+        d += `M ${x1.toFixed(2)} ${y1.toFixed(2)} L ${x2.toFixed(2)} ${y2.toFixed(2)} `;
+      }
+      add(svg, 'path', { d }, 'pw-flange-tick');
+    }
     const markers = s.markers === 'face' || !MARKERS[s.markers] ? face.markers : s.markers;
-    this.drawMarkers(svg, add, text, markers, R, k, used, face.applied ? url('metal') : null);
+    this.drawMarkers(svg, add, text, markers, R, k, used, face);
+
+    // The name printed under 12, unless something else sits there.
+    if (s.dialText && !face.plain && !used[0]) {
+      const offset = { batons: 31, dots: 24, arabic: face.decor === 'inner-24' ? 52 : 40, quarters: 45, roman: 44, lume: 27 }[markers] || 28;
+      const y = 100 - R + offset * k;
+      text(svg, 100, y, 5.4 * k, 'POCKET WATCH', face.serif ? ['pw-brand', 'is-serif'] : 'pw-brand');
+      if (face.model !== false) text(svg, 100, y + 6.6 * k, 3.9 * k, (face.model || face.name).toUpperCase(), face.serif ? ['pw-model', 'is-serif'] : 'pw-model');
+    }
 
     if (face.window) {
       const slot = SLOTS.find((x) => x.key === face.window);
@@ -780,61 +1016,126 @@ class FloatingWatch {
     if (s.seconds !== 'off') {
       [this.parts.second, body] = hand('second');
       add(body, 'line', { x1: 0, y1: 18 * k, x2: 0, y2: -R * 0.88 });
-      add(body, 'circle', { cx: 0, cy: 13 * k, r: 2.6 * k });
+      add(body, 'rect', { x: -1.5 * k, y: 9 * k, width: 3 * k, height: 9.5 * k, rx: 1.5 * k });
       add(body, 'circle', { cx: 0, cy: 0, r: 2.6 * k });
       if (s.seconds === 'sweep') sweep(this.parts.second, now);
     }
-    add(svg, 'circle', { cx: 100, cy: 100, r: 4.6 * k }, 'pw-cap');
-    add(svg, 'circle', { cx: 100, cy: 100, r: 1.6 * k }, 'pw-cap-dot');
+    // A domed cap over the hands, with a glint.
+    add(svg, 'circle', { cx: 100, cy: 100, r: 4.8 * k, fill: url('cap') }, 'pw-cap');
+    add(svg, 'circle', { cx: 100 - 1.4 * k, cy: 100 - 1.5 * k, r: 1.3 * k }, 'pw-cap-shine');
+    add(svg, 'circle', { cx: 100, cy: 100, r: 1.5 * k }, s.seconds !== 'off' ? 'pw-cap-dot' : 'pw-cap-pin');
 
-    // A soft reflection on the crystal.
+    // Reflections on the domed crystal: a broad one at the top left and a small one opposite.
     const [gx1, gy1] = polar(R * 0.97, 238);
     const [gx2, gy2] = polar(R * 0.97, 18);
     add(svg, 'path', {
       d: `M ${gx1} ${gy1} A ${R * 0.97} ${R * 0.97} 0 0 1 ${gx2} ${gy2} A ${R * 1.15} ${R * 1.15} 0 0 0 ${gx1} ${gy1} Z`,
       fill: url('glass'),
     }, 'pw-glass');
+    const [hx1, hy1] = polar(R * 0.93, 112);
+    const [hx2, hy2] = polar(R * 0.93, 152);
+    add(svg, 'path', {
+      d: `M ${hx1} ${hy1} A ${R * 0.93} ${R * 0.93} 0 0 1 ${hx2} ${hy2} A ${R * 1.05} ${R * 1.05} 0 0 0 ${hx1} ${hy1} Z`,
+    }, 'pw-glass-small');
   }
 
   // A ceramic diver's bezel, plain apart from the luminous marker at 12 and dots at the quarters.
   drawDiveBezel(svg, add) {
+    const url = (name) => `url(#${this.id(name)})`;
     add(svg, 'circle', { cx: 100, cy: 100, r: 89.6, 'stroke-width': 15.6 }, 'pw-insert');
+    add(svg, 'circle', { cx: 100, cy: 100, r: 89.6, 'stroke-width': 15.6, stroke: url('glass') }, 'pw-insert-gloss');
+    add(svg, 'circle', { cx: 100, cy: 100, r: 81.4 }, 'pw-insert-edge');
+    add(svg, 'circle', { cx: 100, cy: 100, r: 97.6 }, 'pw-insert-edge');
     for (const a of [90, 180, 270]) {
       const [x, y] = polar(89.6, a);
       add(svg, 'circle', { cx: x, cy: y, r: 1.4 }, 'pw-insert-dot');
     }
+    add(svg, 'path', { d: 'M 93.4 4 L 106.6 4 L 100 16.2 Z', fill: url('metal') }, 'pw-applied');
     add(svg, 'path', { d: 'M 94 4.4 L 106 4.4 L 100 15.6 Z' }, 'pw-insert-pip');
     add(svg, 'circle', { cx: 100, cy: 8.6, r: 1.7 }, 'pw-insert-pearl');
   }
 
-  // A sunburst finish catches the light in fine rays; azurage is a pattern of fine circles.
+  // Dial finishes, all drawn within the dial: sunburst rays, azurage circles, glossy enamel,
+  // a clous de Paris guilloché, vertical brushing, ocean waves and a fine grain.
   drawTexture(svg, add, texture, R) {
+    const url = (name) => `url(#${this.id(name)})`;
+    const clipped = () => add(svg, 'g', { 'clip-path': url('dial-clip') });
     if (texture === 'sunburst') {
       let d = '';
-      for (let i = 0; i < 90; i++) {
-        const [x1, y1] = polar(R, i * 4);
-        const [x2, y2] = polar(R, i * 4 + 2);
+      for (let i = 0; i < 120; i++) {
+        const [x1, y1] = polar(R, i * 3);
+        const [x2, y2] = polar(R, i * 3 + 1.5);
         d += `M 100 100 L ${x1.toFixed(2)} ${y1.toFixed(2)} L ${x2.toFixed(2)} ${y2.toFixed(2)} Z `;
       }
       add(svg, 'path', { d }, 'pw-rays');
     } else if (texture === 'azurage') {
       for (let r = 2.5; r < R * 0.66; r += 1.6) add(svg, 'circle', { cx: 100, cy: 100, r }, 'pw-azurage');
+    } else if (texture === 'enamel') {
+      this.gradient(add, 'radialGradient', 'enamel', { cx: '50%', cy: '50%', r: '50%' }, [['0%', 'rgba(255,255,255,0.75)'], ['100%', 'rgba(255,255,255,0)']]);
+      add(svg, 'ellipse', { cx: 78, cy: 62, rx: R * 0.6, ry: R * 0.36, transform: 'rotate(-32 78 62)', fill: url('enamel') }, 'pw-enamel');
+    } else if (texture === 'guilloche') {
+      // Clous de Paris: two sets of fine grooves crossing, in a disc at the centre.
+      const disc = R * 0.56;
+      add(add(this.defs, 'clipPath', { id: this.id('guilloche') }), 'circle', { cx: 100, cy: 100, r: disc });
+      const g = add(svg, 'g', { 'clip-path': url('guilloche') });
+      let d = '';
+      for (let t = -disc * 1.5; t <= disc * 1.5; t += 2.3) {
+        d += `M ${100 + t - disc} ${100 - disc} L ${100 + t + disc} ${100 + disc} `;
+        d += `M ${100 + t + disc} ${100 - disc} L ${100 + t - disc} ${100 + disc} `;
+      }
+      add(g, 'circle', { cx: 100, cy: 100, r: disc }, 'pw-guilloche-bed');
+      add(g, 'path', { d }, 'pw-guilloche');
+      add(svg, 'circle', { cx: 100, cy: 100, r: disc }, 'pw-guilloche-ring');
+      add(svg, 'circle', { cx: 100, cy: 100, r: disc + 1.6 }, 'pw-guilloche-ring');
+    } else if (texture === 'brushed') {
+      const g = clipped();
+      let light = '';
+      let dark = '';
+      for (let x = 100 - R, i = 0; x <= 100 + R; x += 0.9, i++) {
+        const seg = `M ${x.toFixed(2)} ${100 - R} L ${x.toFixed(2)} ${100 + R} `;
+        if (i % 3 === 0) light += seg;
+        else if (i % 3 === 1) dark += seg;
+      }
+      add(g, 'path', { d: light }, ['pw-brushed', 'is-light']);
+      add(g, 'path', { d: dark }, 'pw-brushed');
+    } else if (texture === 'waves') {
+      const g = clipped();
+      let d = '';
+      for (let y = 100 - R; y <= 100 + R + 4; y += 4.6) {
+        d += `M ${100 - R - 8} ${y.toFixed(2)}`;
+        for (let x = 100 - R - 8; x < 100 + R + 8; x += 16) d += ` q 4 -1.8 8 0 t 8 0`;
+        d += ' ';
+      }
+      add(g, 'path', { d, transform: 'translate(0 1)' }, ['pw-waves', 'is-shadow']);
+      add(g, 'path', { d }, 'pw-waves');
+    } else if (texture === 'grain') {
+      const f = add(this.defs, 'filter', { id: this.id('grain'), x: 0, y: 0, width: 1, height: 1 });
+      add(f, 'feTurbulence', { type: 'fractalNoise', baseFrequency: 0.9, numOctaves: 2, seed: 4, result: 'noise' });
+      add(f, 'feColorMatrix', { in: 'noise', type: 'matrix', values: '0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  1.6 0 0 0 -0.62', result: 'specks' });
+      add(f, 'feFlood', {}, 'pw-grain-color');
+      add(f, 'feComposite', { in2: 'specks', operator: 'in', result: 'tinted' });
+      add(f, 'feComposite', { in: 'tinted', in2: 'SourceGraphic', operator: 'in' });
+      add(svg, 'circle', { cx: 100, cy: 100, r: R, fill: '#fff', filter: url('grain') }, 'pw-grain');
     }
   }
 
   drawDecor(svg, add, text, decor, R, k, used) {
     if (decor === 'minute-dots') {
+      let d = '';
       for (let i = 0; i < 60; i++) {
         if (i % 5 === 0) continue;
         const [x, y] = polar(R - 6.5, i * 6);
-        add(svg, 'circle', { cx: x, cy: y, r: 0.9 }, 'pw-minute-dot');
+        d += circlePath(x, y, 0.9);
       }
+      add(svg, 'path', { d }, 'pw-minute-dot');
     } else if (decor === 'minute-ticks') {
+      let d = '';
       for (let i = 0; i < 60; i++) {
         const [x1, y1] = polar(R - 2.5, i * 6);
         const [x2, y2] = polar(R - (i % 5 ? 6 : 8), i * 6);
-        add(svg, 'line', { x1, y1, x2, y2 }, 'pw-tick');
+        d += `M ${x1.toFixed(2)} ${y1.toFixed(2)} L ${x2.toFixed(2)} ${y2.toFixed(2)} `;
       }
+      add(svg, 'path', { d }, 'pw-tick');
     } else if (decor === 'railroad') {
       add(svg, 'circle', { cx: 100, cy: 100, r: R - 3.5 }, 'pw-track');
       add(svg, 'circle', { cx: 100, cy: 100, r: R - 8.5 }, 'pw-track');
@@ -843,52 +1144,81 @@ class FloatingWatch {
         const [x2, y2] = polar(R - 8.5, i * 6);
         add(svg, 'line', { x1, y1, x2, y2 }, i % 5 ? 'pw-tick' : ['pw-tick', 'is-hour']);
       }
-    } else if (decor === 'stars') {
+    } else if (decor === 'aventurine') {
+      // Glittering specks scattered evenly over the dial, and a few brighter glints.
       let seed = 11;
       const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-      for (let i = 0; i < 36; i++) {
-        const [x, y] = polar(18 + rand() * (R - 28), rand() * 360);
-        add(svg, 'circle', { cx: x, cy: y, r: 0.35 + rand() * 0.75, opacity: 0.2 + rand() * 0.6 }, 'pw-star');
+      const specks = ['', '', ''];
+      for (let i = 0; i < 170; i++) {
+        const [x, y] = polar(Math.sqrt(rand()) * (R - 7), rand() * 360);
+        specks[i % 3] += circlePath(x, y, 0.2 + rand() * 0.5);
       }
-      add(svg, 'circle', { cx: 100, cy: 100, r: R - 5 }, 'pw-track');
+      specks.forEach((d, i) => add(svg, 'path', { d }, ['pw-star', `is-${i}`]));
+      for (let i = 0; i < 8; i++) {
+        const [x, y] = polar(12 + rand() * (R - 22), rand() * 360);
+        const z = 1.1 + rand() * 1.6;
+        add(svg, 'path', {
+          d: `M ${x} ${y - z} L ${x + z * 0.2} ${y - z * 0.2} L ${x + z} ${y} L ${x + z * 0.2} ${y + z * 0.2} L ${x} ${y + z} L ${x - z * 0.2} ${y + z * 0.2} L ${x - z} ${y} L ${x - z * 0.2} ${y - z * 0.2} Z`,
+        }, 'pw-glint');
+      }
     } else if (decor === 'sector') {
       add(svg, 'circle', { cx: 100, cy: 100, r: R * 0.63, 'stroke-width': R * 0.2 }, 'pw-sector-band');
       add(svg, 'circle', { cx: 100, cy: 100, r: R * 0.42 }, 'pw-sector-line');
+      add(svg, 'circle', { cx: 100, cy: 100, r: R * 0.53 }, 'pw-sector-line');
+      add(svg, 'circle', { cx: 100, cy: 100, r: R * 0.73 }, 'pw-sector-line');
       add(svg, 'circle', { cx: 100, cy: 100, r: R * 0.84 }, 'pw-sector-line');
       add(svg, 'line', { x1: 100, y1: 100 - R * 0.84, x2: 100, y2: 100 + R * 0.84 }, 'pw-sector-line');
       add(svg, 'line', { x1: 100 - R * 0.84, y1: 100, x2: 100 + R * 0.84, y2: 100 }, 'pw-sector-line');
+      let d = '';
       for (let i = 0; i < 60; i++) {
         const [x1, y1] = polar(R - 2.5, i * 6);
         const [x2, y2] = polar(R - (i % 5 ? 5.5 : 8), i * 6);
-        add(svg, 'line', { x1, y1, x2, y2 }, 'pw-tick');
+        d += `M ${x1.toFixed(2)} ${y1.toFixed(2)} L ${x2.toFixed(2)} ${y2.toFixed(2)} `;
       }
+      add(svg, 'path', { d }, 'pw-tick');
     } else if (decor === 'inner-24') {
+      let d = '';
       for (let i = 0; i < 60; i++) {
         const [x1, y1] = polar(R - 2.5, i * 6);
         const [x2, y2] = polar(R - (i % 5 ? 5.5 : 8), i * 6);
-        add(svg, 'line', { x1, y1, x2, y2 }, 'pw-tick');
+        d += `M ${x1.toFixed(2)} ${y1.toFixed(2)} L ${x2.toFixed(2)} ${y2.toFixed(2)} `;
       }
+      add(svg, 'path', { d }, 'pw-tick');
+      add(svg, 'circle', { cx: 100, cy: 100, r: R - 28 }, 'pw-track');
       for (let i = 0; i < 12; i++) {
         if (used[i]) continue;
-        const [x, y] = polar(R - 33, i * 30);
-        text(svg, x, y, 7.5 * k, String(i === 0 ? 24 : i + 12), 'pw-numeral-24');
+        const [x, y] = polar(R - 33.5, i * 30);
+        text(svg, x, y, 7.2 * k, String(i === 0 ? 24 : i + 12), 'pw-numeral-24');
       }
     }
   }
 
-  // Printed markers, or polished metal ones when the face has applied markers.
-  drawMarkers(svg, add, text, markers, R, k, used, metal) {
+  // Printed markers, or faceted metal ones on faces with applied markers.
+  drawMarkers(svg, add, text, markers, R, k, used, face) {
+    const url = (name) => `url(#${this.id(name)})`;
+    const metal = face.applied;
+    if (metal) {
+      this.gradient(add, 'linearGradient', 'facet-l', { x1: 0, y1: 0, x2: 0, y2: 1 }, [['0%', 'pw-metal-a'], ['100%', 'pw-metal-b']]);
+      this.gradient(add, 'linearGradient', 'facet-r', { x1: 0, y1: 0, x2: 0, y2: 1 }, [['0%', 'pw-metal-b'], ['100%', 'pw-metal-c']]);
+      this.gradient(add, 'radialGradient', 'stud', { cx: '35%', cy: '30%', r: '75%' }, [['0%', 'pw-metal-a'], ['55%', 'pw-metal-b'], ['100%', 'pw-metal-c']]);
+    }
+    // Applied markers and numerals cast a small shadow on the dial.
+    const shadow = (el) => metal && el.addClass('pw-raised');
+
     if (markers === 'batons') {
       const baton = (angle, dx, major) => {
         const len = major ? 16.5 : 11.5;
+        const y = 100 - R + 5.5;
         if (metal) {
-          const w = (major ? 4.4 : 3) * k;
-          add(svg, 'rect', {
-            x: 100 + dx - w / 2, y: 100 - R + 5.5, width: w, height: len, rx: 0.8, fill: metal, transform: `rotate(${angle} 100 100)`,
-          }, 'pw-applied');
+          const w = (major ? 4.6 : 3.2) * k;
+          const x = 100 + dx - w / 2;
+          const g = add(svg, 'g', { transform: `rotate(${angle} 100 100)` }, ['pw-applied', 'pw-raised']);
+          add(g, 'rect', { x, y, width: w / 2, height: len, fill: url('facet-l') });
+          add(g, 'rect', { x: x + w / 2, y, width: w / 2, height: len, fill: url('facet-r') });
+          add(g, 'rect', { x, y, width: w, height: len, rx: 0.4 }, 'pw-applied-edge');
         } else {
           add(svg, 'line', {
-            x1: 100 + dx, y1: 100 - R + 5.5, x2: 100 + dx, y2: 100 - R + 5.5 + len, transform: `rotate(${angle} 100 100)`,
+            x1: 100 + dx, y1: y, x2: 100 + dx, y2: y + len, transform: `rotate(${angle} 100 100)`,
           }, major ? ['pw-index', 'is-major'] : 'pw-index');
         }
       };
@@ -898,45 +1228,58 @@ class FloatingWatch {
     } else if (markers === 'arabic') {
       for (let i = 0; i < 12; i++) {
         const [x, y] = polar(R - 16.5, i * 30);
-        text(svg, x, y, 14.5 * k, String(i === 0 ? 12 : i), 'pw-numeral');
+        shadow(text(svg, x, y, 14.5 * k, String(i === 0 ? 12 : i), 'pw-numeral'));
       }
     } else if (markers === 'quarters') {
+      let d = '';
       for (let i = 0; i < 60; i++) {
+        if (face.flange && i % 5) continue;
         const [x1, y1] = polar(R - 4.5, i * 6);
         const [x2, y2] = polar(i % 5 ? R - 8 : R - 13.5, i * 6);
-        add(svg, 'line', { x1, y1, x2, y2 }, i % 5 ? 'pw-tick' : ['pw-tick', 'is-hour']);
+        if (i % 5) d += `M ${x1.toFixed(2)} ${y1.toFixed(2)} L ${x2.toFixed(2)} ${y2.toFixed(2)} `;
+        else add(svg, 'line', { x1, y1, x2, y2 }, ['pw-tick', 'is-hour']);
       }
+      if (d) add(svg, 'path', { d }, 'pw-tick');
       for (const i of [0, 3, 6, 9]) {
         if (used[i]) continue;
         const [x, y] = polar(R - 27.5, i * 30);
-        text(svg, x, y, 21 * k, String(i === 0 ? 12 : i), 'pw-numeral');
+        shadow(text(svg, x, y, 21 * k, String(i === 0 ? 12 : i), 'pw-numeral'));
       }
     } else if (markers === 'roman') {
       for (let i = 0; i < 12; i++) {
         const [x, y] = polar(R - 18.5, i * 30);
-        text(svg, x, y, 12 * k, ROMAN[i], ['pw-numeral', 'is-roman']);
+        shadow(text(svg, x, y, 12 * k, ROMAN[i], ['pw-numeral', 'is-roman']));
       }
     } else if (markers === 'dots') {
       for (let i = 0; i < 12; i++) {
         const [x, y] = polar(R - 12.5, i * 30);
         const r = (i === 0 ? 4 : i % 3 === 0 ? 3 : 2.1) * k;
-        if (metal) add(svg, 'circle', { cx: x, cy: y, r: r + 0.3, fill: metal }, 'pw-applied');
+        if (metal) add(svg, 'circle', { cx: x, cy: y, r: r + 0.3, fill: url('stud') }, ['pw-applied', 'pw-raised']);
         else add(svg, 'circle', { cx: x, cy: y, r }, 'pw-dot-index');
       }
     } else if (markers === 'lume') {
+      // Luminous plots in polished metal surrounds.
+      const plot = (tag, attr, grow) => {
+        const ring = Object.assign({}, attr, { fill: url('metal') });
+        if (tag === 'circle') ring.r = attr.r + grow;
+        else if (tag === 'rect') Object.assign(ring, { x: attr.x - grow, y: attr.y - grow, width: attr.width + grow * 2, height: attr.height + grow * 2 });
+        add(svg, tag, ring, ['pw-applied', 'pw-raised']);
+        add(svg, tag, attr, 'pw-lume');
+      };
       for (let i = 1; i < 12; i++) {
         if (i % 3 === 0) {
-          add(svg, 'rect', { x: 100 - 2.6 * k, y: 100 - R + 4, width: 5.2 * k, height: 14 * k, rx: 1, transform: `rotate(${i * 30} 100 100)` }, 'pw-lume');
+          plot('rect', { x: 100 - 2.6 * k, y: 100 - R + 4.6, width: 5.2 * k, height: 13.4 * k, rx: 1, transform: `rotate(${i * 30} 100 100)` }, 0.9);
         } else {
           const [x, y] = polar(R - 9.5 * k, i * 30);
-          add(svg, 'circle', { cx: x, cy: y, r: 4.2 * k }, 'pw-lume');
+          plot('circle', { cx: x, cy: y, r: 3.9 * k }, 0.9);
         }
       }
-      const top = 100 - R + 4;
-      add(svg, 'path', { d: `M ${100 - 7 * k} ${top} L ${100 + 7 * k} ${top} L 100 ${top + 14 * k} Z` }, 'pw-lume');
+      const top = 100 - R + 4.4;
+      add(svg, 'path', { d: `M ${100 - 7.8 * k} ${top - 0.8} L ${100 + 7.8 * k} ${top - 0.8} L 100 ${top + 15 * k} Z`, fill: url('metal') }, ['pw-applied', 'pw-raised']);
+      add(svg, 'path', { d: `M ${100 - 6.6 * k} ${top} L ${100 + 6.6 * k} ${top} L 100 ${top + 13 * k} Z` }, 'pw-lume');
     } else if (markers === 'minimal') {
       const dot = { cx: 100, cy: 100 - R + 12 * k, r: 3.6 * k };
-      if (metal) add(svg, 'circle', Object.assign(dot, { fill: metal }), 'pw-applied');
+      if (metal) add(svg, 'circle', Object.assign(dot, { fill: url('stud') }), ['pw-applied', 'pw-raised']);
       else add(svg, 'circle', dot, 'pw-dot-index');
     }
   }
@@ -1131,52 +1474,55 @@ class FloatingWatch {
     add(outer, 'circle', { cx: 0, cy: 0, r: 30.6, fill: 'none', stroke: url('metal') }, 'pw-window-rim');
   }
 
-  // Hands are drawn pointing at 12 around (0, 0) and turned into place by update().
+  // Hands are drawn pointing at 12 around (0, 0) and turned into place by update(). Most are
+  // faceted: the two halves catch the light differently, like polished metal.
   drawHand(g, add, style, len, k, hour) {
+    const halves = (half) => {
+      add(g, 'path', { d: half(-1) }, 'pw-hand-body');
+      add(g, 'path', { d: half(1) }, 'pw-hand-shade');
+    };
     if (style === 'baton') {
       const w = (hour ? 7.2 : 5.2) * k;
+      const r = w / 2;
       const tail = (hour ? 10 : 12) * k;
-      add(g, 'rect', { x: -w / 2, y: -len, width: w, height: len + tail, rx: w / 2 }, 'pw-hand-body');
-      add(g, 'rect', { x: -w / 2 + 1.6 * k, y: -len + 4 * k, width: w - 3.2 * k, height: len * 0.55, rx: (w - 3.2 * k) / 2 }, 'pw-hand-lume');
+      halves((s) => `M 0 ${-len} A ${r} ${r} 0 0 ${s > 0 ? 1 : 0} ${s * r} ${-len + r} L ${s * r} ${tail - r} A ${r} ${r} 0 0 ${s > 0 ? 1 : 0} 0 ${tail} Z`);
+      add(g, 'rect', { x: -w / 2 + 1.5 * k, y: -len + 4 * k, width: w - 3 * k, height: len * 0.55, rx: (w - 3 * k) / 2 }, 'pw-hand-lume');
     } else if (style === 'breguet') {
       const ringY = -len * (hour ? 0.68 : 0.81);
       const ringR = (hour ? 5.6 : 4.4) * k;
       const w = (hour ? 2.8 : 2.2) * k;
       add(g, 'rect', { x: -w / 2, y: ringY + ringR - 0.5, width: w, height: -ringY - ringR + 10.5 * k, rx: w / 2 }, 'pw-hand-body');
       add(g, 'circle', { cx: 0, cy: ringY, r: ringR }, 'pw-hand-ring');
-      add(g, 'path', { d: `M ${-w * 0.6} ${ringY - ringR + 0.5} L 0 ${-len} L ${w * 0.6} ${ringY - ringR + 0.5} Z` }, 'pw-hand-body');
+      halves((s) => `M 0 ${ringY - ringR + 0.5} L ${s * w * 0.6} ${ringY - ringR + 0.5} L 0 ${-len} Z`);
     } else if (style === 'dauphine') {
       const w = (hour ? 8 : 6.2) * k;
       const tail = 7 * k;
-      add(g, 'path', { d: `M 0 ${tail} L ${-w / 2} ${-len * 0.06} L 0 ${-len} Z` }, 'pw-hand-body');
-      add(g, 'path', { d: `M 0 ${tail} L ${w / 2} ${-len * 0.06} L 0 ${-len} Z` }, 'pw-hand-shade');
+      halves((s) => `M 0 ${tail} L ${s * w / 2} ${-len * 0.06} L 0 ${-len} Z`);
     } else if (style === 'sword') {
       const w = (hour ? 7.4 : 5.6) * k;
       const tail = 10 * k;
-      add(g, 'path', { d: `M ${-w * 0.28} ${tail} L ${-w / 2} ${-len * 0.74} L 0 ${-len} L ${w / 2} ${-len * 0.74} L ${w * 0.28} ${tail} Z` }, 'pw-hand-body');
+      halves((s) => `M 0 ${tail} L ${s * w * 0.28} ${tail} L ${s * w / 2} ${-len * 0.74} L 0 ${-len} Z`);
       add(g, 'path', { d: `M ${-w * 0.14} ${-len * 0.12} L ${-w * 0.27} ${-len * 0.72} L 0 ${-len * 0.88} L ${w * 0.27} ${-len * 0.72} L ${w * 0.14} ${-len * 0.12} Z` }, 'pw-hand-lume');
     } else if (style === 'pencil') {
-      const w = (hour ? 3.6 : 2.6) * k;
+      const w = (hour ? 3.8 : 2.8) * k;
       const tail = 8 * k;
-      add(g, 'path', { d: `M ${-w / 2} ${tail} L ${-w / 2} ${-len + 6 * k} L 0 ${-len} L ${w / 2} ${-len + 6 * k} L ${w / 2} ${tail} Z` }, 'pw-hand-body');
+      halves((s) => `M 0 ${tail} L ${s * w / 2} ${tail} L ${s * w / 2} ${-len + 6 * k} L 0 ${-len} Z`);
     } else if (style === 'arrow') {
       if (hour) {
         const w = 3.2 * k;
         const head = 13 * k;
-        add(g, 'rect', { x: -w / 2, y: -len + head - 1, width: w, height: len - head + 10 * k, rx: w / 2 }, 'pw-hand-body');
-        add(g, 'path', { d: `M ${-6.5 * k} ${-len + head} L 0 ${-len} L ${6.5 * k} ${-len + head} Z` }, 'pw-hand-body');
+        halves((s) => `M 0 ${10 * k} L ${s * w / 2} ${10 * k} L ${s * w / 2} ${-len + head - 1} L 0 ${-len + head - 1} Z`);
+        halves((s) => `M 0 ${-len + head} L ${s * 6.5 * k} ${-len + head} L 0 ${-len} Z`);
         add(g, 'path', { d: `M ${-3.4 * k} ${-len + head - 2 * k} L 0 ${-len + 5 * k} L ${3.4 * k} ${-len + head - 2 * k} Z` }, 'pw-hand-lume');
       } else {
         const w = 3.4 * k;
-        add(g, 'rect', { x: -w / 2, y: -len, width: w, height: len + 12 * k, rx: w / 2 }, 'pw-hand-body');
-        add(g, 'rect', { x: -0.7 * k, y: -len + 4 * k, width: 1.4 * k, height: len * 0.6, rx: 0.7 * k }, 'pw-hand-lume');
+        halves((s) => `M 0 ${12 * k} L ${s * w / 2} ${12 * k} L ${s * w / 2} ${-len + 3 * k} L 0 ${-len} Z`);
+        add(g, 'rect', { x: -0.7 * k, y: -len + 5 * k, width: 1.4 * k, height: len * 0.6, rx: 0.7 * k }, 'pw-hand-lume');
       }
     } else {
       const w = (hour ? 6.6 : 4.8) * k;
       const tail = (hour ? 11 : 13) * k;
-      add(g, 'path', {
-        d: `M 0 ${tail} C ${w} ${-len * 0.15} ${w * 0.7} ${-len * 0.62} 0 ${-len} C ${-w * 0.7} ${-len * 0.62} ${-w} ${-len * 0.15} 0 ${tail} Z`,
-      }, 'pw-hand-body');
+      halves((s) => `M 0 ${tail} C ${s * w} ${-len * 0.15} ${s * w * 0.7} ${-len * 0.62} 0 ${-len} Z`);
     }
   }
 
@@ -1359,6 +1705,7 @@ class FloatingWatch {
     const spot = a && a.spot ? a.spot : 'tl';
     const corner = `${spot[0] === 'b' ? 't' : 'b'}${spot[1] === 'r' ? 'l' : 'r'}`;
     setIfChanged(this.gripEl, 'data-corner', corner);
+    setIfChanged(this.badgeEl, 'data-side', spot[0] === 'b' ? 'above' : 'below');
   }
 
   freeSpot(pos) {
@@ -1604,10 +1951,21 @@ class Dashboard {
       return;
     }
     const p = this.plugin;
+    const x = p.session;
+    if (this.sessionKey !== (x ? `${x.kind}|${x.paused}` : '')) {
+      this.render();
+      return;
+    }
+    if (x && this.focusTimeEl) {
+      const left = p.sessionRemaining();
+      setText(this.focusTimeEl, `${Math.ceil(left / 60000)} min`);
+      setText(this.focusLabelEl, x.paused ? 'Paused' : `${SESSION_NAMES[x.kind]} · until ${fmtTime(new Date(x.endsAt), uses24h(p.settings.clock))}`);
+      this.focusFillEl.style.width = `${(left / x.total) * 100}%`;
+    }
     this.clockEl.setText(fmtShort(p.getDay(today).ms));
     this.stateEl.setText(STATE_LABELS[p.state]);
     this.headEl.setAttr('data-state', p.state);
-    this.pauseBtn.setText(p.paused ? 'Resume' : 'Pause');
+    this.pauseBtn.setText(p.paused ? 'Resume tracking' : 'Pause tracking');
   }
 
   render() {
@@ -1618,6 +1976,7 @@ class Dashboard {
     this.renderedDay = dayKey(new Date());
 
     this.renderToday(el.createDiv('pocket-watch-section'));
+    this.renderFocus(el.createDiv('pocket-watch-section'));
     this.renderCalendar(el.createDiv('pocket-watch-section'));
     this.renderDay(el.createDiv('pocket-watch-section'));
     this.renderStats(el.createDiv('pocket-watch-section'));
@@ -1651,6 +2010,46 @@ class Dashboard {
         idle.setDesc(`Stops after ${v} min with no activity`);
         await p.saveSettings();
       }));
+  }
+
+  // Start a focus session or a break, or follow the one that's running.
+  renderFocus(el) {
+    const p = this.plugin;
+    const s = p.settings;
+    const x = p.session;
+    this.sessionKey = x ? `${x.kind}|${x.paused}` : '';
+    this.focusTimeEl = null;
+    el.createEl('h4', { text: 'Focus' });
+    const box = el.createDiv('pocket-watch-focus');
+    const button = (row, label, onClick, cta) => {
+      const b = row.createEl('button', { text: label });
+      if (cta) b.addClass('mod-cta');
+      b.addEventListener('click', () => {
+        onClick();
+        this.render();
+      });
+    };
+    if (x) {
+      box.setAttr('data-kind', x.paused ? 'paused' : x.kind);
+      const top = box.createDiv('pocket-watch-focus-top');
+      this.focusTimeEl = top.createDiv('pocket-watch-focus-time');
+      this.focusLabelEl = top.createDiv('pocket-watch-focus-label');
+      this.focusFillEl = box.createDiv('pocket-watch-focus-bar').createDiv('pocket-watch-focus-fill');
+      const row = box.createDiv('pocket-watch-focus-buttons');
+      button(row, x.paused ? 'Resume' : 'Pause', () => p.toggleSessionPause(), true);
+      button(row, x.kind === 'focus' ? 'Skip to break' : 'Skip to focus', () => p.skipSession());
+      button(row, 'Stop', () => p.stopSession());
+    } else {
+      const row = box.createDiv('pocket-watch-focus-buttons');
+      button(row, `Focus ${s.focusMinutes} min`, () => p.startSession('focus'), true);
+      button(row, `Break ${s.shortBreakMinutes}`, () => p.startSession('short'));
+      button(row, `Long ${s.longBreakMinutes}`, () => p.startSession('long'));
+    }
+    const day = p.getDay(dayKey(new Date()));
+    const n = day.sessions || 0;
+    const left = s.longBreakEvery - (p.cycle % s.longBreakEvery);
+    const summary = n ? `Today: ${n} ${n === 1 ? 'session' : 'sessions'}, ${fmtShort(day.focusMs || 0)} of focus.` : 'No focus sessions yet today.';
+    el.createDiv({ cls: 'pocket-watch-compare', text: `${summary} A long break after ${left} more.` });
   }
 
   renderCalendar(el) {
@@ -1693,6 +2092,7 @@ class Dashboard {
       if (key === this.selected) cell.addClass('is-selected');
       cell.createDiv({ cls: 'pocket-watch-daynum', text: String(d) });
       if (ms >= 60000) cell.createDiv({ cls: 'pocket-watch-daytime', text: fmtCompact(ms) });
+      if (p.getDay(key).sessions) cell.createDiv('pocket-watch-cal-dot');
       cell.setAttr('aria-label', `${key}: ${fmtShort(ms)}`);
       cell.addEventListener('click', () => {
         this.selected = key;
@@ -1719,6 +2119,7 @@ class Dashboard {
       r.createSpan({ cls: 'pocket-watch-val', text: value });
     };
     row('Time', fmtShort(d.ms));
+    row('Focus sessions', d.sessions ? `${d.sessions} (${fmtShort(d.focusMs || 0)})` : '0');
     row('Words written', fmtNum(d.written));
     row('Words deleted', fmtNum(d.deleted));
     const net = d.written - d.deleted;
@@ -1760,6 +2161,8 @@ class Dashboard {
     tile('Best day', fmtShort(s.bestMs), s.bestKey || '');
     tile('Words written', fmtNum(s.written), 'all time');
     tile('Words deleted', fmtNum(s.deleted), 'all time');
+    tile('Focus sessions', fmtNum(s.sessions), 'all time');
+    tile('Focus time', fmtShort(s.focusMs), 'all time');
 
     el.createDiv({ cls: 'pocket-watch-label', text: 'Last 14 days' });
     const bars = el.createDiv('pocket-watch-bars');
@@ -1866,6 +2269,7 @@ class PocketWatchSettingTab extends PluginSettingTab {
       new Setting(el).setName('Analog').setHeading();
       dropdown(new Setting(el).setName('Face'), faceNames(), s.face, (v) => set({ face: v }, true));
       dropdown(new Setting(el).setName('Case'), CASES, s.caseStyle, (v) => set({ caseStyle: v }));
+      toggle('Name on the dial', 'dialText', 'Prints "Pocket Watch" and the face name under 12 o\'clock, when nothing else is there.');
       dropdown(new Setting(el).setName('Hour markers'), MARKERS, s.markers, (v) => set({ markers: v }));
       dropdown(new Setting(el).setName('Hands'), HANDS, s.hands, (v) => set({ hands: v }));
       dropdown(new Setting(el).setName('Seconds hand'), SECONDS, s.seconds, (v) => set({ seconds: v }));
@@ -1878,6 +2282,35 @@ class PocketWatchSettingTab extends PluginSettingTab {
       toggle('Goal ring', 'goalRing', 'A ring on the bezel that fills up toward your daily goal, and dims while the timer is paused.');
       toggle('Gentle motion', 'motion', 'Lets the balance wheel swing and the wheels tick in the open heart face and the movement window.');
     }
+
+    new Setting(el).setName('Focus sessions').setHeading();
+    const minutes = (name, key, min, max, step, desc) => {
+      const setting = new Setting(el).setName(name);
+      if (desc) setting.setDesc(desc);
+      setting.addSlider((sl) => sl.setLimits(min, max, step).setValue(s[key]).setDynamicTooltip().onChange(async (v) => {
+        s[key] = v;
+        await p.saveSettings();
+      }));
+    };
+    minutes('Focus (minutes)', 'focusMinutes', 5, 90, 5, 'Start a session from the shelf, the command palette, or by right-clicking the watch. The ring on the bezel counts down.');
+    minutes('Short break (minutes)', 'shortBreakMinutes', 1, 30, 1);
+    minutes('Long break (minutes)', 'longBreakMinutes', 5, 60, 5);
+    minutes('Long break after', 'longBreakEvery', 2, 8, 1, 'How many focus sessions come before a long break.');
+    const plain = (name, key, desc) => {
+      const setting = new Setting(el).setName(name);
+      if (desc) setting.setDesc(desc);
+      setting.addToggle((t) => t.setValue(s[key]).onChange(async (v) => {
+        s[key] = v;
+        await p.saveSettings();
+        if (p.watch) p.watch.refresh();
+      }));
+      return setting;
+    };
+    plain('Start breaks automatically', 'autoStartBreaks');
+    plain('Start the next focus session automatically', 'autoStartFocus');
+    plain('Countdown under the watch', 'showCountdown', 'Shows the minutes left in a small label next to the watch.');
+    plain('Chime', 'chime', 'A soft bell when a session or break ends.')
+      .addExtraButton((b) => b.setIcon('volume-2').setTooltip('Play the chime').onClick(() => chime()));
 
     new Setting(el).setName('Placement').setHeading();
     new Setting(el)
