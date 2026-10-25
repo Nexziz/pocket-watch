@@ -1087,8 +1087,6 @@ class PocketWatchSettingTab extends PluginSettingTab {
     const el = this.containerEl;
     el.empty();
 
-    new Setting(el).setName('Watch').setHeading();
-
     new Setting(el)
       .setName('Show watch')
       .setDesc('Drag it onto any pane and it snaps to the nearest corner. Hold Alt while dropping to place it freely. Click it to open the stats shelf.')
