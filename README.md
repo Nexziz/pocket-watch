@@ -6,7 +6,8 @@ A fine timepiece that sits over your notes, with a Pomodoro timer for a steady r
 
 ## A timepiece
 
-- **Nineteen watches, each its own.** Every face carries the Philip Pocket monogram, the interlaced PP (engraved into Malachite and Meteorite), and comes with its own hands and complications: a date, small seconds, your words today or a goal dial. Two have a moon phase, each in its own window: Porcelain's classic arch with gold moons, and Midnight's round window onto a realistic moon, with its age in days around it. Regulator gives the minutes the centre and turns the hours on a small dial of their own, and Malachite is cut from polished green stone. You can also pick your own.
+- **Twenty-one watches, each its own.** Every face carries the Philip Pocket monogram, the interlaced PP (engraved into Malachite and Meteorite), and comes with its own hands and complications: a date, small seconds, your words today or a goal dial. Two have a moon phase, each in its own window: Porcelain's classic arch with gold moons, and Midnight's round window onto a realistic moon, with its age in days around it. Regulator gives the minutes the centre and turns the hours on a small dial of their own, Malachite is cut from polished green stone, Panda has a panda's face, and Open heart shows its movement through a heart-shaped window. You can also pick your own.
+- **Two square watches**: Koi, painted by hand, with two koi circling in a green pond past lily pads and a lotus, and Deco, black lacquer in stepped gold lines whose small seconds is a rising sun.
 - **Slim digital watches** that show just the time: Hairline, bare numerals in your theme's colours that fade back until you point at them; Capsule, a slim pill that fills up with your session; and Column, the hours over the minutes in a narrow strip.
 - **Two painted dials**: Sakura, a cherry branch in gold lacquer with mother-of-pearl blossoms on black, and Nocturne, a mountain lake at dusk whose moon is tonight's moon.
 - **Snaps where you put it.** Drag it over a pane and it snaps to a corner or edge. Drop it on a pane's tab bar and it tucks in there, sized to fit the bar, analog or digital. Drop it on the ribbon or status bar to snap it to the window, or hold Alt to place it anywhere.
@@ -16,6 +17,8 @@ A fine timepiece that sits over your notes, with a Pomodoro timer for a steady r
 ![Sixteen watches](images/make-it-yours.png)
 
 ![Three new watches: Pomodoro, Regulator and Malachite](images/new-watches.png)
+
+![Two square watches: Koi and Deco](images/square-watches.png)
 
 ![Slim watches, tucked into a tab bar](images/tab-bar.png)
 

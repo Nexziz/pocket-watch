@@ -24,10 +24,10 @@ const ANALOG_FACES = {
   },
   linen: {
     name: 'Linen', case: 'polished', markers: 'roman', decor: 'railroad', texture: 'guilloche', serif: true,
-    hands: 'breguet', set: { slotBottom: 'seconds' },
+    hands: 'breguet', subdial: 1.32, set: { slotBottom: 'seconds' },
   },
   slate: {
-    name: 'Slate', case: 'polished', markers: 'quarters', texture: 'brushed', flange: true, applied: true,
+    name: 'Slate', case: 'polished', markers: 'quarters', texture: 'slate', flange: true, applied: true,
     hands: 'sword', set: { slotRight: 'date', slotBottom: 'words' },
   },
   midnight: {
@@ -47,7 +47,7 @@ const ANALOG_FACES = {
     hands: 'dauphine', set: { slotBottom: 'seconds' },
   },
   openheart: {
-    name: 'Open heart', case: 'polished', markers: 'batons', texture: 'azurage', flange: true, applied: true, window: 'slotBottom',
+    name: 'Open heart', case: 'polished', markers: 'batons', texture: 'azurage', flange: true, applied: true, window: 'slotBottom', windowShape: 'heart',
     hands: 'dauphine', set: {},
   },
   bauhaus: {
@@ -63,11 +63,11 @@ const ANALOG_FACES = {
     hands: 'sword', set: { slotRight: 'date', slotBottom: 'focus' },
   },
   sector: {
-    name: 'Sector', case: 'polished', markers: 'arabic', decor: 'sector', texture: 'grain', serif: true,
-    hands: 'leaf', set: { slotBottom: 'goal' },
+    name: 'Sector', case: 'polished', markers: 'arabic', decor: 'sector', texture: 'grain',
+    hands: 'sword', set: { slotBottom: 'goal' },
   },
   panda: {
-    name: 'Panda', case: 'polished', markers: 'batons', texture: 'sunburst', applied: true, brandInk: true,
+    name: 'Panda', case: 'polished', markers: 'batons', texture: 'sunburst', art: 'panda', applied: true, brandInk: true,
     hands: 'baton', set: { slotLeft: 'seconds', slotRight: 'goal' },
   },
   diver: {
@@ -84,11 +84,19 @@ const ANALOG_FACES = {
   },
   regulator: {
     name: 'Regulator', case: 'polished', markers: 'minutes', decor: 'railroad', texture: 'sunburst', regulator: 'slotTop',
-    brandAt: 'nine', brandWidth: 22, serif: true, hands: 'breguet', set: { slotBottom: 'seconds' },
+    brandAt: 'nine', brandWidth: 22, serif: true, hands: 'breguet', subdial: 1.3, set: { slotBottom: 'seconds' },
   },
   malachite: {
     name: 'Malachite', case: 'polished', markers: 'batons', art: 'malachite', flange: true, applied: true, brandAt: 'low', brandWidth: 30, brandEngraved: true,
     hands: 'dauphine', set: {},
+  },
+  koi: {
+    name: 'Koi', shape: 'square', case: 'polished', markers: 'square', art: 'koi', applied: true,
+    hands: 'leaf', set: {},
+  },
+  deco: {
+    name: 'Deco', shape: 'square', case: 'polished', markers: 'deco', art: 'deco', applied: true,
+    hands: 'sword', set: { slotBottom: 'seconds' },
   },
   theme: {
     name: 'Match theme', case: 'thin', markers: 'batons', decor: 'minute-dots',
@@ -107,6 +115,8 @@ const MARKERS = {
   minimal: 'A single dot',
   pips: 'Small pips',
   minutes: 'Minutes',
+  square: 'Square, along the edge',
+  deco: 'Deco numerals',
   none: 'None',
 };
 
@@ -1160,7 +1170,10 @@ class FloatingWatch {
     const s = this.plugin.settings;
     const faceKey = ANALOG_FACES[s.face] ? s.face : 'porcelain';
     const face = ANALOG_FACES[faceKey];
-    const R = face.case === 'thin' ? 95 : face.case === 'dive' ? 80 : 89.5;
+    this.faceDef = face;
+    // A square face has a rounded square case and dial; R is then half the dial's width.
+    const sq = face.shape === 'square';
+    const R = sq ? 84 : face.case === 'thin' ? 95 : face.case === 'dive' ? 80 : 89.5;
     const k = R / 89.5;
     this.uid = ++drawings;
     const slots = faceSlots(s);
@@ -1172,9 +1185,10 @@ class FloatingWatch {
     const box = caseStyle === 'crown' ? [0, 0, 208, 200] : caseStyle === 'bow' ? [0, -28, 200, 228] : [0, 0, 200, 200];
     const svg = this.faceEl.createSvg('svg', {
       attr: { viewBox: box.join(' '), width: (this.size * box[2]) / 200, height: (this.size * box[3]) / 200 },
-      cls: ['pocket-watch-svg', `pocket-watch-face-${faceKey}`, `pw-case-${face.case}`],
+      cls: ['pocket-watch-svg', `pocket-watch-face-${faceKey}`, `pw-case-${face.case}`, sq ? 'is-square' : 'is-round'],
     });
-    const [dotX, dotY] = polar(94, 45);
+    this.el.setAttr('data-shape', sq ? 'square' : 'round');
+    const [dotX, dotY] = sq ? [188.5, 11.5] : polar(94, 45);
     this.alertDotEl.style.left = `${((dotX - box[0]) / box[2]) * 100}%`;
     this.alertDotEl.style.top = `${((dotY - box[1]) / box[3]) * 100}%`;
     if (s.movement !== 'still') svg.addClass('pw-motion');
@@ -1186,6 +1200,10 @@ class FloatingWatch {
       return t;
     };
     const url = (name) => `url(#${this.id(name)})`;
+    // A disc of radius r, or on a square face a rounded square r from the centre to each side.
+    const disc = (parent, r, attr, cls) => add(parent, sq ? 'rect' : 'circle', Object.assign(
+      sq ? { x: 100 - r, y: 100 - r, width: 2 * r, height: 2 * r, rx: r * 0.3 } : { cx: 100, cy: 100, r }, attr,
+    ), cls);
 
     this.defs = add(svg, 'defs');
     this.gradient(add, 'linearGradient', 'bezel', { x1: 0, y1: 0, x2: 1, y2: 1 }, [['0%', 'pw-bezel-a'], ['55%', 'pw-bezel-b'], ['100%', 'pw-bezel-c']]);
@@ -1195,7 +1213,7 @@ class FloatingWatch {
     this.gradient(add, 'linearGradient', 'metal', { x1: 0, y1: 0, x2: 1, y2: 1 }, [['0%', 'pw-metal-a'], ['50%', 'pw-metal-b'], ['100%', 'pw-metal-c']]);
     this.gradient(add, 'linearGradient', 'glass', { x1: 0, y1: 0, x2: 0.7, y2: 1 }, [['0%', 'rgba(255,255,255,0.13)'], ['100%', 'rgba(255,255,255,0)']]);
     this.gradient(add, 'radialGradient', 'cap', { cx: '35%', cy: '30%', r: '75%' }, [['0%', 'pw-cap-a'], ['100%', 'pw-cap-b']]);
-    add(add(this.defs, 'clipPath', { id: this.id('dial-clip') }), 'circle', { cx: 100, cy: 100, r: R });
+    disc(add(this.defs, 'clipPath', { id: this.id('dial-clip') }), R, {});
 
     // Case: a polished bezel with a crisp outer edge and a stepped inner bevel.
     if (caseStyle === 'crown') {
@@ -1210,30 +1228,40 @@ class FloatingWatch {
       add(svg, 'rect', { x: 93, y: -4.5, width: 14, height: 7, rx: 2, fill: url('bezel') }, 'pw-case-part');
       for (let x = 94.6; x <= 105.6; x += 1.6) add(svg, 'line', { x1: x, y1: -3.8, x2: x, y2: 1.8 }, 'pw-knurl');
     }
-    add(svg, 'circle', { cx: 100, cy: 100, r: 99, fill: url('bezel') }, 'pw-bezel');
-    add(svg, 'circle', { cx: 100, cy: 100, r: 98.3 }, 'pw-bezel-edge');
+    disc(svg, 99, { fill: url('bezel') }, 'pw-bezel');
+    disc(svg, 98.3, {}, 'pw-bezel-edge');
     if (face.case === 'dive') this.drawDiveBezel(svg, add);
-    else add(svg, 'circle', { cx: 100, cy: 100, r: R + 1.1, 'stroke-width': 2.2, stroke: url('bezel-rev') }, 'pw-bezel-step');
+    else disc(svg, R + 1.1, { 'stroke-width': 2.2, stroke: url('bezel-rev') }, 'pw-bezel-step');
 
-    // The ring on the bezel shows the daily goal, or the countdown during a focus session.
-    const [ringR, ringW] = face.case === 'thin' ? [97, 2] : face.case === 'dive' ? [83, 1.8] : [94.6, 2.8];
-    add(svg, 'circle', { cx: 100, cy: 100, r: ringR, 'stroke-width': ringW }, 'pw-ring-track');
-    this.parts.ring = add(svg, 'circle', {
-      cx: 100, cy: 100, r: ringR, 'stroke-width': ringW, pathLength: 100, transform: 'rotate(-90 100 100)', 'stroke-dasharray': '0 100',
-    }, 'pw-ring');
-    add(svg, 'circle', { cx: 100, cy: 100, r: R, fill: url('dial') }, 'pw-dial');
+    // The ring on the bezel shows the daily goal, or the countdown during a focus session. On
+    // a square case it runs round the square from 12.
+    const [ringR, ringW] = sq ? [91.6, 2.8] : face.case === 'thin' ? [97, 2] : face.case === 'dive' ? [83, 1.8] : [94.6, 2.8];
+    if (sq) {
+      const d = squarePath(ringR, ringR * 0.33);
+      add(svg, 'path', { d, 'stroke-width': ringW }, 'pw-ring-track');
+      this.parts.ring = add(svg, 'path', { d, 'stroke-width': ringW, pathLength: 100, 'stroke-dasharray': '0 100' }, 'pw-ring');
+    } else {
+      add(svg, 'circle', { cx: 100, cy: 100, r: ringR, 'stroke-width': ringW }, 'pw-ring-track');
+      this.parts.ring = add(svg, 'circle', {
+        cx: 100, cy: 100, r: ringR, 'stroke-width': ringW, pathLength: 100, transform: 'rotate(-90 100 100)', 'stroke-dasharray': '0 100',
+      }, 'pw-ring');
+    }
+    disc(svg, R, { fill: url('dial') }, 'pw-dial');
 
     // Dial: its painting and finish, then shading where it meets the case, then the flange.
     if (face.art === 'sakura') this.drawSakura(svg, add, R);
     else if (face.art === 'nocturne') this.drawNocturne(svg, add, R, now);
     else if (face.art === 'meteorite') this.drawMeteorite(svg, add, R);
     else if (face.art === 'malachite') this.drawMalachite(svg, add, R);
+    else if (face.art === 'panda') this.drawPanda(svg, add, R, k);
+    else if (face.art === 'koi') this.drawKoi(svg, add, R);
+    else if (face.art === 'deco') this.drawDeco(svg, add, R, k);
     if (face.pomodoro) this.drawPomodoro(svg, add, text, R, k);
     if (face.texture) this.drawTexture(svg, add, face.texture, R);
     if (face.decor) this.drawDecor(svg, add, text, face.decor, R, k, used);
-    add(svg, 'circle', { cx: 100, cy: 100, r: R, fill: url('dial-shade') }, 'pw-dial-shade');
-    add(svg, 'circle', { cx: 100, cy: 100, r: R }, 'pw-alert-wash');
-    if (face.flange) {
+    disc(svg, R, { fill: url('dial-shade') }, 'pw-dial-shade');
+    disc(svg, R, {}, 'pw-alert-wash');
+    if (face.flange && !sq) {
       add(svg, 'circle', { cx: 100, cy: 100, r: R - 2, 'stroke-width': 4 }, 'pw-flange');
       let d = '';
       for (let i = 0; i < 60; i++) {
@@ -1251,7 +1279,7 @@ class FloatingWatch {
     if (face.window) {
       const slot = SLOTS.find((x) => x.key === face.window);
       const [cx, cy] = polar(R * 0.415, slot.hour * 30);
-      this.drawMovementWindow(svg, add, cx, cy, R * 0.345);
+      this.drawMovementWindow(svg, add, cx, cy, R * 0.345, face.windowShape);
     }
     let hourDial = null;
     if (face.regulator) {
@@ -1288,7 +1316,8 @@ class FloatingWatch {
       this.drawHand(body, add, style, R * 0.52, k, true);
     }
     [this.parts.minute, body] = hand('minute');
-    this.drawHand(body, add, style, R * 0.8, k, false);
+    // On a square dial the minute hand reaches further, toward the markers along the edge.
+    this.drawHand(body, add, style, R * (sq ? 0.88 : 0.8), k, false);
     if (s.seconds !== 'off') {
       [this.parts.second, body] = hand('second');
       add(body, 'line', { x1: 0, y1: 18 * k, x2: 0, y2: -R * 0.88 });
@@ -1301,7 +1330,14 @@ class FloatingWatch {
     add(svg, 'circle', { cx: 100 - 1.4 * k, cy: 100 - 1.5 * k, r: 1.3 * k }, 'pw-cap-shine');
     add(svg, 'circle', { cx: 100, cy: 100, r: 1.5 * k }, s.seconds !== 'off' ? 'pw-cap-dot' : 'pw-cap-pin');
 
-    // Reflections on the domed crystal: a broad one at the top left and a small one opposite.
+    // Reflections on the crystal: a broad one at the top left and a small one opposite. A flat
+    // square crystal catches the light in straight-edged bands across its corners.
+    if (sq) {
+      const c = add(svg, 'g', { 'clip-path': url('dial-clip') }, 'pw-glass');
+      add(c, 'path', { d: `M ${100 - R} ${100 + R * 0.2} L ${100 - R} ${100 - R} L ${100 + R * 0.25} ${100 - R} Q ${100 - R * 0.3} ${100 - R * 0.35} ${100 - R} ${100 + R * 0.2} Z`, fill: url('glass') });
+      add(c, 'path', { d: `M ${100 + R} ${100 + R * 0.45} L ${100 + R} ${100 + R} L ${100 + R * 0.45} ${100 + R} Q ${100 + R * 0.8} ${100 + R * 0.8} ${100 + R} ${100 + R * 0.45} Z` }, 'pw-glass-small');
+      return;
+    }
     const [gx1, gy1] = polar(R * 0.97, 238);
     const [gx2, gy2] = polar(R * 0.97, 18);
     add(svg, 'path', {
@@ -1333,7 +1369,7 @@ class FloatingWatch {
     const height = (bottom - top) * scale;
     // How far in from the edge the markers reach at 12 (or 6).
     const clear = (face.brandClear || {
-      batons: 24, dots: 21, arabic: face.decor === 'inner-24' ? 41 : 27, quarters: 41, roman: 30, lume: 25, minimal: 22, pips: 15, minutes: 22,
+      batons: 24, dots: 21, arabic: face.decor === 'inner-24' ? 41 : 27, quarters: 41, roman: 30, lume: 25, minimal: 22, pips: 15, minutes: 22, square: 22, deco: 36,
     }[markers] || 17) * k;
     // Under 12 it keeps a little room from the marker above it; at 6 a little more, as it
     // sits lowest; below the hands and at 9 it is centred a little under halfway out.
@@ -1411,7 +1447,26 @@ class FloatingWatch {
     }
     add(g, 'path', { d: mist, fill: url('sakura-gold') }, 'pw-art-mist-dust');
 
+    // Depth: a second branch far behind, soft and dim as if out of focus, with blossoms
+    // blurred to points of light. The main branch stands off the lacquer on its own shadow,
+    // and a few petals drift past close to the crystal.
+    const soft = (name, sd) => {
+      const f = add(this.defs, 'filter', { id: this.id(name), x: '-40%', y: '-40%', width: '180%', height: '180%' });
+      add(f, 'feGaussianBlur', { stdDeviation: sd });
+    };
+    soft('sakura-far', 1.5);
+    soft('sakura-near', 1.3);
+    const lift = add(this.defs, 'filter', { id: this.id('sakura-lift'), x: '-20%', y: '-20%', width: '140%', height: '140%' });
+    add(lift, 'feDropShadow', { dx: 1.2, dy: 2.2, stdDeviation: 1.6, 'flood-color': '#000', 'flood-opacity': 0.85 });
+    const far = add(g, 'g', { filter: url('sakura-far') }, 'pw-sakura-far');
+    const farBranch = [[[200, 28], [168, 44], [140, 40], [112, 54]], [[112, 54], [92, 64], [70, 60], [44, 74]]];
+    add(far, 'path', { d: brushPath(farBranch, 5, 1.2), fill: url('sakura-gold') });
+    for (const [x, y, r] of [[160, 40, 6], [132, 46, 7], [104, 56, 5.5], [80, 60, 6.5], [56, 68, 5], [146, 30, 4.5], [92, 48, 4]]) {
+      add(far, 'circle', { cx: x, cy: y, r, fill: url('sakura-petal') }, 'pw-sakura-bokeh');
+    }
+
     // The branch, in raised gold with a light catching its upper edge.
+    const main = add(g, 'g', { filter: url('sakura-lift') });
     const trunk = [
       [[-4, 172], [36, 152], [70, 134], [104, 125]],
       [[104, 125], [132, 118], [152, 101], [170, 71]],
@@ -1426,7 +1481,7 @@ class FloatingWatch {
       [[[30, 157], [26, 150], [22, 147], [14, 146]], 2.6, 0.7],
     ];
     // The twigs first, so they grow out from behind the trunk drawn over them.
-    const bark = add(g, 'g', {}, 'pw-bark');
+    const bark = add(main, 'g', {}, 'pw-bark');
     for (const [c, w0, w1] of boughs.slice().reverse()) {
       add(bark, 'path', { d: brushPath(c, w0, w1), fill: url('sakura-gold') });
       const shift = ([x, y]) => [x - 0.35, y - w0 * 0.2];
@@ -1446,15 +1501,15 @@ class FloatingWatch {
       const [cx, cy] = [x + ((-(y2 - y)) / len) * off, y + ((x2 - x) / len) * off];
       lenticels += `M ${(cx - nx).toFixed(2)} ${(cy - ny).toFixed(2)} L ${(cx + nx).toFixed(2)} ${(cy + ny).toFixed(2)} `;
     }
-    add(g, 'path', { d: lenticels }, 'pw-bark-mark');
+    add(main, 'path', { d: lenticels }, 'pw-bark-mark');
     for (const [x, y, rx, ry, a] of [[44, 147, 1.6, 0.7, -30], [83, 129, 1.4, 0.6, -18], [121, 120, 1.2, 0.5, -30], [149, 104, 0.9, 0.45, -55]]) {
-      add(g, 'ellipse', { cx: x, cy: y, rx, ry, transform: `rotate(${a} ${x} ${y})` }, 'pw-bark-knot');
+      add(main, 'ellipse', { cx: x, cy: y, rx, ry, transform: `rotate(${a} ${x} ${y})` }, 'pw-bark-knot');
     }
 
     // Buds, closed in their gold calyxes.
     const petal = (L, W) => `M 0 0 C ${-W * 0.55} ${-L * 0.25} ${-W * 0.62} ${-L * 0.85} ${-W * 0.22} ${-L} Q ${-W * 0.08} ${-L * 1.03} 0 ${-L * 0.86} Q ${W * 0.08} ${-L * 1.03} ${W * 0.22} ${-L} C ${W * 0.62} ${-L * 0.85} ${W * 0.55} ${-L * 0.25} 0 0 Z`;
     for (const [x, y, turn] of [[186, 46, 50], [60, 92, -55], [174, 131, 105], [38, 118, -75], [178, 84, 80], [13, 146, -95]]) {
-      const b = add(g, 'g', { transform: `translate(${x} ${y}) rotate(${turn})` });
+      const b = add(main, 'g', { transform: `translate(${x} ${y}) rotate(${turn})` });
       add(b, 'ellipse', { cx: 0, cy: -2.7, rx: 1.8, ry: 2.9, fill: url('sakura-petal') }, 'pw-petal');
       add(b, 'path', { d: 'M -1.7 -0.9 Q 0 -3.4 1.7 -0.9 Q 0 0.9 -1.7 -0.9 Z', fill: url('sakura-gold') });
     }
@@ -1466,7 +1521,7 @@ class FloatingWatch {
       [52, 90, 4.6, 30], [45, 124, 4.8, 2], [165, 128, 4.8, -26], [176, 64, 4.2, 12],
     ];
     for (const [x, y, size, turn] of blossoms) {
-      const b = add(g, 'g', { transform: `translate(${x} ${y}) rotate(${turn})` }, 'pw-blossom');
+      const b = add(main, 'g', { transform: `translate(${x} ${y}) rotate(${turn})` }, 'pw-blossom');
       for (let i = 0; i < 5; i++) {
         const leaf = add(b, 'g', { transform: `rotate(${i * 72 + (rand() - 0.5) * 8})` });
         const L = size * (0.94 + rand() * 0.12);
@@ -1493,6 +1548,10 @@ class FloatingWatch {
       const p = add(g, 'g', { transform: `translate(${x} ${y}) rotate(${turn})` }, 'pw-petal-fall');
       add(p, 'path', { d: petal(size * 1.6, size * 1.3), fill: url('sakura-petal') }, 'pw-petal');
       add(p, 'path', { d: petal(size * 1.6, size * 1.3), fill: url('sakura-pearl') }, 'pw-petal-sheen');
+    }
+    for (const [x, y, size, turn] of [[30, 48, 6.5, 40], [170, 168, 7.5, -60], [186, 30, 5.5, 160]]) {
+      const p = add(g, 'g', { transform: `translate(${x} ${y}) rotate(${turn})`, filter: url('sakura-near') }, 'pw-petal-near');
+      add(p, 'path', { d: petal(size * 1.6, size * 1.3), fill: url('sakura-petal') });
     }
     // The gloss of the lacquer.
     add(g, 'ellipse', { cx: 72, cy: 56, rx: R * 0.62, ry: R * 0.3, transform: 'rotate(-32 72 56)', fill: url('sakura-gloss') }, 'pw-art-gloss');
@@ -1711,23 +1770,230 @@ class FloatingWatch {
     add(svg, 'circle', { cx: 100, cy: 100, r: R, fill: `url(#${this.id('polish')})` }, 'pw-stone-polish');
   }
 
+  // Koi, painted: a green pond in loose brush strokes with dappled light, lily pads and a
+  // lotus, and two koi gliding round each other, a white one marked in vermilion and a
+  // golden one, their shadows on the pond floor below them.
+  drawKoi(svg, add, R) {
+    const url = (name) => `url(#${this.id(name)})`;
+    const g = add(svg, 'g', { 'clip-path': url('dial-clip') });
+    const rand = rng(57);
+    this.gradient(add, 'radialGradient', 'koi-water', { cx: '36%', cy: '30%', r: '85%' }, [['0%', '#4f9a8f'], ['45%', '#2a6c6c'], ['100%', '#0f3439']]);
+    this.gradient(add, 'radialGradient', 'koi-pad', { cx: '40%', cy: '35%', r: '70%' }, [['0%', '#8cc066'], ['65%', '#4f8a3c'], ['100%', '#2f5e28']]);
+    this.gradient(add, 'radialGradient', 'koi-lotus', { cx: '50%', cy: '100%', r: '100%' }, [['0%', '#e0688a'], ['55%', '#f4a9bd'], ['100%', '#fff1f4']]);
+    this.gradient(add, 'linearGradient', 'koi-white', { x1: 0, y1: 0, x2: 0, y2: 1 }, [['0%', '#ffffff'], ['100%', '#e6e1d8']]);
+    this.gradient(add, 'linearGradient', 'koi-gold', { x1: 0, y1: 0, x2: 0, y2: 1 }, [['0%', '#ffd27a'], ['55%', '#f0a03a'], ['100%', '#c86f1c']]);
+    const blur = (name, sd) => add(add(this.defs, 'filter', { id: this.id(name), x: '-50%', y: '-50%', width: '200%', height: '200%' }), 'feGaussianBlur', { stdDeviation: sd });
+    blur('koi-soft', 3.2);
+    blur('koi-shadow', 2.4);
+
+    add(g, 'rect', { x: 100 - R, y: 100 - R, width: 2 * R, height: 2 * R, fill: url('koi-water') });
+    // Loose strokes of the brush across the water, lighter and darker.
+    for (let i = 0; i < 46; i++) {
+      const x = 100 - R + rand() * 2 * R;
+      const y = 100 - R + rand() * 2 * R;
+      const len = 14 + rand() * 30;
+      const bend = (rand() - 0.5) * 8;
+      const c = [[x, y], [x + len * 0.33, y + bend], [x + len * 0.66, y - bend], [x + len, y + (rand() - 0.5) * 4]];
+      add(g, 'path', { d: brushPath(c, 1.6 + rand() * 2.6, 0.4) }, ['pw-koi-stroke', rand() < 0.5 ? 'is-light' : 'is-dark']);
+    }
+    // Sunlight dappling through the water.
+    for (let i = 0; i < 8; i++) {
+      add(g, 'ellipse', { cx: 100 - R + rand() * 2 * R, cy: 100 - R + rand() * 2 * R, rx: 6 + rand() * 12, ry: 3 + rand() * 6, filter: url('koi-soft') }, 'pw-koi-dapple');
+    }
+
+    // A koi along a curve from its head to its tail: a body that swells behind the head and
+    // tapers to the tail, a forked tail fin, two pectoral fins, markings and a dark eye.
+    const koi = (spine, W, skin, marks, markCls) => {
+      const steps = 40;
+      const left = [];
+      const right = [];
+      const frame = (t) => {
+        const [x, y] = chainAt(spine, t);
+        const [ax, ay] = chainAt(spine, Math.max(0, t - 0.01));
+        const [bx, by] = chainAt(spine, Math.min(1, t + 0.01));
+        const len = Math.hypot(bx - ax, by - ay) || 1;
+        return { x, y, tx: (bx - ax) / len, ty: (by - ay) / len };
+      };
+      // Half the body's width along it: a round head, widest a third of the way back, then
+      // narrowing to the slim stalk of the tail.
+      const half = (t) => (W / 2) * (t < 0.32 ? 0.66 + 0.34 * Math.sin((t / 0.32) * (Math.PI / 2)) : 0.16 + 0.84 * Math.pow(Math.cos(((t - 0.32) / 0.68) * (Math.PI / 2)), 1.25));
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const w = half(t);
+        const f = frame(t);
+        left.push(`${(f.x - f.ty * w).toFixed(2)} ${(f.y + f.tx * w).toFixed(2)}`);
+        right.unshift(`${(f.x + f.ty * w).toFixed(2)} ${(f.y - f.tx * w).toFixed(2)}`);
+      }
+      const h0 = half(0);
+      const body = `M ${left.join(' L ')} L ${right.join(' L ')} A ${h0} ${h0 * 1.15} 0 0 0 ${left[0]} Z`;
+      const tail = frame(1);
+      // A broad, flowing tail in two lobes.
+      const fin = (side) => {
+        const [bx, by] = [tail.x - tail.tx * 2, tail.y - tail.ty * 2];
+        const out = (along, across) => [tail.x + tail.tx * W * along - tail.ty * side * W * across, tail.y + tail.ty * W * along + tail.tx * side * W * across];
+        const tip = out(1.05, 0.62);
+        const c1 = out(0.35, 0.55);
+        const c2 = out(0.75, 0.12);
+        return `M ${bx} ${by} Q ${c1[0]} ${c1[1]} ${tip[0]} ${tip[1]} Q ${c2[0]} ${c2[1]} ${bx} ${by} Z`;
+      };
+      // Pectoral fins just behind the head, spread out and back.
+      const pecs = [-1, 1].map((side) => {
+        const f = frame(0.2);
+        const w = half(0.2) * 0.85;
+        const base = [f.x - f.ty * side * w, f.y + f.tx * side * w];
+        const tip = [base[0] - f.ty * side * W * 0.5 + f.tx * W * 0.42, base[1] + f.tx * side * W * 0.5 + f.ty * W * 0.42];
+        const ctl = [base[0] - f.ty * side * W * 0.42 - f.tx * W * 0.05, base[1] + f.tx * side * W * 0.42 - f.ty * W * 0.05];
+        const back = [base[0] + f.tx * W * 0.3, base[1] + f.ty * W * 0.3];
+        return `M ${base[0]} ${base[1]} Q ${ctl[0]} ${ctl[1]} ${tip[0]} ${tip[1]} Q ${back[0] - f.ty * side * W * 0.12} ${back[1] + f.tx * side * W * 0.12} ${back[0]} ${back[1]} Z`;
+      });
+      // Its shadow on the floor of the pond.
+      add(g, 'path', { d: `${body} ${fin(-1)} ${fin(1)}`, transform: 'translate(4 7)', filter: url('koi-shadow') }, 'pw-koi-shadow');
+      const fish = add(g, 'g', {}, 'pw-koi');
+      for (const d of [fin(-1), fin(1), ...pecs]) add(fish, 'path', { d, fill: skin }, 'pw-koi-fin');
+      add(fish, 'path', { d: body, fill: skin }, 'pw-koi-body');
+      this.clips = (this.clips || 0) + 1;
+      const clipId = this.id(`koi-${this.clips}`);
+      add(add(this.defs, 'clipPath', { id: clipId }), 'path', { d: body });
+      const spots = add(fish, 'g', { 'clip-path': `url(#${clipId})` });
+      for (const [t, side, size] of marks) {
+        const f = frame(t);
+        add(spots, 'ellipse', {
+          cx: f.x - f.ty * side * W * 0.18, cy: f.y + f.tx * side * W * 0.18, rx: W * size, ry: W * size * 0.62,
+          transform: `rotate(${(Math.atan2(f.ty, f.tx) * 180) / Math.PI} ${f.x - f.ty * side * W * 0.18} ${f.y + f.tx * side * W * 0.18})`,
+        }, markCls);
+      }
+      // A soft light along the back, and the eyes.
+      let back = '';
+      for (let i = 0; i <= 20; i++) {
+        const f = frame(0.04 + i * 0.032);
+        back += `${i ? 'L' : 'M'} ${(f.x + f.ty * W * 0.12).toFixed(2)} ${(f.y - f.tx * W * 0.12).toFixed(2)} `;
+      }
+      add(fish, 'path', { d: back }, 'pw-koi-sheen');
+      for (const side of [-1, 1]) {
+        const f = frame(0.05);
+        add(fish, 'circle', { cx: f.x - f.ty * side * W * 0.22, cy: f.y + f.tx * side * W * 0.22, r: W * 0.055 }, 'pw-koi-eye');
+      }
+    };
+
+    // Lily pads, each with its notch and veins, and a lotus open on the largest.
+    const pad = (cx, cy, r, notch) => {
+      const a0 = notch - 0.22;
+      const a1 = notch + 0.22;
+      const d = `M ${cx} ${cy} L ${cx + r * Math.cos(a1)} ${cy + r * Math.sin(a1)} A ${r} ${r} 0 1 1 ${cx + r * Math.cos(a0)} ${cy + r * Math.sin(a0)} Z`;
+      add(g, 'path', { d, transform: 'translate(2.5 4)', filter: url('koi-shadow') }, 'pw-koi-shadow');
+      add(g, 'path', { d, fill: url('koi-pad') }, 'pw-koi-pad');
+      let veins = '';
+      for (let i = 1; i < 11; i++) {
+        const a = a1 + (i / 11) * (2 * Math.PI - 0.44);
+        veins += `M ${cx} ${cy} L ${(cx + r * 0.9 * Math.cos(a)).toFixed(2)} ${(cy + r * 0.9 * Math.sin(a)).toFixed(2)} `;
+      }
+      add(g, 'path', { d: veins }, 'pw-koi-vein');
+    };
+    pad(40, 44, 22, 0.9);
+    pad(162, 160, 17, 3.6);
+    pad(170, 52, 9, 2.2);
+    for (let i = 0; i < 12; i++) {
+      const outer = i < 7;
+      const a = (i * (outer ? 360 / 7 : 360 / 5) + (outer ? 0 : 36)) - 90;
+      const len = outer ? 12 : 8.5;
+      add(g, 'ellipse', { cx: 40, cy: 44 - len * 0.5, rx: outer ? 4.2 : 3.4, ry: len * 0.55, transform: `rotate(${a + 90} 40 44)`, fill: url('koi-lotus') }, 'pw-koi-petal');
+    }
+    add(g, 'circle', { cx: 40, cy: 44, r: 3.4 }, 'pw-koi-seedpod');
+
+    koi([[[140, 124], [124, 148], [92, 152], [70, 136]]], 23, url('koi-white'),
+      [[0.08, 0, 0.3], [0.36, -0.25, 0.42], [0.6, 0.3, 0.26]], 'pw-koi-red');
+    koi([[[54, 92], [70, 70], [102, 64], [124, 76]]], 19, url('koi-gold'),
+      [[0.32, 0.3, 0.22], [0.52, -0.25, 0.17]], 'pw-koi-ink');
+    // Rings spreading on the surface.
+    for (const [x, y, r] of [[118, 34, 7], [118, 34, 12], [30, 150, 6], [30, 150, 10.5]]) add(g, 'ellipse', { cx: x, cy: y, rx: r, ry: r * 0.42 }, 'pw-koi-ripple');
+  }
+
+  // Deco: black lacquer framed in stepped gold lines, a rising sun at 6 (the small seconds)
+  // sending a fan of gold rays up the dial, and stepped ornaments in the corners.
+  drawDeco(svg, add, R, k) {
+    const url = (name) => `url(#${this.id(name)})`;
+    const g = add(svg, 'g', { 'clip-path': url('dial-clip') }, 'pw-deco');
+    const [sx, sy] = [100, 100 + R * 0.47];
+    let rays = '';
+    let bold = '';
+    for (let a = -84; a <= 84; a += 4) {
+      const rad = (a * Math.PI) / 180;
+      const seg = `M ${(sx + 22 * k * Math.sin(rad)).toFixed(2)} ${(sy - 22 * k * Math.cos(rad)).toFixed(2)} L ${(sx + 260 * Math.sin(rad)).toFixed(2)} ${(sy - 260 * Math.cos(rad)).toFixed(2)} `;
+      if (a % 12 === 0) bold += seg;
+      else rays += seg;
+    }
+    add(g, 'path', { d: rays }, 'pw-deco-ray');
+    add(g, 'path', { d: bold }, ['pw-deco-ray', 'is-bold']);
+    for (const r of [24, 29, 34]) add(g, 'path', { d: `M ${sx - r * k} ${sy} A ${r * k} ${r * k} 0 0 1 ${sx + r * k} ${sy}` }, 'pw-deco-arc');
+    // Two stepped frames inside the edge.
+    for (const inset of [10, 13]) {
+      const r = R - inset * k;
+      add(g, 'rect', { x: 100 - r, y: 100 - r, width: 2 * r, height: 2 * r, rx: r * 0.22 }, 'pw-deco-frame');
+    }
+    // Stepped chevrons in each corner, like the setbacks of a skyscraper.
+    for (const [dx, dy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+      let d = '';
+      for (let i = 0; i < 3; i++) {
+        const c = R - 17 * k - i * 4.2 * k;
+        const len = (10 - i * 2.2) * k;
+        d += `M ${100 + dx * c} ${100 + dy * (c - len)} L ${100 + dx * c} ${100 + dy * c} L ${100 + dx * (c - len)} ${100 + dy * c} `;
+      }
+      add(g, 'path', { d }, 'pw-deco-step');
+    }
+  }
+
+  // A panda's face: round black ears at the top of the dial, the subdials at 9 and 3 set in
+  // black patches that slope down and out like a panda's eyes, and a small nose and mouth.
+  drawPanda(svg, add, R, k) {
+    const g = add(svg, 'g', { 'clip-path': `url(#${this.id('dial-clip')})` }, 'pw-panda');
+    for (const a of [-41, 41]) {
+      const [x, y] = polar(R + 4, a);
+      add(g, 'circle', { cx: x, cy: y, r: 23 * k }, 'pw-panda-ear');
+      add(g, 'circle', { cx: x, cy: y, r: 12 * k }, 'pw-panda-ear-in');
+    }
+    for (const [hour, tilt] of [[9, -38], [3, 38]]) {
+      const [x, y] = polar(R * 0.47, hour * 30);
+      add(g, 'ellipse', { cx: x, cy: y + 3 * k, rx: 27 * k, ry: 19.5 * k, transform: `rotate(${tilt} ${x} ${y + 3 * k})` }, 'pw-panda-patch');
+    }
+    const ny = 100 + R * 0.36;
+    const w = 5.2 * k;
+    add(g, 'path', { d: `M ${100 - w} ${ny - 2.6 * k} Q 100 ${ny - 4.4 * k} ${100 + w} ${ny - 2.6 * k} Q ${100 + w * 0.9} ${ny + 1.2 * k} 100 ${ny + 2.8 * k} Q ${100 - w * 0.9} ${ny + 1.2 * k} ${100 - w} ${ny - 2.6 * k} Z` }, 'pw-panda-nose');
+    add(g, 'ellipse', { cx: 100 - 1.8 * k, cy: ny - 2.2 * k, rx: 1.6 * k, ry: 0.7 * k }, 'pw-panda-shine');
+    add(g, 'path', { d: `M 100 ${ny + 2.8 * k} L 100 ${ny + 5.6 * k} M ${100 - 5 * k} ${ny + 5.2 * k} Q ${100 - 2.4 * k} ${ny + 8 * k} 100 ${ny + 5.6 * k} Q ${100 + 2.4 * k} ${ny + 8 * k} ${100 + 5 * k} ${ny + 5.2 * k}` }, 'pw-panda-mouth');
+  }
+
   // The small dial at 12 of a regulator, where the hour hand turns on its own.
   drawHourDial(svg, add, text, cx, cy, k) {
-    const r = 18.5 * k;
-    add(svg, 'circle', { cx, cy, r }, ['pw-subdial', 'pw-hour-dial']);
-    for (let rr = 3 * k; rr < r - 4 * k; rr += 1.3 * k) add(svg, 'circle', { cx, cy, r: rr }, 'pw-snailing');
-    let d = '';
-    for (let i = 0; i < 12; i++) {
-      const a = (i * Math.PI) / 6;
-      const len = i % 3 === 0 ? 0 : 2.2 * k;
-      if (len) d += `M ${cx + (r - 1.5 * k) * Math.sin(a)} ${cy - (r - 1.5 * k) * Math.cos(a)} L ${cx + (r - 1.5 * k - len) * Math.sin(a)} ${cy - (r - 1.5 * k - len) * Math.cos(a)} `;
+    const z = (this.faceDef && this.faceDef.subdial) || 1;
+    this.drawSunkSubdial(svg, add, text, cx, cy, 18.5 * k * z, k * z, ['XII', 'III', 'VI', 'IX'], 12);
+  }
+
+  // A subdial sunk into the dial: a shadowed step, fine circular graining, a track with a
+  // tick for every division and the four quarters numbered.
+  drawSunkSubdial(svg, add, text, cx, cy, r, k, numerals, divisions = 60) {
+    add(svg, 'circle', { cx, cy, r: r + 0.9 * k }, 'pw-sunk-step');
+    add(svg, 'circle', { cx, cy, r }, ['pw-subdial', 'is-sunk']);
+    for (let rr = 2.4 * k; rr < r - 6.5 * k; rr += 1.05 * k) add(svg, 'circle', { cx, cy, r: rr }, 'pw-snailing');
+    add(svg, 'circle', { cx, cy, r: r - 0.6 * k }, 'pw-sunk-shadow');
+    add(svg, 'circle', { cx, cy, r: r - 1.6 * k }, 'pw-sub-track');
+    let fine = '';
+    let major = '';
+    for (let i = 0; i < divisions; i++) {
+      const a = (i * 2 * Math.PI) / divisions;
+      const big = i % (divisions / 4) === 0;
+      const mid = !big && i % (divisions / 12) === 0;
+      const len = big ? 3.2 * k : mid ? 2.2 * k : 1.1 * k;
+      const seg = `M ${(cx + (r - 1.6 * k) * Math.sin(a)).toFixed(2)} ${(cy - (r - 1.6 * k) * Math.cos(a)).toFixed(2)} L ${(cx + (r - 1.6 * k - len) * Math.sin(a)).toFixed(2)} ${(cy - (r - 1.6 * k - len) * Math.cos(a)).toFixed(2)} `;
+      if (big || mid) major += seg;
+      else fine += seg;
     }
-    add(svg, 'path', { d }, 'pw-subdial-tick');
-    for (const i of [0, 3, 6, 9]) {
-      const a = (i * Math.PI) / 6;
-      const rr = r - 5.2 * k;
-      text(svg, cx + rr * Math.sin(a), cy - rr * Math.cos(a), 5.6 * k, ROMAN[i], ['pw-numeral', 'is-roman', 'is-hours']);
-    }
+    add(svg, 'path', { d: fine }, ['pw-subdial-tick', 'is-fine']);
+    add(svg, 'path', { d: major }, 'pw-subdial-tick');
+    numerals.forEach((n, i) => {
+      const a = (i * Math.PI) / 2;
+      const rr = r - 7.4 * k;
+      text(svg, cx + rr * Math.sin(a), cy - rr * Math.cos(a), 4.4 * k, n, ['pw-numeral', 'is-sub']);
+    });
   }
 
   // The Pomodoro dial: the focus session painted as a wedge from the minute hand to when it
@@ -1844,6 +2110,34 @@ class FloatingWatch {
       add(g, 'path', { d }, 'pw-guilloche');
       add(svg, 'circle', { cx: 100, cy: 100, r: disc }, 'pw-guilloche-ring');
       add(svg, 'circle', { cx: 100, cy: 100, r: disc + 1.6 }, 'pw-guilloche-ring');
+    } else if (texture === 'slate') {
+      // Cleft slate: layers that split unevenly along the grain, darker beds between them, a
+      // few pale seams and a fine mineral sparkle.
+      const noise = (name, freq, oct, seed, alpha, color, cls) => {
+        const f = add(this.defs, 'filter', { id: this.id(name), x: 0, y: 0, width: 1, height: 1 });
+        add(f, 'feTurbulence', { type: 'fractalNoise', baseFrequency: freq, numOctaves: oct, seed, result: 'noise' });
+        add(f, 'feColorMatrix', { in: 'noise', type: 'matrix', values: `0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  ${alpha}`, result: 'mask' });
+        add(f, 'feFlood', { 'flood-color': color, result: 'ink' });
+        add(f, 'feComposite', { in: 'ink', in2: 'mask', operator: 'in', result: 'tinted' });
+        add(f, 'feComposite', { in: 'tinted', in2: 'SourceGraphic', operator: 'in' });
+        add(svg, 'circle', { cx: 100, cy: 100, r: R, fill: '#fff', filter: url(name) }, cls);
+      };
+      noise('slate-beds', '0.006 0.09', 4, 7, '2.4 0 0 0 -1.05', '#000', ['pw-slate', 'is-beds']);
+      noise('slate-cleft', '0.012 0.3', 3, 19, '0 2.6 0 0 -1.25', '#ffffff', ['pw-slate', 'is-cleft']);
+      noise('slate-grain', '1.1', 2, 3, '0 0 2.2 0 -1.15', '#ffffff', ['pw-slate', 'is-grain']);
+      const g = clipped();
+      const rand = rng(17);
+      let seams = '';
+      for (let i = 0; i < 5; i++) {
+        let y = 100 - R + 20 + rand() * (2 * R - 40);
+        seams += `M ${100 - R} ${y.toFixed(2)}`;
+        for (let x = 100 - R; x < 100 + R; x += 6) {
+          y += (rand() - 0.5) * 1.6;
+          seams += ` L ${(x + 6).toFixed(2)} ${y.toFixed(2)}`;
+        }
+        seams += ' ';
+      }
+      add(g, 'path', { d: seams }, 'pw-slate-seam');
     } else if (texture === 'brushed') {
       const g = clipped();
       let light = '';
@@ -1856,15 +2150,22 @@ class FloatingWatch {
       add(g, 'path', { d: light }, ['pw-brushed', 'is-light']);
       add(g, 'path', { d: dark }, 'pw-brushed');
     } else if (texture === 'waves') {
-      const g = clipped();
-      let d = '';
-      for (let y = 100 - R; y <= 100 + R + 4; y += 4.6) {
-        d += `M ${100 - R - 8} ${y.toFixed(2)}`;
-        for (let x = 100 - R - 8; x < 100 + R + 8; x += 16) d += ` q 4 -1.8 8 0 t 8 0`;
-        d += ' ';
+      // Waves in relief: each row catches the light on its crest and falls into shadow
+      // before the next, like the stamped dial of a diver.
+      const id = this.id('wave-tile');
+      const W = 16;
+      const H = 5.4;
+      this.gradient(add, 'linearGradient', 'wave-band', { x1: 0, y1: 0, x2: 0, y2: 1 }, [
+        ['0%', 'rgba(255,255,255,0.34)'], ['22%', 'rgba(255,255,255,0.1)'], ['60%', 'rgba(0,0,0,0.06)'], ['100%', 'rgba(0,0,10,0.42)'],
+      ]);
+      const pat = add(this.defs, 'pattern', { id, patternUnits: 'userSpaceOnUse', width: W, height: H, x: 0, y: 2 });
+      const crest = (dy) => `M -1 ${2 + dy} Q 3 ${-0.3 + dy} 7 ${2 + dy} T 15 ${2 + dy} T 23 ${2 + dy}`;
+      for (const dy of [-H, 0]) {
+        add(pat, 'path', { d: `${crest(dy)} L 23 ${2 + dy + H} L -1 ${2 + dy + H} Z`, fill: url('wave-band') });
+        add(pat, 'path', { d: crest(dy) }, 'pw-wave-crest');
       }
-      add(g, 'path', { d, transform: 'translate(0 1)' }, ['pw-waves', 'is-shadow']);
-      add(g, 'path', { d }, 'pw-waves');
+      const g = clipped();
+      add(g, 'circle', { cx: 100, cy: 100, r: R, fill: `url(#${id})` }, 'pw-waves-relief');
     } else if (texture === 'grain') {
       const f = add(this.defs, 'filter', { id: this.id('grain'), x: 0, y: 0, width: 1, height: 1 });
       add(f, 'feTurbulence', { type: 'fractalNoise', baseFrequency: 0.9, numOctaves: 2, seed: 4, result: 'noise' });
@@ -1902,7 +2203,22 @@ class FloatingWatch {
         add(svg, 'line', { x1, y1, x2, y2 }, i % 5 ? 'pw-tick' : ['pw-tick', 'is-hour']);
       }
     } else if (decor === 'aventurine') {
-      // Glittering specks scattered evenly over the dial, and a few brighter glints.
+      // Depth: a faint glow deep in the stone, a haze of far specks out of focus, then the
+      // glittering specks and a few brighter glints, and the dial darkening toward its edge.
+      const url = (name) => `url(#${this.id(name)})`;
+      this.gradient(add, 'radialGradient', 'nebula', { cx: '40%', cy: '34%', r: '62%' }, [['0%', 'rgba(120,150,255,0.32)'], ['45%', 'rgba(90,80,200,0.1)'], ['100%', 'rgba(20,20,60,0)']]);
+      this.gradient(add, 'radialGradient', 'abyss', { cx: '50%', cy: '50%', r: '50%' }, [['55%', 'rgba(0,0,10,0)'], ['100%', 'rgba(0,0,10,0.55)']]);
+      add(svg, 'circle', { cx: 100, cy: 100, r: R, fill: url('nebula') });
+      const haze = add(this.defs, 'filter', { id: this.id('haze'), x: '-10%', y: '-10%', width: '120%', height: '120%' });
+      add(haze, 'feGaussianBlur', { stdDeviation: 0.55 });
+      const deep = rng(23);
+      let far = '';
+      for (let i = 0; i < 260; i++) {
+        const [x, y] = polar(Math.sqrt(deep()) * (R - 4), deep() * 360);
+        far += circlePath(x, y, 0.25 + deep() * 0.35);
+      }
+      add(svg, 'path', { d: far, filter: url('haze') }, 'pw-star-far');
+      add(svg, 'circle', { cx: 100, cy: 100, r: R, fill: url('abyss') });
       let seed = 11;
       const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
       const specks = ['', '', ''];
@@ -1918,8 +2234,25 @@ class FloatingWatch {
           d: `M ${x} ${y - z} L ${x + z * 0.2} ${y - z * 0.2} L ${x + z} ${y} L ${x + z * 0.2} ${y + z * 0.2} L ${x} ${y + z} L ${x - z * 0.2} ${y + z * 0.2} L ${x - z} ${y} L ${x - z * 0.2} ${y - z * 0.2} Z`,
         }, 'pw-glint');
       }
+      // A few specks close under the crystal, large and soft.
+      const near = add(this.defs, 'filter', { id: this.id('near'), x: '-50%', y: '-50%', width: '200%', height: '200%' });
+      add(near, 'feGaussianBlur', { stdDeviation: 1.1 });
+      let bokeh = '';
+      for (let i = 0; i < 7; i++) {
+        const [x, y] = polar(20 + deep() * (R - 30), deep() * 360);
+        bokeh += circlePath(x, y, 1.4 + deep() * 1.6);
+      }
+      add(svg, 'path', { d: bokeh, filter: url('near') }, 'pw-star-near');
     } else if (decor === 'sector') {
       add(svg, 'circle', { cx: 100, cy: 100, r: R * 0.63, 'stroke-width': R * 0.2 }, 'pw-sector-band');
+      // A bright dot on the band at every hour, and a larger one at the quarters.
+      let dots = '';
+      for (let i = 0; i < 12; i++) {
+        if (used[i]) continue;
+        const [x, y] = polar(R * 0.63, i * 30);
+        dots += circlePath(x, y, (i % 3 ? 1.5 : 2.4) * k);
+      }
+      add(svg, 'path', { d: dots }, 'pw-sector-dot');
       add(svg, 'circle', { cx: 100, cy: 100, r: R * 0.42 }, 'pw-sector-line');
       add(svg, 'circle', { cx: 100, cy: 100, r: R * 0.53 }, 'pw-sector-line');
       add(svg, 'circle', { cx: 100, cy: 100, r: R * 0.73 }, 'pw-sector-line');
@@ -2071,6 +2404,43 @@ class FloatingWatch {
         const [x, y] = polar(R - 15, i * 30);
         shadow(text(svg, x, y, 8.4 * k, String(i === 0 ? 60 : i * 5), ['pw-numeral', 'is-minutes']));
       }
+    } else if (markers === 'square' || markers === 'deco') {
+      // Along the edge of a square dial: a fine minute track, and at the hours polished
+      // batons pointing in from the edge. Deco has tall numerals at 12, 3, 6 and 9 instead.
+      const at = (a, inset) => edgePoint(R, a, inset);
+      let d = '';
+      for (let i = 0; i < 60; i++) {
+        const [x1, y1] = at(i * 6, 2.6);
+        const [x2, y2] = at(i * 6, i % 5 ? 4.6 : 6);
+        d += `M ${x1.toFixed(2)} ${y1.toFixed(2)} L ${x2.toFixed(2)} ${y2.toFixed(2)} `;
+      }
+      add(svg, 'path', { d }, ['pw-tick', 'is-edge']);
+      for (let i = 0; i < 12; i++) {
+        const deco = markers === 'deco' && i % 3 === 0;
+        if (deco) {
+          if (used[i]) continue;
+          const [x, y] = at(i * 30, i % 6 ? 16 : 17.5);
+          const t = text(svg, x, y, 21 * k, String(i === 0 ? 12 : i), ['pw-numeral', 'is-deco']);
+          if (metal) t.style.fill = url('facet-l');
+          shadow(t);
+          continue;
+        }
+        const major = i % 3 === 0;
+        const len = (major ? 14 : 10.5) * k;
+        const w = (major ? 3.6 : 2.6) * k;
+        const pair = i === 0 && markers === 'square' ? [-2.8 * k, 2.8 * k] : [0];
+        for (const off of pair) {
+          const [x1, y1] = at(i * 30, 7.5);
+          const g = add(svg, 'g', { transform: `translate(${x1.toFixed(2)} ${y1.toFixed(2)}) rotate(${i * 30})` }, metal ? ['pw-applied', 'pw-raised'] : []);
+          if (metal) {
+            add(g, 'rect', { x: off - w / 2, y: 0, width: w / 2, height: len, fill: url('facet-l') });
+            add(g, 'rect', { x: off, y: 0, width: w / 2, height: len, fill: url('facet-r') });
+            add(g, 'rect', { x: off - w / 2, y: 0, width: w, height: len, rx: 0.4 }, 'pw-applied-edge');
+          } else {
+            add(g, 'rect', { x: off - w / 2, y: 0, width: w, height: len, rx: w / 2 }, 'pw-dot-index');
+          }
+        }
+      }
     } else if (markers === 'minimal') {
       const dot = { cx: 100, cy: 100 - R + 12 * k, r: 3.6 * k };
       if (metal) add(svg, 'circle', Object.assign(dot, { fill: url('stud') }), ['pw-applied', 'pw-raised']);
@@ -2082,21 +2452,31 @@ class FloatingWatch {
   drawComplication(svg, add, text, type, cx, cy, k, now) {
     const live = this.parts.live;
     const windowed = (w, value) => {
-      const x = cx - (w * k) / 2;
+      // At 3 and 9 a wide window moves in, clear of the hour marker beside it.
+      const dx = cx - 100;
+      const reach = 89.5 * k * 0.68;
+      const mx = Math.abs(dx) > 1 && Math.abs(dx) + (w * k) / 2 > reach ? 100 + Math.sign(dx) * (reach - (w * k) / 2) : cx;
+      const x = mx - (w * k) / 2;
       const y = cy - 8.5 * k;
       add(svg, 'rect', { x, y, width: w * k, height: 17 * k, rx: 2.5 * k }, 'pw-date-bg');
       add(svg, 'path', { d: `M ${x + 1.6 * k} ${y + 1.1 * k} L ${x + (w - 1.6) * k} ${y + 1.1 * k}` }, 'pw-date-shade');
-      text(svg, cx, cy + 0.4 * k, 11 * k, value, 'pw-date');
+      text(svg, mx, cy + 0.4 * k, 11 * k, value, 'pw-date');
     };
     const reading = (caption, liveType) => {
       const value = text(svg, cx, cy - 2 * k, 11.5 * k, '', 'pw-reading');
       text(svg, cx, cy + 8 * k, 5.6 * k, caption, 'pw-caption');
       live.push({ type: liveType, el: value });
     };
+    // Some faces have a larger subdial, sunk into the dial, with a seconds track and numerals.
+    const z = (this.faceDef && this.faceDef.subdial) || 1;
     const subdial = () => {
-      add(svg, 'circle', { cx, cy, r: 17 * k }, 'pw-subdial');
-      for (let r = 3 * k; r < 15 * k; r += 1.3 * k) add(svg, 'circle', { cx, cy, r }, 'pw-snailing');
+      if (z > 1) this.drawSunkSubdial(svg, add, text, cx, cy, 17 * k * z, k * z, ['60', '15', '30', '45']);
+      else {
+        add(svg, 'circle', { cx, cy, r: 17 * k }, 'pw-subdial');
+        for (let r = 3 * k; r < 15 * k; r += 1.3 * k) add(svg, 'circle', { cx, cy, r }, 'pw-snailing');
+      }
       for (let i = 0; i < 12; i++) {
+        if (z > 1) break;
         const a = (i * Math.PI) / 6;
         const len = i % 3 === 0 ? 3.4 : 2;
         add(svg, 'line', {
@@ -2137,8 +2517,13 @@ class FloatingWatch {
       subdial();
       const turnEl = add(svg, 'g', {}, 'pw-turn');
       turnEl.style.transformOrigin = `${cx}px ${cy}px`;
-      add(turnEl, 'line', { x1: cx, y1: cy + 3 * k, x2: cx, y2: cy - 14 * k }, 'pw-subsec-hand');
-      add(svg, 'circle', { cx, cy, r: 1.6 * k }, 'pw-subsec-pin');
+      add(turnEl, 'line', { x1: cx, y1: cy + 3 * k * z, x2: cx, y2: cy - 14 * k * z }, 'pw-subsec-hand');
+      if (z > 1) {
+        // A counterweight at the tail, and a small ring near the tip.
+        add(turnEl, 'circle', { cx, cy: cy + 4.2 * k * z, r: 1.5 * k * z }, 'pw-subsec-weight');
+        add(turnEl, 'circle', { cx, cy: cy - 10 * k * z, r: 1.2 * k * z }, 'pw-subsec-ring');
+      }
+      add(svg, 'circle', { cx, cy, r: 1.6 * k * Math.sqrt(z) }, 'pw-subsec-pin');
       live.push({ type: 'subsec', el: turnEl });
       if (this.plugin.settings.seconds === 'sweep') sweep(turnEl, now);
     }
@@ -2147,38 +2532,63 @@ class FloatingWatch {
   // The classic moon phase window: a turning disc of night sky carrying two gold moons,
   // seen through an arch whose two humps hide the moon around new moon.
   drawMoonWindow(svg, add, cx, cy, k, now) {
-    const a = 21 * k;
-    const base = cy + a * 0.42;
+    const a = 27 * k;
+    const base = cy + a * 0.36;
     const arch = `M ${cx - a} ${base} A ${a} ${a} 0 0 1 ${cx + a} ${base} A ${a / 2} ${a / 2} 0 0 0 ${cx} ${base} A ${a / 2} ${a / 2} 0 0 0 ${cx - a} ${base} Z`;
     this.clips = (this.clips || 0) + 1;
     const clipId = this.id(`moon-${this.clips}`);
     add(add(this.defs, 'clipPath', { id: clipId }), 'path', { d: arch });
-    this.gradient(add, 'linearGradient', 'sky', { x1: 0, y1: 0, x2: 0, y2: 1 }, [['0%', '#2a4a8c'], ['100%', '#0c1736']]);
-    this.gradient(add, 'radialGradient', 'moon', { cx: '38%', cy: '34%', r: '70%' }, [['0%', '#fff6d6'], ['55%', '#ebc66a'], ['100%', '#b28431']]);
+    this.gradient(add, 'linearGradient', 'sky', { x1: 0, y1: 0, x2: 0, y2: 1 }, [['0%', '#2f55a0'], ['60%', '#15265a'], ['100%', '#0a1330']]);
+    this.gradient(add, 'radialGradient', 'moon', { cx: '38%', cy: '34%', r: '70%' }, [['0%', '#fff8dc'], ['50%', '#efcb70'], ['100%', '#a87a2a']]);
+    this.gradient(add, 'linearGradient', 'moon-frame', { x1: 0, y1: 0, x2: 1, y2: 1 }, [['0%', '#fff3cf'], ['45%', '#d6ad5a'], ['100%', '#86602a']]);
+
+    // The age of the moon, 0 to 29½ days, printed round the arch, with a pointer at today's.
+    const ring = a + 3.2 * k;
+    let ticks = '';
+    for (let i = 0; i <= 59; i++) {
+      const t = Math.PI * (1 - i / 59);
+      const len = i % 10 === 0 ? 2.2 * k : 1.1 * k;
+      ticks += `M ${(cx + ring * Math.cos(t)).toFixed(2)} ${(base - ring * Math.sin(t)).toFixed(2)} L ${(cx + (ring + len) * Math.cos(t)).toFixed(2)} ${(base - (ring + len) * Math.sin(t)).toFixed(2)} `;
+    }
+    add(svg, 'path', { d: ticks }, 'pw-moon-scale');
+    const age = Math.PI * (1 - moonPhase(now));
+    const [px, py] = [cx + (ring - 0.4 * k) * Math.cos(age), base - (ring - 0.4 * k) * Math.sin(age)];
+    const [qx, qy] = [Math.cos(age), -Math.sin(age)];
+    add(svg, 'path', {
+      d: `M ${px.toFixed(2)} ${py.toFixed(2)} L ${(px + qx * 3.4 * k - qy * 1.3 * k).toFixed(2)} ${(py + qy * 3.4 * k + qx * 1.3 * k).toFixed(2)} L ${(px + qx * 3.4 * k + qy * 1.3 * k).toFixed(2)} ${(py + qy * 3.4 * k - qx * 1.3 * k).toFixed(2)} Z`,
+    }, 'pw-moon-pointer');
 
     const g = add(svg, 'g', { 'clip-path': `url(#${clipId})` });
     add(g, 'rect', { x: cx - a, y: base - a - 1, width: 2 * a, height: a + 2, fill: `url(#${this.id('sky')})` });
     const disc = add(g, 'g', { transform: `rotate(${((moonPhase(now) - 0.5) * 180).toFixed(2)} ${cx} ${base})` });
-    let seed = 5;
-    const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    for (let i = 0; i < 16; i++) {
+    const rand = rng(5);
+    let dots = '';
+    for (let i = 0; i < 70; i++) {
+      const r = a * (0.08 + rand() * 0.9);
+      const t = rand() * 2 * Math.PI;
+      dots += circlePath((cx + r * Math.cos(t)).toFixed(2), (base + r * Math.sin(t)).toFixed(2), ((0.12 + rand() * 0.22) * k).toFixed(2));
+    }
+    add(disc, 'path', { d: dots }, 'pw-moon-dust');
+    for (let i = 0; i < 20; i++) {
       const r = a * (0.12 + rand() * 0.85);
       const t = rand() * 2 * Math.PI;
-      const x = cx + r * Math.cos(t);
-      const y = base + r * Math.sin(t);
-      const z = (0.5 + rand() * 0.9) * k;
-      add(disc, 'path', {
-        d: `M ${x} ${y - z} L ${x + z * 0.28} ${y - z * 0.28} L ${x + z} ${y} L ${x + z * 0.28} ${y + z * 0.28} L ${x} ${y + z} L ${x - z * 0.28} ${y + z * 0.28} L ${x - z} ${y} L ${x - z * 0.28} ${y - z * 0.28} Z`,
-      }, 'pw-moon-star');
+      add(disc, 'path', { d: glintPath(cx + r * Math.cos(t), base + r * Math.sin(t), (0.5 + rand() * 1.1) * k, 0.28) }, 'pw-moon-star');
     }
+    // Two gold moons, each with craters and the faint, sleeping face of an old moon dial.
     for (const dy of [-a / 2, a / 2]) {
       const my = base + dy;
-      add(disc, 'circle', { cx, cy: my, r: a * 0.46, fill: `url(#${this.id('moon')})` }, 'pw-moon');
-      for (const [x, y, r] of [[-0.14, -0.1, 0.1], [0.12, 0.06, 0.07], [-0.02, 0.18, 0.06], [0.16, -0.16, 0.045]]) {
+      const mr = a * 0.44;
+      add(disc, 'circle', { cx, cy: my, r: mr, fill: `url(#${this.id('moon')})` }, 'pw-moon');
+      for (const [x, y, r] of [[-0.16, -0.16, 0.08], [0.15, 0.1, 0.06], [-0.04, 0.22, 0.05], [0.2, -0.16, 0.04], [-0.24, 0.06, 0.04]]) {
         add(disc, 'circle', { cx: cx + x * a, cy: my + y * a, r: r * a }, 'pw-crater');
       }
+      const f = mr / 10;
+      add(disc, 'path', {
+        d: `M ${cx - 4.6 * f} ${my - 1.2 * f} q ${1.5 * f} ${1.1 * f} ${3 * f} 0 M ${cx + 1.6 * f} ${my - 1.2 * f} q ${1.5 * f} ${1.1 * f} ${3 * f} 0 M ${cx - 2.4 * f} ${my + 3.4 * f} q ${2.4 * f} ${1.6 * f} ${4.8 * f} 0`,
+      }, 'pw-moon-face');
     }
-    add(svg, 'path', { d: arch }, 'pw-moon-arch');
+    // A polished gold frame round the window.
+    add(svg, 'path', { d: arch, stroke: `url(#${this.id('moon-frame')})` }, 'pw-moon-frame');
   }
 
   // A round window onto a realistic moon: its seas and craters, lit from the side as it is
@@ -2268,7 +2678,7 @@ class FloatingWatch {
   // wheel; a wheel of the gear train turning once a minute; a bridge with Geneva stripes;
   // perlage on the plate; rubies in gold chatons; blued screws. The parts cast small shadows
   // on each other. Drawn on a 60 unit circle around (0, 0), then scaled to radius r.
-  drawMovementWindow(svg, add, cx, cy, r) {
+  drawMovementWindow(svg, add, cx, cy, r, shape) {
     const url = (name) => `url(#${this.id(name)})`;
     const once = (name, build) => {
       if (!this.defs.querySelector(`#${this.id(name)}`)) build(this.id(name));
@@ -2280,7 +2690,14 @@ class FloatingWatch {
     const bridgePath = 'M -34 21 L 34 17 L 34 36 L -34 36 Z';
     const cockPath = 'M 13 -34 Q 3.5 -22 -0.1 -8.02 A 5.8 5.8 0 1 0 2.45 -1.02 Q 18 -1 38 -11 L 38 -34 Z';
 
-    once('mv-window', (id) => add(add(this.defs, 'clipPath', { id }), 'circle', { cx: 0, cy: 0, r: 30 }));
+    // The window: round, or the shape of a heart.
+    const heart = shape === 'heart';
+    const outline = heart
+      ? 'M 0 29 C -10 21 -31 9 -31 -7 C -31 -20 -21.5 -28.5 -12 -28.5 C -6 -28.5 -1.8 -25 0 -20.5 C 1.8 -25 6 -28.5 12 -28.5 C 21.5 -28.5 31 -20 31 -7 C 31 9 10 21 0 29 Z'
+      : circlePath(0, 0, 30);
+    const win = heart ? 'mv-window-heart' : 'mv-window';
+    once(win, (id) => add(add(this.defs, 'clipPath', { id }), 'path', { d: outline }));
+    once('mv-fade', (id) => add(add(this.defs, 'filter', { id, x: '-30%', y: '-30%', width: '160%', height: '160%' }), 'feGaussianBlur', { stdDeviation: 3.2 }));
     once('mv-bridge', (id) => add(add(this.defs, 'clipPath', { id }), 'path', { d: bridgePath }));
     once('mv-cock', (id) => add(add(this.defs, 'clipPath', { id }), 'path', { d: cockPath }));
     this.gradient(add, 'radialGradient', 'plate', { cx: '35%', cy: '30%', r: '80%' }, [['0%', '#b9bfc7'], ['100%', '#6b717a']]);
@@ -2307,7 +2724,9 @@ class FloatingWatch {
     });
 
     const outer = add(svg, 'g', { transform: `translate(${cx.toFixed(2)} ${cy.toFixed(2)}) scale(${(r / 30).toFixed(4)})` });
-    const g = add(outer, 'g', { 'clip-path': url('mv-window') });
+    // The dial darkens softly toward the window, as if it falls away into the movement.
+    add(outer, 'path', { d: outline, filter: url('mv-fade') }, 'pw-window-fade');
+    const g = add(outer, 'g', { 'clip-path': url(win) });
     const layer = () => add(g, 'g', { filter: url('mv-shadow') });
     const jewel = (parent, x, y, size) => {
       add(parent, 'circle', { cx: x, cy: y, r: size * 1.8, fill: url('gold') }, 'pw-mv-chaton');
@@ -2424,10 +2843,10 @@ class FloatingWatch {
     add(cock, 'circle', { cx: 31, cy: -16, r: 0.9, fill: url('steel') }, 'pw-mv-pin');
 
     // Depth and the polished, bevelled edge of the window.
-    add(outer, 'circle', { cx: 0, cy: 0, r: 30, fill: url('vignette') });
-    add(outer, 'path', { d: 'M -27 -9 A 28.5 28.5 0 0 1 9 -27 A 34 34 0 0 0 -27 -9 Z', fill: url('sapphire') });
-    add(outer, 'circle', { cx: 0, cy: 0, r: 29.2 }, 'pw-window-edge');
-    add(outer, 'circle', { cx: 0, cy: 0, r: 30.6, fill: 'none', stroke: url('metal') }, 'pw-window-rim');
+    add(g, 'path', { d: outline, fill: url('vignette') });
+    add(g, 'path', { d: 'M -27 -9 A 28.5 28.5 0 0 1 9 -27 A 34 34 0 0 0 -27 -9 Z', fill: url('sapphire') });
+    add(outer, 'path', { d: outline }, 'pw-window-edge');
+    add(outer, 'path', { d: outline, fill: 'none', stroke: url('metal') }, heart ? ['pw-window-rim', 'is-fine'] : 'pw-window-rim');
   }
 
   // Hands are drawn pointing at 12 around (0, 0) and turned into place by update(). Most are
@@ -2944,6 +3363,30 @@ class FloatingWatch {
     s.style.left = `${clamp(left, gap, W - sw - gap)}px`;
     s.setAttr('data-side', side);
   }
+}
+
+// A rounded square r from the centre to each side, as one path starting at 12 and running
+// clockwise, so a dash along it fills like the ring on a round watch.
+function squarePath(r, rx) {
+  const a = 100 - r;
+  const b = 100 + r;
+  return `M 100 ${a} H ${b - rx} A ${rx} ${rx} 0 0 1 ${b} ${a + rx} V ${b - rx} A ${rx} ${rx} 0 0 1 ${b - rx} ${b} `
+    + `H ${a + rx} A ${rx} ${rx} 0 0 1 ${a} ${b - rx} V ${a + rx} A ${rx} ${rx} 0 0 1 ${a + rx} ${a} Z`;
+}
+
+// Where a line from the centre at angle a (degrees clockwise from 12) meets the edge of a
+// square dial of half-width R with rounded corners, moved in toward the centre by inset.
+function edgePoint(R, a, inset) {
+  const rad = (a * Math.PI) / 180;
+  const ux = Math.abs(Math.sin(rad));
+  const uy = Math.abs(Math.cos(rad));
+  const rc = R * 0.3;
+  let t = R / Math.max(ux, uy);
+  if (t * ux > R - rc && t * uy > R - rc) {
+    const dot = ux * (R - rc) + uy * (R - rc);
+    t = dot + Math.sqrt(dot * dot - 2 * (R - rc) * (R - rc) + rc * rc);
+  }
+  return polar(t - inset, a);
 }
 
 // A ring segment between radii r0 and r1, from angle a0 to a1 (degrees clockwise from 12).

@@ -181,15 +181,15 @@
 
 .pocket-watch-face-meteorite {
   --pw-grain: rgba(28, 30, 33, 0.9);
-  --pw-flange: #54585e;
-  --pw-bezel-a: #eceef1; --pw-bezel-b: #a3a8b0; --pw-bezel-c: #4f545c;
-  --pw-dial-a: #aeb2b7; --pw-dial-b: #6a6e74;
-  --pw-ink: #1d2024; --pw-ink-soft: #33373c;
-  --pw-hand: #f6f7f9; --pw-hand-shade: #b9bec5; --pw-hand-edge: rgba(0, 0, 0, 0.5);
-  --pw-lume: #aeb2b7; --pw-accent: #3d6fd6;
-  --pw-ring: #3d6fd6; --pw-ring-track: rgba(0, 0, 0, 0.16);
+  --pw-flange: #4a4e54;
+  --pw-bezel-a: #fbefc9; --pw-bezel-b: #d4ad5c; --pw-bezel-c: #7a5719;
+  --pw-dial-a: #a3a7ad; --pw-dial-b: #5d6168;
+  --pw-ink: #1d2024; --pw-ink-soft: #2e3237;
+  --pw-hand: #f8e3a2; --pw-hand-shade: #b98d36; --pw-hand-edge: rgba(40, 25, 0, 0.7);
+  --pw-lume: #a3a7ad; --pw-accent: #e2b54f;
+  --pw-ring: #e2b54f; --pw-ring-track: rgba(0, 0, 0, 0.2);
   --pw-date-bg: #f4f5f6; --pw-date-ink: #1d2024;
-  --pw-subdial: rgba(0, 0, 0, 0.2);
+  --pw-subdial: rgba(0, 0, 0, 0.26);
 }
 
 .pocket-watch-face-panda {
@@ -248,12 +248,13 @@
 .pocket-watch-face-sector {
   --pw-grain: rgba(70, 58, 40, 0.9);
   --pw-bezel-a: #f2f3f5; --pw-bezel-b: #b9bcc1; --pw-bezel-c: #72767c;
-  --pw-dial-a: #efebe2; --pw-dial-b: #e1dacb;
-  --pw-ink: #2b2a28; --pw-ink-soft: #8f8a7f;
-  --pw-hand: #223d6b; --pw-lume: #efebe2; --pw-accent: #223d6b;
-  --pw-ring: #223d6b; --pw-ring-track: rgba(0, 0, 0, 0.12);
-  --pw-date-bg: #f8f5ee; --pw-date-ink: #2b2a28;
-  --pw-sector: #d8d0bf;
+  --pw-dial-a: #f5efe3; --pw-dial-b: #e9e0cd;
+  --pw-ink: #1b2328; --pw-ink-soft: #7d7a70;
+  --pw-hand: #1d2429; --pw-hand-shade: #3a454c; --pw-lume: #f0843f; --pw-accent: #f0843f;
+  --pw-ring: #2a7a83; --pw-ring-track: rgba(0, 0, 0, 0.12);
+  --pw-date-bg: #f8f5ee; --pw-date-ink: #1b2328;
+  --pw-sector: #2a7a83;
+  --pw-numeral-font: "Avenir Next", "Futura", "Century Gothic", var(--font-interface);
 }
 
 .pocket-watch-face-diver {
@@ -269,13 +270,13 @@
 }
 
 .pocket-watch-face-rose {
-  --pw-flange: color-mix(in srgb, var(--pw-dial-b) 88%, #8b5747);
-  --pw-bezel-a: #f6dccf; --pw-bezel-b: #cf9682; --pw-bezel-c: #8b5747;
-  --pw-dial-a: #f6e3da; --pw-dial-b: #e8c7b8;
-  --pw-ink: #6b4a40; --pw-ink-soft: #bf9a8c;
-  --pw-hand: #9c5f50; --pw-lume: #f6e3da; --pw-accent: #9c5f50;
-  --pw-ring: #9c5f50; --pw-ring-track: rgba(0, 0, 0, 0.1);
-  --pw-date-bg: #fbf0ea; --pw-date-ink: #6b4a40;
+  --pw-flange: color-mix(in srgb, var(--pw-dial-b) 80%, #5a2a1e);
+  --pw-bezel-a: #ffe3d4; --pw-bezel-b: #d98f74; --pw-bezel-c: #84432f;
+  --pw-dial-a: #f6cdb8; --pw-dial-b: #d49580;
+  --pw-ink: #4a271d; --pw-ink-soft: #a4644f;
+  --pw-hand: #ffd9c6; --pw-hand-shade: #a65a43; --pw-hand-edge: rgba(70, 25, 12, 0.75); --pw-lume: #f6cdb8; --pw-accent: #8a3f2b;
+  --pw-ring: #8a3f2b; --pw-ring-track: rgba(0, 0, 0, 0.12);
+  --pw-date-bg: #fff2eb; --pw-date-ink: #4a271d;
 }
 
 .pocket-watch-face-theme {
@@ -640,9 +641,9 @@
 }
 
 .pocket-watch-face-rose {
-  --pw-metal-a: #fff1e8;
-  --pw-metal-b: #d7a08b;
-  --pw-metal-c: #8e5847;
+  --pw-metal-a: #fff0e6;
+  --pw-metal-b: #e3967a;
+  --pw-metal-c: #7c3826;
 }
 
 .pocket-watch-face-sakura {
@@ -996,7 +997,37 @@
 .pw-moon-arch {
   fill: none;
   stroke: var(--pw-ink-soft);
-  stroke-width: 0.9;
+  stroke-width: 1.3;
+  filter: drop-shadow(0 0.4px 0.5px rgba(0, 0, 0, 0.35));
+}
+
+.pw-moon-frame {
+  fill: none;
+  stroke-width: 1.7;
+  filter: drop-shadow(0 0.5px 0.6px rgba(0, 0, 0, 0.4));
+}
+
+.pw-moon-scale {
+  fill: none;
+  stroke: var(--pw-ink-soft);
+  stroke-width: 0.45;
+}
+
+.pw-moon-pointer {
+  fill: var(--pw-accent);
+}
+
+.pw-moon-dust {
+  fill: #e8f0ff;
+  opacity: 0.55;
+}
+
+.pw-moon-face {
+  fill: none;
+  stroke: #9a6d22;
+  stroke-width: 0.35;
+  stroke-linecap: round;
+  opacity: 0.55;
 }
 
 .pw-moon-star {
@@ -2212,7 +2243,7 @@
   color: var(--text-muted);
 }
 
-/* Nineteen faces in rows of four, and the nine digital styles in three rows of three. */
+/* Twenty-one faces in rows of four, and the nine digital styles in three rows of three. */
 .pocket-watch-gallery-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2769,4 +2800,314 @@
 
 .pocket-watch-head[data-state="outside"] .pocket-watch-dot {
   background: var(--color-blue);
+}
+
+/* ---------------------------------------------------------------------------
+   Sunk subdials: a shadowed step, graining, a fine track and four numerals
+   --------------------------------------------------------------------------- */
+
+.pw-sunk-step {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 0.8;
+}
+
+.pw-subdial.is-sunk {
+  stroke: color-mix(in srgb, var(--pw-ink-soft) 70%, #000);
+  stroke-width: 0.6;
+}
+
+.pw-sunk-shadow {
+  fill: none;
+  stroke: rgba(0, 0, 0, 0.16);
+  stroke-width: 1.4;
+}
+
+.pw-sub-track {
+  fill: none;
+  stroke: var(--pw-ink-soft);
+  stroke-width: 0.35;
+}
+
+.pw-subdial-tick.is-fine {
+  stroke-width: 0.4;
+}
+
+.pw-numeral.is-sub {
+  font-family: var(--pw-numeral-font);
+  font-weight: 600;
+  fill: var(--pw-ink);
+}
+
+.pw-subsec-weight {
+  fill: var(--pw-accent);
+}
+
+.pw-subsec-ring {
+  fill: none;
+  stroke: var(--pw-accent);
+  stroke-width: 0.7;
+}
+
+/* Slate: cleft stone */
+.pw-slate {
+  pointer-events: none;
+}
+
+.pw-slate.is-beds { opacity: 0.36; }
+.pw-slate.is-cleft { opacity: 0.1; }
+.pw-slate.is-grain { opacity: 0.16; }
+
+.pw-slate-seam {
+  fill: none;
+  stroke: rgba(225, 230, 236, 0.09);
+  stroke-width: 0.6;
+}
+
+/* Midnight: depth in the stone */
+.pw-star-far {
+  fill: #c8d6ff;
+  opacity: 0.45;
+}
+
+.pw-star-near {
+  fill: #dfe8ff;
+  opacity: 0.16;
+}
+
+/* Sakura: a branch far behind, and petals close to the crystal */
+.pw-sakura-far {
+  opacity: 0.34;
+}
+
+.pw-sakura-bokeh {
+  opacity: 0.75;
+}
+
+.pw-petal-near {
+  opacity: 0.55;
+}
+
+/* Rosé: the sunburst of a rose gold dial catches more light */
+.pocket-watch-face-rose .pw-rays {
+  opacity: 0.12;
+}
+
+.pocket-watch-face-rose .pw-applied {
+  stroke: rgba(70, 25, 12, 0.6);
+}
+
+/* Sector: a teal band with bright dots, bold numerals, black sword hands with orange tips */
+.pocket-watch-face-sector .pw-sector-line {
+  stroke: rgba(27, 35, 40, 0.35);
+}
+
+.pw-sector-dot {
+  fill: #f5efe3;
+}
+
+.pocket-watch-face-sector .pw-numeral {
+  font-weight: 700;
+}
+
+.pocket-watch-face-sector .pw-tick {
+  stroke: #1b2328;
+  stroke-width: 0.8;
+}
+
+.pocket-watch-face-sector .pw-hand-lume {
+  opacity: 1;
+}
+
+/* Panda: ears, eye patches and a nose */
+.pw-panda-ear,
+.pw-panda-patch,
+.pw-panda-nose {
+  fill: #18191b;
+}
+
+.pw-panda-ear-in {
+  fill: #2a2b2e;
+}
+
+.pw-panda-shine {
+  fill: rgba(255, 255, 255, 0.35);
+}
+
+.pw-panda-mouth {
+  fill: none;
+  stroke: #18191b;
+  stroke-width: 0.9;
+  stroke-linecap: round;
+}
+
+/* Diver: waves in relief */
+.pw-wave-crest {
+  fill: none;
+  stroke: rgba(210, 235, 255, 0.35);
+  stroke-width: 0.35;
+}
+
+/* Open heart: the dial falls away softly into the window */
+.pw-window-fade {
+  fill: none;
+  stroke: rgba(0, 0, 0, 0.75);
+  stroke-width: 7;
+}
+
+.pw-window-rim.is-fine {
+  stroke-width: 1.2;
+}
+
+/* Meteorite: gold markers and hands, which read clearly on the grey iron */
+.pocket-watch-svg.pocket-watch-face-meteorite {
+  --pw-metal-a: #fff4cf;
+  --pw-metal-b: #e0b85f;
+  --pw-metal-c: #8a6420;
+}
+
+/* ---------------------------------------------------------------------------
+   Square watches: Koi and Deco
+   --------------------------------------------------------------------------- */
+
+.pocket-watch-ghost[data-shape="square"] {
+  border-radius: 18%;
+}
+
+.pocket-watch-face-koi {
+  --pw-bezel-a: #fbefc9; --pw-bezel-b: #d4ad5c; --pw-bezel-c: #7a5719;
+  --pw-dial-a: #3f8a86; --pw-dial-b: #123c42;
+  --pw-ink: #f6e2a4; --pw-ink-soft: rgba(246, 226, 164, 0.55);
+  --pw-hand: #f8e6ad; --pw-hand-shade: #b8913f; --pw-hand-edge: rgba(20, 30, 20, 0.6);
+  --pw-lume: #123c42; --pw-accent: #e2553d;
+  --pw-ring: #f0a03a; --pw-ring-track: rgba(0, 0, 0, 0.18);
+  --pw-date-bg: #0f3439; --pw-date-ink: #f6e2a4;
+  --pw-subdial: rgba(0, 0, 0, 0.2);
+}
+
+.pocket-watch-face-deco {
+  --pw-bezel-a: #f4f5f7; --pw-bezel-b: #b6bbc2; --pw-bezel-c: #5d636b;
+  --pw-dial-a: #1c1c20; --pw-dial-b: #060607;
+  --pw-ink: #e9c97c; --pw-ink-soft: rgba(233, 201, 124, 0.55);
+  --pw-hand: #f6dc95; --pw-hand-shade: #b8913f; --pw-hand-edge: rgba(0, 0, 0, 0.6);
+  --pw-lume: #060607; --pw-accent: #e9c97c;
+  --pw-ring: #e9c97c; --pw-ring-track: rgba(255, 255, 255, 0.08);
+  --pw-date-bg: #060607; --pw-date-ink: #e9c97c;
+  --pw-subdial: #0b0b0d;
+  --pw-numeral-font: "Futura", "Avenir Next Condensed", "Arial Narrow", var(--font-interface);
+}
+
+.pocket-watch-svg.pocket-watch-face-koi,
+.pocket-watch-svg.pocket-watch-face-deco {
+  --pw-metal-a: #fff4cf;
+  --pw-metal-b: #e0b85f;
+  --pw-metal-c: #8a6420;
+}
+
+.pw-tick.is-edge {
+  stroke: var(--pw-ink-soft);
+  stroke-width: 0.5;
+}
+
+/* Koi */
+.pw-koi-stroke.is-light { fill: rgba(170, 225, 205, 0.1); }
+.pw-koi-stroke.is-dark { fill: rgba(5, 30, 35, 0.22); }
+
+.pw-koi-dapple {
+  fill: rgba(220, 255, 235, 0.13);
+}
+
+.pw-koi-shadow {
+  fill: rgba(0, 15, 20, 0.55);
+}
+
+.pw-koi-body {
+  stroke: rgba(80, 40, 10, 0.35);
+  stroke-width: 0.4;
+}
+
+.pw-koi-fin {
+  opacity: 0.72;
+  stroke: rgba(80, 40, 10, 0.25);
+  stroke-width: 0.3;
+}
+
+.pw-koi-red {
+  fill: #dd4a2c;
+  opacity: 0.92;
+}
+
+.pw-koi-ink {
+  fill: #1f1a17;
+  opacity: 0.85;
+}
+
+.pw-koi-sheen {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.45);
+  stroke-width: 0.9;
+  stroke-linecap: round;
+}
+
+.pw-koi-eye {
+  fill: #1a1410;
+}
+
+.pw-koi-pad {
+  stroke: rgba(20, 50, 15, 0.55);
+  stroke-width: 0.5;
+}
+
+.pw-koi-vein {
+  fill: none;
+  stroke: rgba(210, 240, 170, 0.28);
+  stroke-width: 0.4;
+}
+
+.pw-koi-petal {
+  stroke: rgba(160, 50, 80, 0.35);
+  stroke-width: 0.3;
+}
+
+.pw-koi-seedpod {
+  fill: #f2c94c;
+  stroke: #b8862a;
+  stroke-width: 0.4;
+}
+
+.pw-koi-ripple {
+  fill: none;
+  stroke: rgba(220, 255, 240, 0.22);
+  stroke-width: 0.5;
+}
+
+/* Deco */
+.pw-deco-ray {
+  fill: none;
+  stroke: #e9c97c;
+  stroke-width: 0.35;
+  opacity: 0.16;
+}
+
+.pw-deco-ray.is-bold {
+  stroke-width: 0.7;
+  opacity: 0.3;
+}
+
+.pw-deco-arc,
+.pw-deco-frame,
+.pw-deco-step {
+  fill: none;
+  stroke: #e9c97c;
+  stroke-width: 0.6;
+  opacity: 0.6;
+}
+
+.pw-deco-frame {
+  opacity: 0.45;
+}
+
+.pw-numeral.is-deco {
+  font-weight: 500;
+  letter-spacing: -0.02em;
 }
