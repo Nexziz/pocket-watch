@@ -12,12 +12,10 @@ const { Plugin, PluginSettingTab, Setting, MarkdownView, Notice, Menu, setIcon }
 // markers, a window onto the movement in one slot, and serif printing. A regulator shows the
 // hours on a small dial of their own in one slot and leaves the centre to the minutes, and a
 // Pomodoro face paints the focus session and the break after it on the dial. The Philip
-// Pocket signature is printed under 12 (brandWidth and brandClear size and place it);
-// brand: 'script' prints just "Philip", brand: 'monogram' the interlaced PP, brandAt: 'six'
-// moves it above 6 and brandAt: 'centre' just above the hands, brandInk prints it rather than
-// applying it in metal on a light dial, and
-// model: false leaves out the face's name. Its colours live in styles.css under
-// .pocket-watch-face-<key>.
+// Pocket monogram is printed under 12 (brandWidth and brandClear size and place it);
+// brandAt: 'six' moves it above 6 and brandAt: 'centre' just above the hands, and brandInk
+// prints it rather than applying it in metal on a light dial. Its colours live in styles.css
+// under .pocket-watch-face-<key>.
 const ANALOG_FACES = {
   porcelain: {
     name: 'Porcelain', case: 'polished', markers: 'batons', decor: 'minute-dots', texture: 'enamel', serif: true,
@@ -36,11 +34,11 @@ const ANALOG_FACES = {
     hands: 'dauphine', set: { slotBottom: 'moon-age' },
   },
   sakura: {
-    name: 'Sakura', case: 'polished', markers: 'pips', art: 'sakura', flange: true, applied: true, brand: 'monogram',
+    name: 'Sakura', case: 'polished', markers: 'pips', art: 'sakura', flange: true, applied: true,
     hands: 'dauphine', set: {},
   },
   nocturne: {
-    name: 'Nocturne', case: 'polished', markers: 'pips', art: 'nocturne', flange: true, applied: true, brand: 'script',
+    name: 'Nocturne', case: 'polished', markers: 'pips', art: 'nocturne', flange: true, applied: true,
     hands: 'leaf', set: {},
   },
   meteorite: {
@@ -56,11 +54,11 @@ const ANALOG_FACES = {
     hands: 'baton', set: { slotRight: 'date' },
   },
   void: {
-    name: 'Void', case: 'thin', markers: 'minimal', applied: true, brand: 'script', model: false,
+    name: 'Void', case: 'thin', markers: 'minimal', applied: true,
     hands: 'baton', set: {},
   },
   field: {
-    name: 'Field', case: 'polished', markers: 'arabic', decor: 'inner-24', texture: 'grain', brandWidth: 36,
+    name: 'Field', case: 'polished', markers: 'arabic', decor: 'inner-24', texture: 'grain',
     hands: 'sword', set: { slotRight: 'date', slotBottom: 'focus' },
   },
   sector: {
@@ -81,18 +79,18 @@ const ANALOG_FACES = {
   },
   pomodoro: {
     name: 'Pomodoro', case: 'polished', markers: 'minutes', texture: 'enamel', pomodoro: true, serif: true,
-    brand: 'script', brandAt: 'centre', brandWidth: 25, hands: 'dauphine', set: {},
+    brandAt: 'centre', brandWidth: 22, hands: 'dauphine', set: {},
   },
   regulator: {
     name: 'Regulator', case: 'polished', markers: 'minutes', decor: 'railroad', texture: 'sunburst', regulator: 'slotTop',
-    brand: 'script', brandAt: 'centre', brandWidth: 30, serif: true, hands: 'breguet', set: { slotBottom: 'seconds' },
+    brandAt: 'centre', brandWidth: 18, serif: true, hands: 'breguet', set: { slotBottom: 'seconds' },
   },
   malachite: {
     name: 'Malachite', case: 'polished', markers: 'batons', art: 'malachite', flange: true, applied: true,
     hands: 'dauphine', set: {},
   },
   theme: {
-    name: 'Match theme', case: 'thin', markers: 'batons', decor: 'minute-dots', model: false,
+    name: 'Match theme', case: 'thin', markers: 'batons', decor: 'minute-dots',
     hands: 'baton', set: { slotRight: 'date' },
   },
 };
@@ -164,20 +162,6 @@ const SLOTS = [
   { key: 'slotBottom', name: "6 o'clock", hour: 6 },
   { key: 'slotLeft', name: "9 o'clock", hour: 9 },
 ];
-
-// The Philip Pocket wordmark, as outlines so it looks the same everywhere: "Philip" in
-// Imperial Script, its i dots turned into four-pointed glints, over POCKET in Marcellus SC
-// set wide between two tapered rules. Both typefaces are under the SIL Open Font License.
-// Units are font units at a size of 100: the script's baseline is at y 0, and x 102.6 is the
-// middle of POCKET, which is where the mark is centred.
-const BRAND = {
-  centre: 102.6,
-  box: [-27.4, -66.8, 232.5, 47.0],
-  script: 'M13.1 5.6Q10.2 5.6 9.1 5.3Q6.2 4.5 6.2 3.4Q6.2 2.8 7.5 2.8Q8.1 2.8 9.1 3Q10 3.1 11.2 3.3Q13.8 3.9 15.1 3.9Q22.2 3.9 28.4 -2.6Q30.7 -5.1 33.1 -8.7Q35.5 -12.2 37.7 -16.8Q39.4 -20.3 41.1 -23.9Q42.7 -27.5 44.3 -31.1Q56.2 -55.7 68.3 -63Q61.1 -65.4 52.1 -65.4Q41.8 -65.4 33.5 -62.1Q23.8 -58.2 19.2 -50.4Q16.3 -45.5 16.3 -40.6Q16.3 -35.5 19.4 -32.1Q22.7 -28.7 27.8 -28.7Q33.5 -28.7 37.9 -32.8Q42.2 -36.8 42.2 -42.6Q42.2 -46.5 40.1 -49Q37.8 -51.6 34.1 -51.6Q31 -51.6 28.9 -49.8Q26.5 -47.7 26.5 -44.8Q26.5 -42.4 29.1 -42.4Q29.2 -42.4 29.4 -42.6Q29.5 -42.8 29.9 -43Q30.2 -42.9 30.2 -42.6Q30.2 -41.6 29 -41.6Q25.7 -41.6 25.7 -44.9Q25.7 -48.1 28.5 -50.5Q31.3 -52.8 34.5 -52.8Q38.6 -52.8 41.6 -50Q44.3 -47.2 44.3 -42.9Q44.3 -36.3 39.2 -31.8Q34.1 -27.5 27.5 -27.5Q21.5 -27.5 17.2 -31.3Q13 -35.1 13 -41.2Q13 -45.3 15 -49.3Q19.5 -58.4 31.2 -63Q40.7 -66.7 52.7 -66.7Q62.4 -66.7 70.5 -64.3Q75.5 -66.8 80.8 -66.8Q83.3 -66.8 85.7 -66Q88.6 -64.8 88.6 -62.5Q88.6 -60 87.2 -60Q86.8 -60 86.8 -61.8Q86.8 -65.5 80.5 -65.5Q76.6 -65.5 72.4 -63.7Q88.5 -58.1 88.5 -45.4Q88.5 -34.2 78.6 -27.6Q70.1 -21.8 58.3 -21.8Q57.3 -21.8 56.1 -21.9Q54.9 -22 53.4 -22.2Q49.4 -22.6 49.4 -23.4Q49.4 -24.2 49.9 -24.2H50H49.9Q49.9 -24.1 51.3 -23.8Q52.6 -23.4 54.8 -23.4Q64.9 -23.4 73.8 -29.2Q83.6 -35.8 83.6 -45.5Q83.6 -57 70 -62.4Q59.4 -55.9 50.3 -32.9Q49.5 -30.7 48.4 -27.5Q47.2 -24.2 45.3 -19.9Q41.1 -10.2 34.2 -4.1Q27.3 2.1 18 4.9Q15.9 5.6 13.1 5.6Z M75.4 1.6 75.2 1.5Q81.2 -18.5 91.1 -37Q105.5 -63.9 118.3 -63.9Q123 -63.9 123 -59.3Q123 -53.8 116.8 -46.7Q111.6 -41 105.7 -37.5Q101.1 -34.8 95.1 -32.7Q94.2 -32.4 93.8 -32.5Q90.7 -27 88.2 -21.8Q85.8 -16.6 83.9 -11.6Q88.1 -19.6 92.9 -25.1Q99.8 -33 105.9 -33Q110.9 -33 110.9 -29.4Q110.9 -25.9 104.2 -16.3Q98.3 -8 98.3 -3.1Q98.3 -0.6 100.5 -0.6Q102.2 -0.6 104.4 -1.7Q106.6 -2.8 109 -5.3Q112.1 -8.7 113.8 -11.6Q115.4 -14.5 116.7 -16.9Q117 -17.4 117.3 -17.3Q117.6 -17.2 117.4 -16.7Q115.9 -13.6 113.8 -10.2Q111.8 -6.9 109.6 -4.6Q106.8 -1.6 104 -0.5Q101.3 0.6 98.7 0.6Q93.4 0.6 93.4 -4.5Q93.4 -9 96.9 -14.9Q97.7 -16.2 99.3 -18.5Q101 -20.8 103.5 -24.1Q107 -28.8 107 -30.2Q107 -32 104.7 -32Q100.3 -32 94.2 -25.3Q90.1 -20.8 86.6 -14.8Q85 -12.1 83.3 -8.4Q81.6 -4.7 79.7 0L79.5 0.1Q78.7 -0.4 78 -0.4Q76.2 -0.4 75.4 1.6Z M94.3 -33.4Q94.7 -33.4 95.1 -33.5Q97.4 -34 99.8 -35.1Q102.3 -36.2 104.8 -37.8Q107.5 -39.6 110.2 -42Q112.9 -44.3 115.6 -47.3Q122.2 -54.5 122.2 -59.5Q122.2 -63 118.7 -63Q114.1 -63 105.1 -50.6Q102.4 -46.8 99.7 -42.5Q96.9 -38.2 94.3 -33.4Z M120.3 1Q113.7 1 113.7 -6.3Q113.7 -11.6 116.8 -17.5L124.3 -32.2H124.6Q124.9 -31.8 125.8 -31.8Q127.7 -31.8 130.8 -34.1L131 -33.9L122.5 -17.4Q117.2 -7.2 117.2 -3.2Q117.2 -1.4 118.2 -0.7Q119.2 0 120.5 0Q121.9 0 123.2 -0.6Q124.6 -1.2 125.6 -1.9Q128.3 -4 130.2 -6.8Q132 -9.5 133.4 -12.3Q134.8 -15.1 135.9 -17Q136.2 -17.5 136.5 -17.4Q136.8 -17.2 136.6 -16.7Q134.6 -12.5 132.2 -8.1Q129.8 -3.7 126.1 -1.1Q124.8 -0.2 123.4 0.4Q121.9 1 120.3 1Z M142.4 0.8Q134.3 0.8 134.3 -9.9Q134.3 -16.3 137.1 -24.8Q138.4 -28.7 139.9 -32.3Q141.4 -35.9 143.1 -39Q145.2 -42.8 147.5 -46.2Q149.8 -49.7 152.4 -52.8Q159.9 -62.1 165.2 -62.1Q167.4 -62.1 167.4 -60Q167.4 -57.2 165.1 -51.4Q157.4 -32.3 140.1 -16.6Q138.4 -10.3 138.4 -6.5Q138.4 0 142.5 0Q143.9 0 145.2 -0.6Q146.5 -1.1 147.5 -1.8Q150.2 -3.9 152.1 -6.7Q154 -9.5 155.4 -12.3Q156.8 -15.1 157.9 -17Q158.2 -17.5 158.5 -17.4Q158.8 -17.2 158.6 -16.7Q156.6 -12.5 154.2 -8.1Q151.8 -3.7 148.1 -1.1Q145.4 0.8 142.4 0.8Z M140.4 -17.6Q142.4 -19.3 144.6 -21.8Q146.8 -24.3 149.3 -27.5Q151.8 -30.7 154.4 -34.6Q157 -38.5 159.6 -43Q166.6 -54.9 166.6 -59.6Q166.6 -61.3 165.5 -61.3Q161.8 -61.3 152.3 -45.4Q149.8 -40.9 147.8 -36.7Q145.4 -31.4 143.6 -26.7Q141.7 -21.9 140.4 -17.6Z M161.5 1Q154.9 1 154.9 -6.3Q154.9 -11.6 158 -17.5L165.5 -32.2H165.8Q166.1 -31.8 167 -31.8Q168.9 -31.8 172 -34.1L172.2 -33.9L163.7 -17.4Q158.4 -7.2 158.4 -3.2Q158.4 -1.4 159.4 -0.7Q160.4 0 161.7 0Q163.1 0 164.4 -0.6Q165.8 -1.2 166.8 -1.9Q169.5 -4 171.3 -6.8Q173.2 -9.5 174.6 -12.3Q176 -15.1 177.1 -17Q177.4 -17.5 177.7 -17.4Q178 -17.2 177.8 -16.7Q175.8 -12.5 173.4 -8.1Q171 -3.7 167.3 -1.1Q166 -0.2 164.6 0.4Q163.1 1 161.5 1Z M147.9 25.8Q145.7 25.8 143.6 24.2Q141.6 22.6 141 20.3L141.1 20.1L141.6 19.9H141.8Q143 24.5 146.3 24.5Q150.2 24.5 156.1 18Q160.5 13.3 163.7 8Q165.6 4.9 168 0.3Q170.4 -4.3 173.4 -10.4Q176.5 -16.7 178.9 -21.4Q181.3 -26 183 -28.9Q184.1 -30.9 185.6 -32.8Q187.1 -34.7 188.9 -36.6Q193.7 -41.8 196.6 -41.8Q198.6 -41.8 198.6 -40Q198.6 -38.3 196.7 -37.8L195.1 -37.6Q192.1 -37.3 189.9 -35.4Q188.5 -34.2 186.7 -31.9Q184.8 -29.5 182.5 -25.9Q178.4 -19.5 176.3 -12.5Q186.5 -31.7 194.8 -31.7Q200.9 -31.7 200.9 -24.1Q200.9 -15.5 194.3 -8Q190.9 -4.2 187.4 -2.2Q183.8 -0.2 179.5 0.1Q181.5 0.4 183.3 0.4Q187 0.4 190.3 -0.9Q193.6 -2.1 196.4 -4.3Q199.3 -6.6 201.8 -9.9Q204.2 -13.1 206 -16.8Q206.3 -17.4 206.6 -17.4Q207.2 -17.4 206.7 -16.4Q205.1 -13.4 203.4 -10.8Q201.6 -8.1 199.6 -6Q197.2 -3.6 193.1 -1.1Q188.9 1.4 182.9 1.4Q181.2 1.4 179.2 1Q177.2 0.6 176 -0.4Q175.1 -1.2 174.9 -2.4Q174.7 -3.6 174.6 -5.3Q174.1 -3.4 173.2 -1Q172.3 1.5 171.1 4.4Q169.8 7.7 168.7 10Q167.6 12.2 166.8 13.4Q158 25.8 147.9 25.8Z M178.3 -0.3Q181.7 -0.3 186.6 -6.1Q190.5 -10.5 192.7 -14.8Q196.7 -22.8 196.7 -28.2Q196.7 -31.1 194.3 -31.1Q188.7 -31.1 181.8 -20.5Q178.6 -15.6 177.1 -11.7Q175.6 -7.8 175.6 -4.7Q175.6 -0.3 178.3 -0.3Z',
-  glints: 'M 132.7 -49.7 L 133.7 -43.5 L 139.9 -42.5 L 133.7 -41.4 L 132.7 -35.2 L 131.6 -41.4 L 125.4 -42.5 L 131.6 -43.5 Z M 173.8 -49.7 L 174.9 -43.5 L 181.1 -42.5 L 174.9 -41.4 L 173.8 -35.2 L 172.8 -41.4 L 166.6 -42.5 L 172.8 -43.5 Z',
-  caps: 'M45.4 41.1Q46.3 41.3 47.1 41.1Q47.8 41 48.4 40.6Q48.9 40.1 49.2 39.4Q49.5 38.6 49.5 37.5Q49.5 36.8 49.4 36.2Q49.2 35.6 48.9 35.1Q48.6 34.7 48.1 34.5Q47.7 34.2 47 34.2Q46.6 34.2 46.3 34.2Q46 34.3 45.8 34.3Q45.6 34.4 45.4 34.4Z M43.5 33.7Q43.7 33.7 43.9 33.7Q44 33.8 44.3 33.8Q44.5 33.8 44.7 33.8Q45.1 33.8 45.7 33.7Q46.3 33.6 47.3 33.6Q48.1 33.6 48.9 33.8Q49.7 34.1 50.2 34.6Q50.8 35.1 51.1 35.8Q51.4 36.5 51.4 37.5Q51.4 38.7 50.9 39.6Q50.4 40.5 49.6 41.1Q48.8 41.6 47.7 41.8Q46.6 42 45.4 41.8V43.4Q45.4 44.2 45.5 44.8Q45.5 45.3 45.5 45.8Q45.5 46.2 45.6 46.5Q45.6 46.8 45.7 47V47H43.5V47Q43.5 46.8 43.6 46.5Q43.6 46.2 43.7 45.8Q43.7 45.3 43.7 44.8Q43.7 44.2 43.7 43.4V37.3Q43.7 36.5 43.7 36Q43.7 35.4 43.7 34.9Q43.6 34.5 43.6 34.2Q43.5 33.9 43.5 33.7Z M69.3 33.5Q70.8 33.5 72.1 34Q73.4 34.5 74.4 35.4Q75.4 36.3 75.9 37.6Q76.4 38.9 76.4 40.4Q76.4 41.3 76.2 42.2Q76 43 75.6 43.8Q75.2 44.5 74.7 45.2Q74.1 45.8 73.3 46.3Q72.6 46.8 71.7 47Q70.8 47.3 69.8 47.3Q68.2 47.3 66.9 46.8Q65.6 46.3 64.7 45.4Q63.7 44.5 63.2 43.2Q62.6 41.9 62.6 40.4Q62.6 39.5 62.8 38.6Q63 37.8 63.4 37Q63.8 36.2 64.4 35.6Q65 34.9 65.7 34.5Q66.4 34 67.3 33.7Q68.2 33.5 69.3 33.5Z M69.8 46.5Q70.8 46.5 71.7 46.1Q72.5 45.7 73.2 45Q73.8 44.3 74.1 43.3Q74.5 42.3 74.5 41Q74.5 39.6 74.1 38.3Q73.8 37.1 73.1 36.2Q72.5 35.3 71.5 34.8Q70.6 34.3 69.3 34.3Q68.2 34.3 67.4 34.7Q66.5 35 65.9 35.7Q65.3 36.4 65 37.4Q64.6 38.5 64.6 39.7Q64.6 41.2 64.9 42.4Q65.3 43.6 65.9 44.5Q66.6 45.4 67.5 45.9Q68.5 46.5 69.8 46.5Z M99.3 35.7 99.2 35.8Q98.5 35.1 97.5 34.7Q96.4 34.3 95.2 34.3Q94.1 34.3 93.1 34.7Q92.1 35 91.4 35.7Q90.7 36.4 90.3 37.4Q89.9 38.5 89.9 39.7Q89.9 41.2 90.3 42.4Q90.7 43.6 91.4 44.5Q92.1 45.4 93.2 45.9Q94.3 46.5 95.8 46.5Q96.3 46.5 96.9 46.3Q97.4 46.2 97.9 46Q98.4 45.8 98.8 45.5Q99.2 45.2 99.6 44.8L99.7 44.8L98.9 46.7Q98.2 47 97.4 47.1Q96.6 47.3 95.7 47.3Q94 47.3 92.6 46.8Q91.1 46.3 90.1 45.4Q89.1 44.5 88.5 43.2Q88 41.9 88 40.4Q88 39.5 88.2 38.6Q88.4 37.8 88.8 37Q89.3 36.2 89.9 35.6Q90.6 34.9 91.4 34.5Q92.2 34 93.2 33.7Q94.2 33.5 95.3 33.5Q97.1 33.5 98.6 34Z M111.4 47Q111.4 46.8 111.5 46.5Q111.5 46.2 111.6 45.8Q111.6 45.3 111.6 44.8Q111.6 44.2 111.6 43.4V37.3Q111.6 36.5 111.6 36Q111.6 35.4 111.6 34.9Q111.5 34.5 111.5 34.2Q111.4 33.9 111.4 33.7V33.7H113.6V33.7Q113.5 33.9 113.5 34.2Q113.4 34.5 113.4 34.9Q113.4 35.4 113.4 36Q113.3 36.5 113.3 37.3V39.4L118.8 35Q119.7 34.2 119.7 33.7H122.3V33.7Q121.7 33.9 121.2 34.2Q120.6 34.6 120 35.1L115.2 39.1L120.9 45.5Q121.3 45.8 121.6 46.1Q121.8 46.3 122 46.5Q122.2 46.6 122.4 46.8Q122.5 46.9 122.7 47V47H120Q119.9 46.9 119.9 46.8Q119.8 46.7 119.7 46.5Q119.5 46.4 119.4 46.2Q119.3 46.1 119.2 46L113.3 39.6V43.4Q113.3 44.2 113.4 44.8Q113.4 45.3 113.4 45.8Q113.4 46.2 113.5 46.5Q113.5 46.8 113.6 47V47H111.4Z M133.7 33.7Q134.8 33.7 136 33.7Q137.1 33.7 138.1 33.7Q139 33.6 139.7 33.6Q140.4 33.6 140.6 33.5L140.2 34.8Q139.8 34.7 139.4 34.6Q139.1 34.6 138.6 34.5Q138.1 34.5 137.4 34.5Q137.2 34.5 136.9 34.5Q136.6 34.5 136.3 34.5Q136 34.5 135.6 34.6V39.6Q136.6 39.6 137.3 39.6Q138.1 39.5 138.6 39.5Q139.3 39.4 139.8 39.3L139.5 40.7Q138.8 40.6 138.2 40.5Q137.6 40.5 136.9 40.4Q136.2 40.4 135.6 40.4V46.2Q136.7 46.2 137.6 46.1Q138.5 46 139.2 45.9Q140 45.7 140.7 45.6L140.4 47.1Q140.3 47.1 140.1 47.1Q139.9 47 139.6 47Q139.3 47 139 47Q138.7 47 138.4 47Q138.2 47 138 47Q137.8 47 137.7 47H133.7V47Q133.7 46.8 133.8 46.5Q133.8 46.2 133.8 45.8Q133.9 45.3 133.9 44.8Q133.9 44.2 133.9 43.4V37.3Q133.9 36.5 133.9 36Q133.9 35.4 133.8 34.9Q133.8 34.5 133.8 34.2Q133.7 33.9 133.7 33.7V33.7Z M156.5 34.5Q155.4 34.5 154.5 34.6Q153.6 34.7 153 34.8Q152.2 35 151.6 35.1L151.9 33.6Q152 33.6 152.2 33.6Q152.5 33.6 152.7 33.7Q153 33.7 153.3 33.7Q153.6 33.7 153.9 33.7Q154.2 33.7 154.4 33.7Q154.6 33.7 154.7 33.7H160Q160.1 33.7 160.3 33.7Q160.5 33.7 160.7 33.7Q161 33.7 161.3 33.7Q161.6 33.7 161.9 33.7Q162.2 33.6 162.4 33.6Q162.6 33.6 162.7 33.6L163 35.1Q162.4 35 161.6 34.8Q161 34.7 160.1 34.6Q159.2 34.5 158.2 34.5V43.4Q158.2 44.2 158.2 44.8Q158.2 45.3 158.2 45.8Q158.3 46.2 158.3 46.5Q158.4 46.8 158.4 47V47H156.2V47Q156.3 46.8 156.3 46.5Q156.4 46.2 156.4 45.8Q156.4 45.3 156.4 44.8Q156.5 44.2 156.5 43.4Z',
-  rules: 'M -23.9 40.1 L 30.1 39.1 L 30.1 41.3 L -23.9 40.2 Z M -27.4 40.2 L -25.6 38.3 L -23.9 40.2 L -25.6 42 Z M 229 40.1 L 175 39.1 L 175 41.3 L 229 40.2 Z M 232.5 40.2 L 230.8 38.3 L 229 40.2 L 230.8 42 Z',
-};
 
 // The Philip Pocket monogram: two Great Vibes capital P's (SIL Open Font License), the second
 // turned half a turn and laid across the first. Centred on (0, 0), about 130 units wide.
@@ -1261,7 +1245,7 @@ class FloatingWatch {
     const markers = s.markers === 'face' || !MARKERS[s.markers] ? face.markers : s.markers;
     this.drawMarkers(svg, add, text, markers, R, k, used, face);
 
-    if (s.dialText) this.drawBrand(svg, add, text, face, markers, R, k, used);
+    if (s.dialText) this.drawBrand(svg, add, face, markers, R, k, used);
 
     if (face.window) {
       const slot = SLOTS.find((x) => x.key === face.window);
@@ -1330,51 +1314,32 @@ class FloatingWatch {
     }, 'pw-glass-small');
   }
 
-  // The Philip Pocket signature under 12, clear of the hour markers, with the model's name
-  // beneath it; above 6 when something sits at 12. Faces with polished metal markers have it
-  // in the same metal, as if applied. A face can ask for just the script, for the monogram,
-  // or for it at 6.
-  drawBrand(svg, add, text, face, markers, R, k, used) {
+  // The Philip Pocket monogram under 12, clear of the hour markers; above 6 when something
+  // sits at 12, or just above the hands on a face that asks for it. Faces with polished metal
+  // markers have it in the same metal, as if applied.
+  drawBrand(svg, add, face, markers, R, k, used) {
     const centre = face.brandAt === 'centre';
     const atSix = !centre && (face.brandAt === 'six' || used[0]);
     if (atSix && used[6]) return;
-    const kind = face.brand || 'full';
-    // On light dials metal would not show, so the signature is printed there.
+    // On light dials metal would not show, so the monogram is printed there.
     const metal = face.applied && !face.brandInk;
-    const width = (face.brandWidth || { full: 48, script: 40, monogram: 22 }[kind]) * k;
-    // The part of the drawing to fit: the whole lockup, the script alone, or the monogram.
-    const [left, top, right, bottom] = kind === 'monogram' ? MONOGRAM.box : kind === 'script' ? [6, BRAND.box[1], 207, 26] : BRAND.box;
-    const scale = width / (right - left);
+    const [left, top, right, bottom] = MONOGRAM.box;
+    const scale = ((face.brandWidth || 26) * k) / (right - left);
     const height = (bottom - top) * scale;
-    const modelSize = 3.6 * k;
-    const model = face.model !== false && kind === 'full' ? (face.model || face.name).toUpperCase() : '';
-    const block = height + (model ? modelSize * 2.2 : 0);
     // How far in from the edge the markers reach at 12 (or 6).
     const clear = (face.brandClear || {
       batons: 24, dots: 21, arabic: face.decor === 'inner-24' ? 41 : 27, quarters: 41, roman: 30, lume: 25, minimal: 22, pips: 15, minutes: 22,
     }[markers] || 17) * k;
-    // At 6 the name sits lowest, so it keeps a little more room from the marker below it.
-    // In the centre it sits just above the hands.
-    const y0 = centre ? 100 - 8 * k - block : atSix ? 100 + R - clear - 4 * k - block : 100 - R + clear;
-    const x = kind === 'monogram' ? 100 : kind === 'script' ? 100 - ((left + right) / 2) * scale : 100 - BRAND.centre * scale;
+    // At 6 it sits lowest, so it keeps a little more room from the marker below it.
+    const y0 = centre ? 100 - 8 * k - height : atSix ? 100 + R - clear - 4 * k - height : 100 - R + clear;
     const g = add(svg, 'g', {
-      transform: `translate(${x.toFixed(2)} ${(y0 - top * scale).toFixed(2)}) scale(${scale.toFixed(4)})`,
+      transform: `translate(100 ${(y0 - top * scale).toFixed(2)}) scale(${scale.toFixed(4)})`,
     }, metal ? ['pw-brand-mark', 'is-applied', 'pw-raised'] : 'pw-brand-mark');
     const fill = metal ? { fill: `url(#${this.id('brand-metal')})` } : {};
     if (metal) {
       this.gradient(add, 'linearGradient', 'brand-metal', { x1: 0, x2: 0, y1: top, y2: bottom, gradientUnits: 'userSpaceOnUse' }, [['0%', 'pw-metal-a'], ['55%', 'pw-metal-b'], ['100%', 'pw-metal-c']]);
     }
-    if (kind === 'monogram') {
-      add(g, 'path', Object.assign({ d: MONOGRAM.path }, fill), 'pw-brand-script');
-      return;
-    }
-    add(g, 'path', Object.assign({ d: BRAND.script }, fill), 'pw-brand-script');
-    add(g, 'path', { d: BRAND.glints }, 'pw-brand-glint');
-    if (kind === 'full') {
-      add(g, 'path', Object.assign({ d: BRAND.caps }, fill), 'pw-brand-caps');
-      add(g, 'path', Object.assign({ d: BRAND.rules }, fill), 'pw-brand-rules');
-    }
-    if (model) text(svg, 100, y0 + height + modelSize * 1.5, modelSize, model, face.serif ? ['pw-model', 'is-serif'] : 'pw-model');
+    add(g, 'path', Object.assign({ d: MONOGRAM.path }, fill), 'pw-brand-script');
   }
 
   // A ceramic diver's bezel, plain apart from the luminous marker at 12 and dots at the quarters.
@@ -3470,7 +3435,7 @@ class PocketWatchSettingTab extends PluginSettingTab {
       const face = ANALOG_FACES[s.face] || ANALOG_FACES.porcelain;
       const body = group('customise', `Customise ${face.name}`, 'Case, hands, markers, complications and more.');
       dropdown(new Setting(body).setName('Case'), CASES, s.caseStyle, (v) => set({ caseStyle: v }, true));
-      toggle(body, 'Signature', 'dialText', 'Philip Pocket and the name of the face, under 12 o\'clock.');
+      toggle(body, 'Monogram', 'dialText', 'The Philip Pocket monogram, under 12 o\'clock.');
       dropdown(new Setting(body).setName('Hour markers'), MARKERS, s.markers, (v) => set({ markers: v }, true));
       dropdown(new Setting(body).setName('Hands'), HANDS, s.hands, (v) => set({ hands: v }, true));
       dropdown(new Setting(body).setName('Seconds hand'), SECONDS, s.seconds, (v) => set({ seconds: v }));

@@ -6,7 +6,7 @@ A fine timepiece that sits over your notes, with a Pomodoro timer for a steady r
 
 ## A timepiece
 
-- **Nineteen watches, each its own.** Every face, signed Philip Pocket, comes with its own hands and complications: a date, small seconds, your words today or a goal dial. Two have a moon phase, each in its own window: Porcelain's classic arch with gold moons, and Midnight's round window onto a realistic moon, with its age in days around it. Regulator gives the minutes the centre and turns the hours on a small dial of their own, and Malachite is cut from polished green stone. You can also pick your own.
+- **Nineteen watches, each its own.** Every face carries the Philip Pocket monogram, the interlaced PP, and comes with its own hands and complications: a date, small seconds, your words today or a goal dial. Two have a moon phase, each in its own window: Porcelain's classic arch with gold moons, and Midnight's round window onto a realistic moon, with its age in days around it. Regulator gives the minutes the centre and turns the hours on a small dial of their own, and Malachite is cut from polished green stone. You can also pick your own.
 - **Slim digital watches** that show just the time: Hairline, bare numerals in your theme's colours that fade back until you point at them; Capsule, a slim pill that fills up with your session; and Column, the hours over the minutes in a narrow strip.
 - **Two painted dials**: Sakura, a cherry branch in gold lacquer with mother-of-pearl blossoms on black, and Nocturne, a mountain lake at dusk whose moon is tonight's moon.
 - **Snaps where you put it.** Drag it over a pane and it snaps to a corner or edge. Drop it on a pane's tab bar and it tucks in there, sized to fit the bar, analog or digital. Drop it on the ribbon or status bar to snap it to the window, or hold Alt to place it anywhere.
@@ -52,7 +52,7 @@ Search for **Pocket Watch** in Settings → Community plugins once it's listed. 
 ![Every watch in the settings](images/settings.png)
 
 - **Watch**: every watch in a gallery to pick from, its size, and its position.
-- **Customise**: for the watch you picked, its case, signature, hour markers, hands, seconds hand, complications (as designed or your own), goal ring and movement, or for the digital watch its layout, clock and what it shows.
+- **Customise**: for the watch you picked, its case, monogram, hour markers, hands, seconds hand, complications (as designed or your own), goal ring and movement, or for the digital watch its layout, clock and what it shows.
 - **Focus sessions**: lengths, long breaks, starting automatically, the countdown label, colour or greyscale, how time being up shows, and the chime.
 - **Tracking**: daily goal, idle limit, and more.
 
@@ -66,4 +66,4 @@ Pocket Watch works entirely offline. It makes no network requests and only write
 
 ## Credits and license
 
-The Philip Pocket signature is drawn from Imperial Script and Marcellus SC, and its monogram from Great Vibes, all under the [SIL Open Font License](https://openfontlicense.org). The plugin is under the [MIT](LICENSE) license.
+The Philip Pocket monogram is drawn from Great Vibes, under the [SIL Open Font License](https://openfontlicense.org). The plugin is under the [MIT](LICENSE) license.
