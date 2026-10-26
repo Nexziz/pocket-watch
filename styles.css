@@ -94,6 +94,14 @@
   border-radius: 16px;
 }
 
+.pocket-watch-ghost[data-slim="capsule"] {
+  border-radius: 999px;
+}
+
+.pocket-watch-ghost[data-slim="hairline"] {
+  border-radius: 6px;
+}
+
 /* ---------------------------------------------------------------------------
    Analog faces. Each face sets its own colours, like a real watch.
    --------------------------------------------------------------------------- */
@@ -308,9 +316,9 @@
 }
 
 /* The goal ring and bar dim while the timer isn't counting. */
-.pocket-watch-float[data-ring="goal"]:not([data-state="tracking"]) .pw-ring,
-.pocket-watch-float:not([data-state="tracking"]) .pw-goal-arc,
-.pocket-watch-float[data-ring="goal"]:not([data-state="tracking"]) .pw-d-fill {
+.pocket-watch-float[data-ring="goal"]:not([data-state="tracking"], [data-state="outside"]) .pw-ring,
+.pocket-watch-float:not([data-state="tracking"], [data-state="outside"]) .pw-goal-arc,
+.pocket-watch-float[data-ring="goal"]:not([data-state="tracking"], [data-state="outside"]) .pw-d-fill {
   opacity: 0.35;
 }
 
@@ -1536,7 +1544,7 @@
   line-height: 1.15;
 }
 
-.pocket-watch-head:not([data-state="tracking"]) .pocket-watch-clock {
+.pocket-watch-head:not([data-state="tracking"], [data-state="outside"]) .pocket-watch-clock {
   color: var(--text-muted);
 }
 
@@ -2220,7 +2228,7 @@
   color: var(--text-muted);
 }
 
-/* Sixteen faces in four rows of four, and the six digital styles in two rows of three. */
+/* Nineteen faces in rows of four, and the nine digital styles in three rows of three. */
 .pocket-watch-gallery-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2336,4 +2344,445 @@
 
 .pocket-watch-group-body .setting-item:first-child {
   border-top: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Pomodoro, Regulator and Malachite
+   --------------------------------------------------------------------------- */
+
+.pocket-watch-face-pomodoro {
+  --pw-bezel-a: #f4f5f7; --pw-bezel-b: #babec5; --pw-bezel-c: #697078;
+  --pw-dial-a: #fcf8f1; --pw-dial-b: #efe5d4;
+  --pw-ink: #3b3531; --pw-ink-soft: #b3a898;
+  --pw-hand: #2f2a27; --pw-lume: #fcf8f1; --pw-accent: #d4553b;
+  --pw-ring: #d4553b; --pw-ring-track: rgba(0, 0, 0, 0.12);
+  --pw-date-bg: #fffdf8; --pw-date-ink: #3b3531;
+  /* The focus session and the break, as they are painted on the dial. */
+  --pw-tomato: #d9573d;
+  --pw-leaf: #6ea684;
+}
+
+.pocket-watch-float[data-palette="grey"] .pocket-watch-face-pomodoro {
+  --pw-tomato: #5d6166;
+  --pw-leaf: #b6bac0;
+}
+
+.pocket-watch-face-regulator {
+  --pw-bezel-a: #f2f3f5; --pw-bezel-b: #b4b9c0; --pw-bezel-c: #626870;
+  --pw-dial-a: #f7d4b9; --pw-dial-b: #e3a888;
+  --pw-ink: #3b2820; --pw-ink-soft: #a8765f;
+  --pw-hand: #2a4fa6; --pw-hand-shade: #183275; --pw-lume: #f7d4b9; --pw-accent: #2a4fa6;
+  --pw-ring: #2a4fa6; --pw-ring-track: rgba(0, 0, 0, 0.12);
+  --pw-date-bg: #fbe7d8; --pw-date-ink: #3b2820;
+  --pw-subdial: rgba(130, 64, 30, 0.07);
+}
+
+.pocket-watch-face-malachite {
+  --pw-flange: #072a1b;
+  --pw-bezel-a: #fbefc9; --pw-bezel-b: #d4ad5c; --pw-bezel-c: #7a5719;
+  --pw-dial-a: #16704a; --pw-dial-b: #0a3b26;
+  --pw-ink: #f1d996; --pw-ink-soft: #b39a5c;
+  --pw-hand: #f6e2a4; --pw-hand-shade: #b8913f; --pw-hand-edge: rgba(0, 0, 0, 0.45);
+  --pw-lume: #0f4f34; --pw-accent: #f1d996;
+  --pw-ring: #f1d996; --pw-ring-track: rgba(0, 0, 0, 0.25);
+  --pw-date-bg: #0a3b26; --pw-date-ink: #f1d996;
+  --pw-subdial: rgba(0, 0, 0, 0.2);
+  --pw-metal-a: #fff4cf;
+  --pw-metal-b: #e0b85f;
+  --pw-metal-c: #8a6420;
+}
+
+/* The minute numerals of a regulator or the Pomodoro dial, and the regulator's hour dial. */
+.pw-numeral.is-minutes {
+  font-family: var(--font-interface);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.pocket-watch-face-regulator .pw-numeral.is-minutes {
+  font-family: var(--pw-numeral-font);
+  font-weight: 400;
+}
+
+.pw-numeral.is-hours {
+  font-weight: 600;
+}
+
+.pocket-watch-face-regulator .pw-tick.is-hour {
+  stroke-width: 1.4;
+}
+
+/* Pomodoro: the focus session and the break, painted on the dial */
+.pw-pomo-track {
+  fill: none;
+  stroke: rgba(90, 60, 30, 0.045);
+}
+
+.pw-pomo-edge {
+  fill: none;
+  stroke: rgba(90, 60, 30, 0.14);
+  stroke-width: 0.5;
+}
+
+.pw-pomo-wedge {
+  fill-rule: evenodd;
+  stroke: var(--pw-dial-a);
+  stroke-width: 0.7;
+  stroke-linejoin: round;
+  transition: opacity 600ms ease;
+}
+
+.pw-pomo-wedge.is-focus {
+  fill: var(--pw-tomato);
+}
+
+.pw-pomo-wedge.is-break {
+  fill: var(--pw-leaf);
+}
+
+/* What is running now is strong; what comes after it is softer. */
+.pw-pomo[data-mode="running"][data-now="focus"] .is-focus,
+.pw-pomo[data-mode="running"][data-now="break"] .is-break {
+  opacity: 0.94;
+}
+
+.pw-pomo[data-mode="running"][data-now="focus"] .is-break,
+.pw-pomo[data-mode="running"][data-now="break"] .is-focus {
+  opacity: 0.5;
+}
+
+/* Paused, the wedges wait with the minute hand; between sessions they show faintly. */
+.pw-pomo[data-mode="paused"] .pw-pomo-wedge {
+  opacity: 0.38;
+}
+
+.pw-pomo[data-mode="preview"] .pw-pomo-wedge {
+  opacity: 0.2;
+}
+
+.pw-pomo-readout,
+.pw-pomo-caption {
+  text-anchor: middle;
+  dominant-baseline: central;
+  font-family: var(--font-interface);
+  font-variant-numeric: tabular-nums;
+}
+
+.pw-pomo-readout {
+  fill: var(--pw-ink);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.pw-pomo-caption {
+  fill: var(--pw-ink-soft);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+}
+
+.pw-pomo-dot {
+  fill: none;
+  stroke: var(--pw-ink-soft);
+  stroke-width: 0.5;
+}
+
+.pw-pomo-dot.is-done {
+  fill: var(--pw-tomato);
+  stroke: none;
+}
+
+.pw-pomo-dot.is-now {
+  fill: var(--pw-tomato);
+  stroke: none;
+  animation: pocket-watch-pomo-now 2.4s ease-in-out infinite;
+}
+
+@keyframes pocket-watch-pomo-now {
+  50% { opacity: 0.3; }
+}
+
+/* Malachite: bands of green stone */
+.pw-stone.is-deep { fill: #05301d; }
+.pw-stone.is-dark { fill: #0a4a2f; }
+.pw-stone.is-mid { fill: #136f48; }
+.pw-stone.is-light { fill: #2a9365; }
+.pw-stone.is-pale { fill: #79cfa3; }
+
+.pw-stone-polish {
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Slim digital watches: Hairline, Capsule and Column
+   --------------------------------------------------------------------------- */
+
+/* Hairline: bare numerals in your theme's colours, which fade back until you point at them. */
+.pocket-watch-float[data-slim="hairline"] {
+  filter: none;
+}
+
+.pw-d-hairline {
+  --pw-corner: 0.4em;
+  --pw-d-bg: transparent;
+  --pw-d-ink: var(--text-normal);
+  --pw-d-soft: var(--text-muted);
+  --pw-d-accent: var(--text-faint);
+  --pw-d-track: transparent;
+  --pw-d-edge: transparent;
+  padding: 0.05em 0.3em 0.22em;
+  border-radius: var(--pw-corner);
+  font-family: var(--font-interface);
+  opacity: 0.7;
+  transition: opacity 200ms ease, background-color 200ms ease;
+}
+
+.pocket-watch-float:hover .pw-d-hairline,
+.pocket-watch-float.is-open .pw-d-hairline,
+.pocket-watch-float:not([data-alert="none"]) .pw-d-hairline {
+  opacity: 1;
+}
+
+.pocket-watch-float:hover .pw-d-hairline {
+  background-color: color-mix(in srgb, var(--background-primary) 75%, transparent);
+}
+
+.pw-d-hairline .pw-d-time {
+  font-size: 2em;
+  font-weight: 200;
+  line-height: 1;
+  text-shadow: 0 0 0.2em var(--background-primary), 0 0 0.5em var(--background-primary);
+}
+
+.pw-d-hairline .pw-d-colon {
+  margin: 0 0.03em;
+  opacity: 0.5;
+}
+
+.pw-d-hairline .pw-d-bar {
+  position: absolute;
+  left: 0.35em;
+  right: 0.35em;
+  bottom: 0.1em;
+  height: 1px;
+}
+
+.pocket-watch-float[data-times-up="colour"]:not([data-alert="none"]) .pw-d-hairline {
+  box-shadow: none;
+  color: var(--pw-alert);
+}
+
+/* Capsule: a slim pill that fills up with the session, with a small light for focus or break. */
+.pw-d-capsule {
+  --pw-corner: 0.95em;
+  --pw-d-bg: color-mix(in srgb, var(--background-secondary) 84%, transparent);
+  --pw-d-ink: var(--text-normal);
+  --pw-d-soft: var(--text-muted);
+  --pw-d-accent: var(--interactive-accent);
+  --pw-d-track: transparent;
+  --pw-d-edge: var(--background-modifier-border);
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  height: 1.9em;
+  padding: 0 0.85em 0 0.75em;
+  border-radius: 999px;
+  overflow: hidden;
+  font-family: var(--font-interface);
+  backdrop-filter: blur(8px);
+}
+
+.pw-d-capsule .pw-d-time {
+  font-size: 1.25em;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+.pw-d-capsule .pw-d-ampm {
+  align-self: center;
+  margin-top: 0;
+  font-size: 0.5em;
+}
+
+.pw-d-capsule .pw-d-bar {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  height: auto;
+  border-radius: 0;
+  background: none;
+  opacity: 0.3;
+}
+
+.pw-d-capsule .pw-d-fill {
+  border-radius: 0;
+}
+
+.pw-d-pip {
+  flex: none;
+  width: 0.42em;
+  height: 0.42em;
+  border-radius: 50%;
+  background: var(--pw-d-soft);
+  opacity: 0.55;
+  transition: background-color 400ms ease, box-shadow 400ms ease, opacity 400ms ease;
+}
+
+.pocket-watch-float[data-ring="focus"] .pw-d-pip {
+  opacity: 1;
+  background: var(--pw-focus, #e0694f);
+  box-shadow: 0 0 0.45em var(--pw-focus, #e0694f);
+}
+
+.pocket-watch-float[data-ring="break"] .pw-d-pip {
+  opacity: 1;
+  background: var(--pw-break, #5fb49c);
+  box-shadow: 0 0 0.45em var(--pw-break, #5fb49c);
+}
+
+.pocket-watch-float:not([data-alert="none"]) .pw-d-pip {
+  opacity: 1;
+  background: var(--pw-alert);
+}
+
+/* Column: the hours over the minutes in a narrow strip, filling up from the bottom. */
+.pw-d-column {
+  --pw-corner: 0.8em;
+  --pw-d-bg: linear-gradient(180deg, #2c2f34, #17191c);
+  --pw-d-ink: #f0e2c4;
+  --pw-d-soft: #9a9384;
+  --pw-d-accent: #e1a65c;
+  --pw-d-track: transparent;
+  --pw-d-edge: rgba(255, 255, 255, 0.09);
+  width: 2.75em;
+  padding: 0.6em 0 0.65em;
+  border-radius: var(--pw-corner);
+  overflow: hidden;
+}
+
+.pw-d-column .pw-d-time {
+  flex-direction: column;
+  align-items: center;
+  font-size: 1.45em;
+  font-weight: 500;
+  line-height: 1.05;
+}
+
+.pw-d-column .pw-d-colon {
+  display: block;
+  width: 0.7em;
+  height: 1px;
+  margin: 0.24em 0;
+  background: currentColor;
+  opacity: 0.3;
+}
+
+.pw-d-column .pw-d-colon.is-small {
+  width: 0.4em;
+  margin: 0.22em 0 0.18em;
+}
+
+.pw-d-column .pw-d-ss {
+  font-size: 0.55em;
+  color: var(--pw-d-soft);
+}
+
+.pw-d-column .pw-d-ampm {
+  align-self: center;
+  margin: 0.4em 0 0;
+  font-size: 0.4em;
+}
+
+.pw-d-column .pw-d-bar {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  height: auto;
+  border-radius: 0;
+  background: none;
+  opacity: 0.22;
+}
+
+.pw-d-column .pw-d-fill {
+  width: 100%;
+  height: 0;
+  border-radius: 0;
+  transition: height 400ms ease, opacity 400ms ease;
+}
+
+/* ---------------------------------------------------------------------------
+   In a tab bar: the watch fits the bar, and the countdown sits beside it.
+   --------------------------------------------------------------------------- */
+
+.pocket-watch-float {
+  -webkit-app-region: no-drag;
+}
+
+.pocket-watch-float.is-in-tray {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+.pocket-watch-float.is-in-tray[data-slim="hairline"] {
+  filter: none;
+}
+
+.pocket-watch-float.is-in-tray .pocket-watch-grip {
+  display: none;
+}
+
+.pocket-watch-badge[data-side="left"],
+.pocket-watch-badge[data-side="right"] {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.pocket-watch-badge[data-side="left"] {
+  left: auto;
+  right: calc(100% + 6px);
+}
+
+.pocket-watch-badge[data-side="right"] {
+  left: calc(100% + 6px);
+}
+
+/* ---------------------------------------------------------------------------
+   Tracking outside Obsidian
+   --------------------------------------------------------------------------- */
+
+.pocket-watch-head-actions {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.pocket-watch-outside {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.pocket-watch-outside-icon {
+  display: flex;
+}
+
+.pocket-watch-outside-icon .svg-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.pocket-watch-outside.is-active {
+  color: var(--text-normal);
+  background-color: color-mix(in srgb, var(--color-blue) 20%, var(--interactive-normal));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-blue) 55%, transparent);
+}
+
+.pocket-watch-head[data-state="outside"] .pocket-watch-dot {
+  background: var(--color-blue);
 }
