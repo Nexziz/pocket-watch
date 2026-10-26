@@ -13,8 +13,9 @@ const { Plugin, PluginSettingTab, Setting, MarkdownView, Notice, Menu, setIcon }
 // hours on a small dial of their own in one slot and leaves the centre to the minutes, and a
 // Pomodoro face paints the focus session and the break after it on the dial. The Philip
 // Pocket monogram is printed under 12 (brandWidth and brandClear size and place it);
-// brandAt: 'six' moves it above 6 and brandAt: 'centre' just above the hands, and brandInk
-// prints it rather than applying it in metal on a light dial. Its colours live in styles.css
+// brandAt: 'six' moves it above 6, 'low' just below the hands and 'nine' to their left, brandInk
+// prints it rather than applying it in metal on a light dial, and brandEngraved cuts it into
+// the dial. Its colours live in styles.css
 // under .pocket-watch-face-<key>.
 const ANALOG_FACES = {
   porcelain: {
@@ -42,7 +43,7 @@ const ANALOG_FACES = {
     hands: 'leaf', set: {},
   },
   meteorite: {
-    name: 'Meteorite', case: 'polished', markers: 'batons', art: 'meteorite', texture: 'grain', flange: true, applied: true, brandInk: true,
+    name: 'Meteorite', case: 'polished', markers: 'batons', art: 'meteorite', texture: 'grain', flange: true, applied: true, brandEngraved: true,
     hands: 'dauphine', set: { slotBottom: 'seconds' },
   },
   openheart: {
@@ -79,14 +80,14 @@ const ANALOG_FACES = {
   },
   pomodoro: {
     name: 'Pomodoro', case: 'polished', markers: 'minutes', texture: 'enamel', pomodoro: true, serif: true,
-    brandAt: 'centre', brandWidth: 22, hands: 'dauphine', set: {},
+    brandWidth: 22, hands: 'dauphine', set: {},
   },
   regulator: {
     name: 'Regulator', case: 'polished', markers: 'minutes', decor: 'railroad', texture: 'sunburst', regulator: 'slotTop',
-    brandAt: 'centre', brandWidth: 18, serif: true, hands: 'breguet', set: { slotBottom: 'seconds' },
+    brandAt: 'nine', brandWidth: 22, serif: true, hands: 'breguet', set: { slotBottom: 'seconds' },
   },
   malachite: {
-    name: 'Malachite', case: 'polished', markers: 'batons', art: 'malachite', flange: true, applied: true,
+    name: 'Malachite', case: 'polished', markers: 'batons', art: 'malachite', flange: true, applied: true, brandAt: 'low', brandWidth: 30, brandEngraved: true,
     hands: 'dauphine', set: {},
   },
   theme: {
@@ -1314,15 +1315,19 @@ class FloatingWatch {
     }, 'pw-glass-small');
   }
 
-  // The Philip Pocket monogram under 12, clear of the hour markers; above 6 when something
-  // sits at 12, or just above the hands on a face that asks for it. Faces with polished metal
-  // markers have it in the same metal, as if applied.
+  // The Philip Pocket monogram under 12, clear of the hour markers, or where the face asks
+  // for it: above 6, just below the hands, or to their left. When a complication sits there it moves to
+  // the next free place. Faces with polished metal markers have it in the same metal, as if
+  // applied, and an engraved one is cut into the dial, catching the light on its lower edge.
   drawBrand(svg, add, face, markers, R, k, used) {
-    const centre = face.brandAt === 'centre';
-    const atSix = !centre && (face.brandAt === 'six' || used[0]);
-    if (atSix && used[6]) return;
+    let at = face.brandAt || 'top';
+    if (at === 'nine' && used[9]) at = 'top';
+    if (at === 'top' && used[0]) at = 'six';
+    if ((at === 'six' || at === 'low') && used[6]) at = used[0] ? null : 'top';
+    if (!at) return;
     // On light dials metal would not show, so the monogram is printed there.
-    const metal = face.applied && !face.brandInk;
+    const engraved = !!face.brandEngraved;
+    const metal = face.applied && !face.brandInk && !engraved;
     const [left, top, right, bottom] = MONOGRAM.box;
     const scale = ((face.brandWidth || 26) * k) / (right - left);
     const height = (bottom - top) * scale;
@@ -1330,11 +1335,14 @@ class FloatingWatch {
     const clear = (face.brandClear || {
       batons: 24, dots: 21, arabic: face.decor === 'inner-24' ? 41 : 27, quarters: 41, roman: 30, lume: 25, minimal: 22, pips: 15, minutes: 22,
     }[markers] || 17) * k;
-    // At 6 it sits lowest, so it keeps a little more room from the marker below it.
-    const y0 = centre ? 100 - 8 * k - height : atSix ? 100 + R - clear - 4 * k - height : 100 - R + clear;
-    const g = add(svg, 'g', {
-      transform: `translate(100 ${(y0 - top * scale).toFixed(2)}) scale(${scale.toFixed(4)})`,
-    }, metal ? ['pw-brand-mark', 'is-applied', 'pw-raised'] : 'pw-brand-mark');
+    // Under 12 it keeps a little room from the marker above it; at 6 a little more, as it
+    // sits lowest; below the hands and at 9 it is centred a little under halfway out.
+    const x = at === 'nine' ? 100 - R * 0.47 : 100;
+    const y0 = at === 'nine' ? 100 - height / 2 : at === 'low' ? 100 + R * 0.38 - height / 2
+      : at === 'six' ? 100 + R - clear - 4 * k - height : 100 - R + clear + 5 * k;
+    const place = (dy) => `translate(${x.toFixed(2)} ${(y0 + dy - top * scale).toFixed(2)}) scale(${scale.toFixed(4)})`;
+    if (engraved) add(add(svg, 'g', { transform: place(0.55 * k) }, 'pw-brand-engrave-light'), 'path', { d: MONOGRAM.path });
+    const g = add(svg, 'g', { transform: place(0) }, metal ? ['pw-brand-mark', 'is-applied', 'pw-raised'] : engraved ? ['pw-brand-mark', 'is-engraved'] : 'pw-brand-mark');
     const fill = metal ? { fill: `url(#${this.id('brand-metal')})` } : {};
     if (metal) {
       this.gradient(add, 'linearGradient', 'brand-metal', { x1: 0, x2: 0, y1: top, y2: bottom, gradientUnits: 'userSpaceOnUse' }, [['0%', 'pw-metal-a'], ['55%', 'pw-metal-b'], ['100%', 'pw-metal-c']]);
