@@ -1765,40 +1765,15 @@
   stroke-width: 0.45;
 }
 
-/* The Philip Pocket signature */
+/* The Philip Pocket monogram */
 .pw-brand-mark {
   fill: var(--pw-brand, var(--pw-ink));
 }
 
-.pw-brand-glint {
-  fill: var(--pw-brand-glint, var(--pw-brand, var(--pw-ink)));
-}
-
-.pw-brand-mark.is-applied .pw-brand-script,
-.pw-brand-mark.is-applied .pw-brand-caps {
+.pw-brand-mark.is-applied .pw-brand-script {
   stroke: rgba(0, 0, 0, 0.35);
   stroke-width: 0.6;
   paint-order: stroke;
-}
-
-.pw-model {
-  fill: var(--pw-ink);
-  font-family: var(--font-interface);
-  text-anchor: middle;
-  dominant-baseline: central;
-  font-weight: 500;
-  letter-spacing: 0.32em;
-  opacity: 0.62;
-}
-
-.pw-model.is-serif {
-  font-family: var(--pw-numeral-font);
-}
-
-.pocket-watch-face-diver .pw-model,
-.pocket-watch-face-field .pw-model {
-  fill: var(--pw-accent);
-  opacity: 1;
 }
 
 /* Sakura: maki-e lacquer */
