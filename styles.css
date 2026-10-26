@@ -1776,6 +1776,15 @@
   paint-order: stroke;
 }
 
+/* Engraved: a dark groove cut into the dial, with light catching its lower edge. */
+.pw-brand-mark.is-engraved {
+  fill: rgba(0, 0, 0, 0.62);
+}
+
+.pw-brand-engrave-light {
+  fill: rgba(255, 255, 255, 0.38);
+}
+
 /* Sakura: maki-e lacquer */
 .pw-art-dust {
   opacity: 0.85;
