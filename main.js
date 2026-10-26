@@ -1,6 +1,6 @@
 'use strict';
 
-const { Plugin, PluginSettingTab, Setting, MarkdownView, Notice, Menu } = require('obsidian');
+const { Plugin, PluginSettingTab, Setting, MarkdownView, Notice, Menu, setIcon } = require('obsidian');
 
 // ---------------------------------------------------------------------------
 // Options
@@ -9,10 +9,13 @@ const { Plugin, PluginSettingTab, Setting, MarkdownView, Notice, Menu } = requir
 // Each analog face is a watch of its own: a case, hour markers, hands and a set of
 // complications (set: what sits at 12, 3, 6 and 9), and optionally a decoration, a dial
 // finish (texture), a painting (art), a flange with a minute track, polished metal (applied)
-// markers, a window onto the movement in one slot, and serif printing. The Philip Pocket signature is printed
-// under 12 (brandWidth and brandClear size and place it); brand: 'script' prints just
-// "Philip", brand: 'monogram' the interlaced PP, brandAt: 'six' moves it above 6, brandInk
-// prints it rather than applying it in metal on a light dial, and
+// markers, a window onto the movement in one slot, and serif printing. A regulator shows the
+// hours on a small dial of their own in one slot and leaves the centre to the minutes, and a
+// Pomodoro face paints the focus session and the break after it on the dial. The Philip
+// Pocket signature is printed under 12 (brandWidth and brandClear size and place it);
+// brand: 'script' prints just "Philip", brand: 'monogram' the interlaced PP, brandAt: 'six'
+// moves it above 6 and brandAt: 'centre' just above the hands, brandInk prints it rather than
+// applying it in metal on a light dial, and
 // model: false leaves out the face's name. Its colours live in styles.css under
 // .pocket-watch-face-<key>.
 const ANALOG_FACES = {
@@ -76,6 +79,18 @@ const ANALOG_FACES = {
     name: 'Rosé', case: 'polished', markers: 'batons', texture: 'sunburst', flange: true, applied: true, serif: true, brandInk: true,
     hands: 'leaf', set: { slotLeft: 'month', slotRight: 'date' },
   },
+  pomodoro: {
+    name: 'Pomodoro', case: 'polished', markers: 'minutes', texture: 'enamel', pomodoro: true, serif: true,
+    brand: 'script', brandAt: 'centre', brandWidth: 25, hands: 'dauphine', set: {},
+  },
+  regulator: {
+    name: 'Regulator', case: 'polished', markers: 'minutes', decor: 'railroad', texture: 'sunburst', regulator: 'slotTop',
+    brand: 'script', brandAt: 'centre', brandWidth: 30, serif: true, hands: 'breguet', set: { slotBottom: 'seconds' },
+  },
+  malachite: {
+    name: 'Malachite', case: 'polished', markers: 'batons', art: 'malachite', flange: true, applied: true,
+    hands: 'dauphine', set: {},
+  },
   theme: {
     name: 'Match theme', case: 'thin', markers: 'batons', decor: 'minute-dots', model: false,
     hands: 'baton', set: { slotRight: 'date' },
@@ -92,6 +107,7 @@ const MARKERS = {
   lume: 'Diver',
   minimal: 'A single dot',
   pips: 'Small pips',
+  minutes: 'Minutes',
   none: 'None',
 };
 
@@ -177,7 +193,15 @@ const DIGITAL_STYLES = {
   flip: 'Flip',
   eink: 'E-ink',
   theme: 'Match theme',
+  hairline: 'Hairline',
+  capsule: 'Capsule',
+  column: 'Column',
 };
+
+// Slim styles that come in a shape of their own and show just the time: Hairline is bare
+// numerals in your theme's colours, Capsule a slim pill that fills with the session, and
+// Column the hours over the minutes in a narrow strip. The layout doesn't apply to them.
+const SHAPED_STYLES = ['hairline', 'capsule', 'column'];
 
 const DIGITAL_LAYOUTS = { wide: 'Wide', slim: 'Slim', tall: 'Tall', compact: 'Compact' };
 
@@ -246,6 +270,8 @@ const SNAP_INSET = 14;
 const SPOTS = ['tl', 'tc', 'tr', 'ml', 'mr', 'bl', 'bc', 'br'];
 const MIN_SIZE = 64;
 const MAX_SIZE = 260;
+// The room left above and below the watch when it sits in a pane's tab bar.
+const TRAY_PAD = 4;
 
 // A day counts toward the streak and "active days" once it has at least a minute.
 const ACTIVE_DAY_MS = 60 * 1000;
@@ -431,6 +457,7 @@ const STATE_LABELS = {
   tracking: 'Tracking',
   idle: 'Idle: type, click or scroll to resume',
   away: 'Paused while Obsidian is in the background',
+  outside: 'Tracking outside Obsidian',
   paused: 'Paused',
 };
 
@@ -509,6 +536,8 @@ module.exports = class PocketWatchPlugin extends Plugin {
     this.alert = saved.alert || null;
 
     this.paused = false;
+    // Keep counting while you work in another app, such as a browser or a PDF reader.
+    this.outside = false;
     this.state = 'tracking';
     this.lastActivity = Date.now();
     this.lastInput = 0;
@@ -526,6 +555,7 @@ module.exports = class PocketWatchPlugin extends Plugin {
     this.addCommand({ id: 'toggle-shelf', name: 'Open or close the stats shelf', callback: () => this.watch && this.watch.toggleShelf() });
     this.addCommand({ id: 'toggle-watch', name: 'Show or hide the watch', callback: () => this.updateWatch({ showWatch: !this.settings.showWatch }) });
     this.addCommand({ id: 'toggle-pause', name: 'Pause or resume the timer', callback: () => this.togglePause() });
+    this.addCommand({ id: 'toggle-outside', name: 'Track time outside Obsidian too, or stop', callback: () => this.toggleOutside() });
     this.addCommand({ id: 'start-focus', name: 'Start a focus session', callback: () => this.startSession('focus') });
     this.addCommand({ id: 'start-break', name: 'Take a break', callback: () => this.startSession('short') });
     this.addCommand({
@@ -652,15 +682,19 @@ module.exports = class PocketWatchPlugin extends Plugin {
     const delta = Math.min(now - this.lastTick, 5000);
     this.lastTick = now;
 
+    // Outside Obsidian there is no typing or scrolling to see, so the idle limit waits until
+    // you are back.
+    const focused = this.isFocused();
     let state;
     if (this.paused) state = 'paused';
-    else if (this.settings.onlyWhenFocused && !this.isFocused()) state = 'away';
+    else if (this.outside && !focused) state = 'outside';
+    else if (this.settings.onlyWhenFocused && !focused) state = 'away';
     else if (now - this.lastActivity >= this.settings.idleMinutes * 60000) state = 'idle';
     else state = 'tracking';
 
-    if (state === 'tracking') {
+    if (state === 'tracking' || state === 'outside') {
       this.today().ms += delta;
-      this.sinceActivityMs += delta;
+      if (state === 'tracking') this.sinceActivityMs += delta;
       this.dirty = true;
     } else if (state === 'idle' && this.state !== 'idle' && this.settings.discardIdleTime) {
       const d = this.today();
@@ -687,6 +721,15 @@ module.exports = class PocketWatchPlugin extends Plugin {
     this.paused = !this.paused;
     if (!this.paused) this.markActive();
     new Notice(this.paused ? 'Pocket Watch paused' : 'Pocket Watch resumed');
+    this.tick();
+  }
+
+  // Count the time you spend in other apps too, until you turn it off again.
+  toggleOutside() {
+    this.outside = !this.outside;
+    if (this.outside) this.paused = false;
+    this.markActive();
+    new Notice(this.outside ? 'Pocket Watch counts your time outside Obsidian too' : 'Pocket Watch counts only your time in Obsidian again');
     this.tick();
   }
 
@@ -827,6 +870,7 @@ module.exports = class PocketWatchPlugin extends Plugin {
     menu.addSeparator();
     menu.addItem((i) => i.setTitle('Open the shelf').setIcon('calendar-days').onClick(() => this.watch && !this.watch.shelfEl && this.watch.openShelf()));
     menu.addItem((i) => i.setTitle(this.paused ? 'Resume tracking' : 'Pause tracking').setIcon('timer').onClick(() => this.togglePause()));
+    menu.addItem((i) => i.setTitle('Track outside Obsidian').setIcon('external-link').setChecked(this.outside).onClick(() => this.toggleOutside()));
     menu.addItem((i) => i.setTitle('Hide the watch').setIcon('eye-off').onClick(() => this.updateWatch({ showWatch: false })));
     menu.showAtMouseEvent(e);
   }
@@ -1000,15 +1044,29 @@ class FloatingWatch {
   refresh() {
     const s = this.plugin.settings;
     const now = new Date();
-    const key = JSON.stringify([
-      s.watchType, s.watchSize, s.face, s.caseStyle, s.dialText, s.markers, s.hands, s.seconds, s.complications, s.slotTop, s.slotRight, s.slotBottom, s.slotLeft,
-      s.goalRing, s.movement, s.digitalStyle, s.digitalLayout, s.clock, s.digitalSeconds, s.blinkColon,
-      s.digitalDate, s.digitalMoon, s.digitalFocus, s.digitalBar, dayKey(now),
-    ]);
-    if (key !== this.built) {
+    // In a tab bar the watch is as tall as the bar allows; elsewhere it is the size you chose.
+    // How tall a watch is for its size is only known once it is drawn, so a watch moved into a
+    // tab bar may be drawn a second time to fit.
+    const fit = this.trayHeight();
+    for (let pass = 0; pass < 2; pass++) {
+      const want = fit ? fit / (this.ratio || 1) : s.watchSize;
+      // Within a few percent is close enough, so rounding never has it redrawn every second.
+      if (!fit || !this.size || Math.abs(want - this.size) > Math.max(1, this.size * 0.03)) this.size = Math.round(want);
+      const key = JSON.stringify([
+        s.watchType, this.size, s.face, s.caseStyle, s.dialText, s.markers, s.hands, s.seconds, s.complications, s.slotTop, s.slotRight, s.slotBottom, s.slotLeft,
+        s.goalRing, s.movement, s.digitalStyle, s.digitalLayout, s.clock, s.digitalSeconds, s.blinkColon,
+        s.digitalDate, s.digitalMoon, s.digitalFocus, s.digitalBar, s.longBreakEvery, dayKey(now),
+      ]);
+      if (key === this.built) break;
       this.build(now);
       this.built = key;
+      // Measured with the time in place, since the digits of a digital watch come in with it.
+      this.update(now);
+      const ratio = this.faceEl.offsetHeight / this.size;
+      if (ratio) this.ratio = ratio;
+      if (!fit || !ratio) break;
     }
+    this.el.classList.toggle('is-in-tray', !!fit);
     this.update(now);
     if (this.dashboard) this.dashboard.refreshLive();
     this.place();
@@ -1020,6 +1078,7 @@ class FloatingWatch {
     this.parts = { live: [] };
     this.h24 = uses24h(s.clock);
     this.el.setAttr('data-type', s.watchType);
+    this.el.setAttr('data-slim', s.watchType === 'digital' && SHAPED_STYLES.includes(s.digitalStyle) ? s.digitalStyle : '');
     if (s.watchType === 'digital') {
       this.buildDigital(now);
       // On the digital case the dot sits on the curve of the top right corner (see styles.css).
@@ -1090,8 +1149,9 @@ class FloatingWatch {
       if (d.ss) setDigits(d.ss, pad2(sec));
       if (d.ampm) setText(d.ampm, h < 12 ? 'AM' : 'PM');
     }
+    if (parts.pomo) this.updatePomodoro(now);
     if (parts.focusText) setText(parts.focusText, fmtShort(day.ms));
-    if (parts.fill) parts.fill.style.width = `${progress * 100}%`;
+    if (parts.fill) parts.fill.style[parts.fillAxis || 'width'] = `${progress * 100}%`;
   }
 
   // --- Analog -------------------------------------------------------------
@@ -1120,13 +1180,13 @@ class FloatingWatch {
     this.uid = ++drawings;
     const slots = faceSlots(s);
     const used = {};
-    for (const slot of SLOTS) used[slot.hour] = slots[slot.key] !== 'none' || face.window === slot.key;
+    for (const slot of SLOTS) used[slot.hour] = slots[slot.key] !== 'none' || face.window === slot.key || face.regulator === slot.key;
 
     // The crown or the pocket watch bow sits outside the case, so the drawing grows to fit it.
     const caseStyle = CASES[s.caseStyle] ? s.caseStyle : 'crown';
     const box = caseStyle === 'crown' ? [0, 0, 208, 200] : caseStyle === 'bow' ? [0, -28, 200, 228] : [0, 0, 200, 200];
     const svg = this.faceEl.createSvg('svg', {
-      attr: { viewBox: box.join(' '), width: (s.watchSize * box[2]) / 200, height: (s.watchSize * box[3]) / 200 },
+      attr: { viewBox: box.join(' '), width: (this.size * box[2]) / 200, height: (this.size * box[3]) / 200 },
       cls: ['pocket-watch-svg', `pocket-watch-face-${faceKey}`, `pw-case-${face.case}`],
     });
     const [dotX, dotY] = polar(94, 45);
@@ -1182,6 +1242,8 @@ class FloatingWatch {
     if (face.art === 'sakura') this.drawSakura(svg, add, R);
     else if (face.art === 'nocturne') this.drawNocturne(svg, add, R, now);
     else if (face.art === 'meteorite') this.drawMeteorite(svg, add, R);
+    else if (face.art === 'malachite') this.drawMalachite(svg, add, R);
+    if (face.pomodoro) this.drawPomodoro(svg, add, text, R, k);
     if (face.texture) this.drawTexture(svg, add, face.texture, R);
     if (face.decor) this.drawDecor(svg, add, text, face.decor, R, k, used);
     add(svg, 'circle', { cx: 100, cy: 100, r: R, fill: url('dial-shade') }, 'pw-dial-shade');
@@ -1206,9 +1268,15 @@ class FloatingWatch {
       const [cx, cy] = polar(R * 0.415, slot.hour * 30);
       this.drawMovementWindow(svg, add, cx, cy, R * 0.345);
     }
+    let hourDial = null;
+    if (face.regulator) {
+      const slot = SLOTS.find((x) => x.key === face.regulator);
+      hourDial = polar(R * 0.45, slot.hour * 30);
+      this.drawHourDial(svg, add, text, hourDial[0], hourDial[1], k);
+    }
     for (const slot of SLOTS) {
       const type = slots[slot.key];
-      if (face.window === slot.key || !type || type === 'none' || !COMPLICATIONS[type]) continue;
+      if (face.window === slot.key || face.regulator === slot.key || !type || type === 'none' || !COMPLICATIONS[type]) continue;
       const [cx, cy] = polar(R * 0.47, slot.hour * 30);
       this.drawComplication(svg, add, text, type, cx, cy, k, now);
     }
@@ -1222,8 +1290,18 @@ class FloatingWatch {
     };
     const style = s.hands !== 'face' && HANDS[s.hands] ? s.hands : face.hands || 'leaf';
     let body;
-    [this.parts.hour, body] = hand('hour');
-    this.drawHand(body, add, style, R * 0.52, k, true);
+    if (hourDial) {
+      // On a regulator the hour hand turns on its own small dial, under the minute hand.
+      const [cx, cy] = hourDial;
+      [this.parts.hour, body] = hand('hour');
+      this.parts.hour.style.transformOrigin = `${cx}px ${cy}px`;
+      body.setAttr('transform', `translate(${cx} ${cy})`);
+      this.drawHand(body, add, style, 13 * k, k * 0.5, true);
+      add(hands, 'circle', { cx, cy, r: 2.2 * k, fill: url('cap') }, 'pw-cap');
+    } else {
+      [this.parts.hour, body] = hand('hour');
+      this.drawHand(body, add, style, R * 0.52, k, true);
+    }
     [this.parts.minute, body] = hand('minute');
     this.drawHand(body, add, style, R * 0.8, k, false);
     if (s.seconds !== 'off') {
@@ -1257,7 +1335,8 @@ class FloatingWatch {
   // in the same metal, as if applied. A face can ask for just the script, for the monogram,
   // or for it at 6.
   drawBrand(svg, add, text, face, markers, R, k, used) {
-    const atSix = face.brandAt === 'six' || used[0];
+    const centre = face.brandAt === 'centre';
+    const atSix = !centre && (face.brandAt === 'six' || used[0]);
     if (atSix && used[6]) return;
     const kind = face.brand || 'full';
     // On light dials metal would not show, so the signature is printed there.
@@ -1272,10 +1351,11 @@ class FloatingWatch {
     const block = height + (model ? modelSize * 2.2 : 0);
     // How far in from the edge the markers reach at 12 (or 6).
     const clear = (face.brandClear || {
-      batons: 24, dots: 21, arabic: face.decor === 'inner-24' ? 41 : 27, quarters: 41, roman: 30, lume: 25, minimal: 22, pips: 15,
+      batons: 24, dots: 21, arabic: face.decor === 'inner-24' ? 41 : 27, quarters: 41, roman: 30, lume: 25, minimal: 22, pips: 15, minutes: 22,
     }[markers] || 17) * k;
     // At 6 the name sits lowest, so it keeps a little more room from the marker below it.
-    const y0 = atSix ? 100 + R - clear - 4 * k - block : 100 - R + clear;
+    // In the centre it sits just above the hands.
+    const y0 = centre ? 100 - 8 * k - block : atSix ? 100 + R - clear - 4 * k - block : 100 - R + clear;
     const x = kind === 'monogram' ? 100 : kind === 'script' ? 100 - ((left + right) / 2) * scale : 100 - BRAND.centre * scale;
     const g = add(svg, 'g', {
       transform: `translate(${x.toFixed(2)} ${(y0 - top * scale).toFixed(2)}) scale(${scale.toFixed(4)})`,
@@ -1625,6 +1705,140 @@ class FloatingWatch {
     for (const [kind, d] of Object.entries(plates)) add(g, 'path', { d }, ['pw-plate', `is-${kind}`]);
   }
 
+  // Malachite: a slice of polished green stone, its bands curving in rings around a few eyes,
+  // pale lines where the stone grew in fine layers.
+  drawMalachite(svg, add, R) {
+    const g = add(svg, 'g', { 'clip-path': `url(#${this.id('dial-clip')})` });
+    const rand = rng(29);
+    const tones = ['deep', 'dark', 'mid', 'dark', 'light', 'mid', 'deep', 'mid', 'pale'];
+    // Each eye: its centre, how far its outer band reaches, and how much its rings wander.
+    const eyes = [[38, 168, 205, 0.1], [156, 52, 64, 0.14], [138, 148, 34, 0.12], [58, 62, 24, 0.16]];
+    for (const [cx, cy, reach, wobble] of eyes) {
+      // Every ring of an eye follows the same waves, so the bands stay roughly parallel.
+      const waves = [2, 3, 5, 7].map((n) => [n, wobble * (0.25 + rand()) / Math.sqrt(n), rand() * 2 * Math.PI]);
+      let r = reach;
+      let i = Math.floor(rand() * tones.length);
+      while (r > 1.2) {
+        let d = '';
+        const drift = rand() * 0.6;
+        for (let j = 0; j <= 96; j++) {
+          const t = (j / 96) * 2 * Math.PI;
+          let f = 1;
+          for (const [n, amp, phase] of waves) f += amp * Math.sin(n * t + phase + drift * (n === 2 ? 1 : 0));
+          d += `${j ? 'L' : 'M'} ${(cx + r * f * Math.cos(t)).toFixed(2)} ${(cy + r * f * Math.sin(t)).toFixed(2)} `;
+        }
+        const tone = tones[i++ % tones.length];
+        add(g, 'path', { d: `${d}Z` }, ['pw-stone', `is-${tone}`]);
+        // Pale lines are thin; the rest of the bands vary.
+        r -= tone === 'pale' ? 0.7 + rand() * 0.6 : 1.4 + rand() * rand() * 7;
+      }
+    }
+    // The polish catches the light at the top left.
+    this.gradient(add, 'radialGradient', 'polish', { cx: '30%', cy: '26%', r: '75%' }, [['0%', 'rgba(255,255,255,0.2)'], ['60%', 'rgba(255,255,255,0.03)'], ['100%', 'rgba(255,255,255,0)']]);
+    add(svg, 'circle', { cx: 100, cy: 100, r: R, fill: `url(#${this.id('polish')})` }, 'pw-stone-polish');
+  }
+
+  // The small dial at 12 of a regulator, where the hour hand turns on its own.
+  drawHourDial(svg, add, text, cx, cy, k) {
+    const r = 18.5 * k;
+    add(svg, 'circle', { cx, cy, r }, ['pw-subdial', 'pw-hour-dial']);
+    for (let rr = 3 * k; rr < r - 4 * k; rr += 1.3 * k) add(svg, 'circle', { cx, cy, r: rr }, 'pw-snailing');
+    let d = '';
+    for (let i = 0; i < 12; i++) {
+      const a = (i * Math.PI) / 6;
+      const len = i % 3 === 0 ? 0 : 2.2 * k;
+      if (len) d += `M ${cx + (r - 1.5 * k) * Math.sin(a)} ${cy - (r - 1.5 * k) * Math.cos(a)} L ${cx + (r - 1.5 * k - len) * Math.sin(a)} ${cy - (r - 1.5 * k - len) * Math.cos(a)} `;
+    }
+    add(svg, 'path', { d }, 'pw-subdial-tick');
+    for (const i of [0, 3, 6, 9]) {
+      const a = (i * Math.PI) / 6;
+      const rr = r - 5.2 * k;
+      text(svg, cx + rr * Math.sin(a), cy - rr * Math.cos(a), 5.6 * k, ROMAN[i], ['pw-numeral', 'is-roman', 'is-hours']);
+    }
+  }
+
+  // The Pomodoro dial: the focus session painted as a wedge from the minute hand to when it
+  // ends, and the break after it in a second colour, so the minute hand walks through your
+  // focus into your break. Between sessions they show faintly, ready to start. In the middle,
+  // the time left and a dot for each session until the long break.
+  drawPomodoro(svg, add, text, R, k) {
+    const r0 = R * 0.37;
+    const r1 = R * 0.75;
+    add(svg, 'circle', { cx: 100, cy: 100, r: (r0 + r1) / 2, 'stroke-width': r1 - r0 }, 'pw-pomo-track');
+    add(svg, 'circle', { cx: 100, cy: 100, r: r0 }, 'pw-pomo-edge');
+    add(svg, 'circle', { cx: 100, cy: 100, r: r1 }, 'pw-pomo-edge');
+    const g = add(svg, 'g', {}, 'pw-pomo');
+    const pomo = { g, r0, r1, focus: add(g, 'path', { d: '' }, ['pw-pomo-wedge', 'is-focus']), break: add(g, 'path', { d: '' }, ['pw-pomo-wedge', 'is-break']) };
+    pomo.readout = text(svg, 100, 100 + 12.5 * k, 10 * k, '', 'pw-pomo-readout');
+    pomo.caption = text(svg, 100, 100 + 20.5 * k, 3.9 * k, '', 'pw-pomo-caption');
+    const n = clamp(this.plugin.settings.longBreakEvery, 1, 8);
+    pomo.dots = [];
+    for (let i = 0; i < n; i++) {
+      const x = 100 + (i - (n - 1) / 2) * 4.6 * k;
+      pomo.dots.push(add(svg, 'circle', { cx: x, cy: 100 + 26 * k, r: 1.35 * k }, 'pw-pomo-dot'));
+    }
+    this.parts.pomo = pomo;
+  }
+
+  // Moves the Pomodoro dial along: called every second.
+  updatePomodoro(now) {
+    const p = this.plugin;
+    const s = p.settings;
+    const x = p.session;
+    const pomo = this.parts.pomo;
+    const every = Math.max(1, s.longBreakEvery);
+    // The break after the coming focus session: a long one once enough sessions are done.
+    const breakAfter = () => p.sessionMinutes((p.cycle + 1) % every === 0 ? 'long' : 'short');
+    let first;
+    let firstMin;
+    let second = null;
+    let secondMin = 0;
+    let mode = 'preview';
+    let readout;
+    let caption;
+    if (x) {
+      const left = p.sessionRemaining();
+      first = x.kind === 'focus' ? 'focus' : 'break';
+      firstMin = left / 60000;
+      second = x.kind === 'focus' ? 'break' : 'focus';
+      secondMin = x.kind === 'focus' ? breakAfter() : s.focusMinutes;
+      mode = x.paused ? 'paused' : 'running';
+      const secs = Math.ceil(left / 1000);
+      readout = `${Math.floor(secs / 60)}:${pad2(secs % 60)}`;
+      caption = x.paused ? 'PAUSED' : x.kind === 'focus' ? 'FOCUS' : x.kind === 'long' ? 'LONG BREAK' : 'BREAK';
+    } else if (p.alert) {
+      // Time is up: what comes next waits to start.
+      const done = p.alert.kind === 'focus';
+      first = done ? 'break' : 'focus';
+      firstMin = done ? p.sessionMinutes(p.nextBreak()) : s.focusMinutes;
+      const over = Math.floor((Date.now() - p.alert.endedAt) / 60000);
+      readout = over >= 1 ? `+${over}` : '0:00';
+      caption = done ? 'BREAK TIME' : 'FOCUS TIME';
+    } else {
+      first = 'focus';
+      firstMin = s.focusMinutes;
+      second = 'break';
+      secondMin = breakAfter();
+      readout = `${s.focusMinutes}:00`;
+      caption = 'READY';
+    }
+    // From the minute hand, round the dial; an hour at most.
+    const start = (now.getMinutes() + now.getSeconds() / 60) * 6;
+    const a = Math.min(firstMin, 60) * 6;
+    const b = Math.min(secondMin, 60 - Math.min(firstMin, 60)) * 6;
+    setIfChanged(pomo[first], 'd', wedgePath(pomo.r0, pomo.r1, start, start + a));
+    if (second) setIfChanged(pomo[second], 'd', b > 0 ? wedgePath(pomo.r0, pomo.r1, start + a, start + a + b) : '');
+    else setIfChanged(pomo[first === 'focus' ? 'break' : 'focus'], 'd', '');
+    setIfChanged(pomo.g, 'data-mode', mode);
+    setIfChanged(pomo.g, 'data-now', first);
+    setText(pomo.readout, readout);
+    setText(pomo.caption, caption);
+    const done = x && x.kind === 'long' ? every : p.cycle % every;
+    pomo.dots.forEach((dot, i) => {
+      setIfChanged(dot, 'class', `pw-pomo-dot${i < done ? ' is-done' : x && x.kind === 'focus' && i === done ? ' is-now' : ''}`);
+    });
+  }
+
   // Dial finishes, all drawn within the dial: sunburst rays, azurage circles, glossy enamel,
   // a clous de Paris guilloché, vertical brushing, ocean waves and a fine grain.
   drawTexture(svg, add, texture, R) {
@@ -1861,6 +2075,28 @@ class FloatingWatch {
         };
         if (metal) add(svg, 'path', Object.assign(attr, { fill: url('facet-l') }), ['pw-applied', 'pw-raised']);
         else add(svg, 'path', attr, 'pw-dot-index');
+      }
+    } else if (markers === 'minutes') {
+      // A minute track with every five minutes numbered, as on a regulator or a kitchen timer.
+      // On a railway track the ticks are already there.
+      if (face.decor !== 'railroad') {
+        let d = '';
+        for (let i = 0; i < 60; i++) {
+          if (i % 5 === 0) continue;
+          const [x1, y1] = polar(R - 2.8, i * 6);
+          const [x2, y2] = polar(R - 5.8, i * 6);
+          d += `M ${x1.toFixed(2)} ${y1.toFixed(2)} L ${x2.toFixed(2)} ${y2.toFixed(2)} `;
+        }
+        add(svg, 'path', { d }, 'pw-tick');
+        for (let i = 0; i < 12; i++) {
+          const [x1, y1] = polar(R - 2.8, i * 30);
+          const [x2, y2] = polar(R - 8, i * 30);
+          add(svg, 'line', { x1, y1, x2, y2 }, ['pw-tick', 'is-hour']);
+        }
+      }
+      for (let i = 0; i < 12; i++) {
+        const [x, y] = polar(R - 15, i * 30);
+        shadow(text(svg, x, y, 8.4 * k, String(i === 0 ? 60 : i * 5), ['pw-numeral', 'is-minutes']));
       }
     } else if (markers === 'minimal') {
       const dot = { cx: 100, cy: 100 - R + 12 * k, r: 3.6 * k };
@@ -2278,10 +2514,15 @@ class FloatingWatch {
   buildDigital(now) {
     const s = this.plugin.settings;
     const style = DIGITAL_STYLES[s.digitalStyle] ? s.digitalStyle : 'slate';
-    const layout = DIGITAL_LAYOUTS[s.digitalLayout] ? s.digitalLayout : 'wide';
+    const shaped = SHAPED_STYLES.includes(style);
+    const layout = shaped ? style : DIGITAL_LAYOUTS[s.digitalLayout] ? s.digitalLayout : 'wide';
     const box = this.faceEl.createDiv({ cls: ['pocket-watch-digital', `pw-d-${style}`, `pw-l-${layout}`] });
     if (s.blinkColon) box.addClass('pw-blink');
-    box.style.fontSize = `${(s.watchSize / 120) * 13}px`;
+    box.style.fontSize = `${(this.size / 120) * 13}px`;
+    if (shaped) {
+      this.buildSlim(box, style);
+      return;
+    }
     // The Philip Pocket monogram, faded into the background behind the time.
     if (s.dialText) {
       const [x0, y0, x1, y1] = MONOGRAM.box;
@@ -2318,6 +2559,26 @@ class FloatingWatch {
       if (!meta.childElementCount) meta.remove();
       if (s.digitalBar) this.parts.fill = box.createDiv('pw-d-bar').createDiv('pw-d-fill');
     }
+  }
+
+  // The slim styles show just the time. Capsule and Column fill up with a focus session or a
+  // break (or toward your daily goal), and Capsule has a small light that shows which it is;
+  // Hairline draws a fine line under the time instead.
+  buildSlim(box, style) {
+    const s = this.plugin.settings;
+    const d = (this.parts.digital = {});
+    if (s.digitalBar || style === 'capsule') this.parts.fill = box.createDiv('pw-d-bar').createDiv('pw-d-fill');
+    if (style === 'column') this.parts.fillAxis = 'height';
+    if (style === 'capsule') box.createDiv('pw-d-pip');
+    const time = box.createDiv('pw-d-time');
+    d.hh = time.createSpan('pw-d-hh');
+    time.createSpan({ cls: 'pw-d-colon', text: style === 'column' ? '' : ':' });
+    d.mm = time.createSpan('pw-d-mm');
+    if (s.digitalSeconds) {
+      time.createSpan({ cls: ['pw-d-colon', 'is-small'], text: style === 'column' ? '' : ':' });
+      d.ss = time.createSpan('pw-d-ss');
+    }
+    if (!this.h24) d.ampm = time.createSpan('pw-d-ampm');
   }
 
   // --- Placement ----------------------------------------------------------
@@ -2373,10 +2634,9 @@ class FloatingWatch {
   }
 
   // A spot in a box: a row (t, m, b) and a column (l, c, r). Bottom spots keep clear of
-  // the status bar. Null when the box is collapsed, such as a closed sidebar.
-  spotXY(box, spot) {
-    const w = this.el.offsetWidth;
-    const h = this.el.offsetHeight;
+  // the status bar. Null when the box is collapsed, such as a closed sidebar. The watch is
+  // measured as it is now, unless its size there is given.
+  spotXY(box, spot, w = this.el.offsetWidth, h = this.el.offsetHeight) {
     if (box.right - box.left < 40 || box.bottom - box.top < 40) return null;
     const col = spot[1];
     const row = spot[0];
@@ -2394,19 +2654,72 @@ class FloatingWatch {
     return { x: clamp(x, 0, window.innerWidth - w), y: clamp(y, 0, window.innerHeight - h) };
   }
 
-  // Over a pane, the nearest of its eight spots; anywhere else, the nearest spot of the window.
+  // Over a pane's tab bar, the nearest of its three spots there; over the rest of a pane, the
+  // nearest of its eight spots; anywhere else, the nearest spot of the window.
   snapTarget(px, py, left, top) {
     const el = this.groupAt(px, py);
     const id = el && this.groupId(el);
-    const box = id ? this.paneBox(el) : this.windowBox();
+    const bar = id && this.trayEl(el);
+    const r = bar && bar.getBoundingClientRect();
+    const inTray = r && py >= r.top && py <= r.bottom;
+    // The size it will have there: as tall as the tab bar allows, or the size you chose.
+    const ow = this.el.offsetWidth;
+    const oh = this.el.offsetHeight;
+    const scale = inTray ? this.trayFit(bar) / oh : this.plugin.settings.watchSize / this.size;
+    const w = ow * scale;
+    const h = oh * scale;
     let best = null;
-    for (const spot of SPOTS) {
-      const xy = this.spotXY(box, spot);
-      if (!xy) continue;
-      const d = Math.hypot(xy.x - left, xy.y - top);
-      if (!best || d < best.d) best = { id, spot, xy, d };
+    const consider = (spot, xy, tray) => {
+      if (!xy) return;
+      const d = Math.hypot(xy.x + w / 2 - (left + ow / 2), xy.y + h / 2 - (top + oh / 2));
+      if (!best || d < best.d) best = { id, spot, xy, d, tray, w, h };
+    };
+    if (inTray) {
+      for (const spot of ['l', 'c', 'r']) consider(spot, this.trayXY(this.trayBox(bar), spot, w, h), true);
+      return best;
     }
+    const box = id ? this.paneBox(el) : this.windowBox();
+    for (const spot of SPOTS) consider(spot, this.spotXY(box, spot, w, h), false);
     return best;
+  }
+
+  // The bar of tabs at the top of a pane, if it shows.
+  trayEl(groupEl) {
+    const bar = groupEl.querySelector(':scope > .workspace-tab-header-container');
+    return bar && bar.offsetParent !== null && bar.offsetHeight >= 20 ? bar : null;
+  }
+
+  // The free part of a tab bar: between the last tab and the buttons at its end.
+  trayBox(bar) {
+    const r = bar.getBoundingClientRect();
+    const spacer = bar.querySelector(':scope > .workspace-tab-header-spacer');
+    const free = spacer && spacer.getBoundingClientRect();
+    if (free && free.width > 0) return { left: free.left, right: free.right, top: r.top, bottom: r.bottom };
+    const tabs = bar.querySelector(':scope > .workspace-tab-header-container-inner');
+    return { left: tabs ? tabs.getBoundingClientRect().right : r.left, right: r.right, top: r.top, bottom: r.bottom };
+  }
+
+  // A spot in a tab bar: its left end, its middle or its right end, centred top to bottom.
+  trayXY(box, spot, w = this.el.offsetWidth, h = this.el.offsetHeight) {
+    const gap = 6;
+    const x = spot === 'l' ? box.left + gap : spot === 'r' ? box.right - gap - w : box.left + (box.right - box.left - w) / 2;
+    return { x: clamp(x, 0, window.innerWidth - w), y: box.top + (box.bottom - box.top - h) / 2 };
+  }
+
+  // How tall the watch is in a tab bar. Hairline's bare numerals would look loud at the full
+  // height of the bar.
+  trayFit(bar) {
+    const s = this.plugin.settings;
+    return (bar.offsetHeight - 2 * TRAY_PAD) * (s.watchType === 'digital' && s.digitalStyle === 'hairline' ? 0.8 : 1);
+  }
+
+  // How tall the watch is in the tab bar it sits in; 0 when it isn't in one.
+  trayHeight() {
+    const a = this.plugin.settings.watchAnchor;
+    if (!a || !a.tray) return 0;
+    const el = this.resolveGroup(a.group);
+    const bar = el && this.trayEl(el);
+    return bar ? this.trayFit(bar) : 0;
   }
 
   place() {
@@ -2426,7 +2739,13 @@ class FloatingWatch {
       }
       const a = s.watchAnchor;
       const spot = a && SPOTS.includes(a.spot) ? a.spot : 'br';
-      if (a && a.window) {
+      if (a && a.tray) {
+        const el = this.resolveGroup(a.group);
+        const bar = el && this.trayEl(el);
+        if (bar) xy = this.trayXY(this.trayBox(bar), a.spot);
+        else if (el) tucked = true;
+        else xy = this.freeSpot(DEFAULT_WATCH_POS);
+      } else if (a && a.window) {
         xy = this.spotXY(this.windowBox(), spot);
       } else {
         const el = a && this.resolveGroup(a.group);
@@ -2451,9 +2770,14 @@ class FloatingWatch {
   }
 
   // The resize handle sits on the corner facing away from where the watch is snapped,
-  // so dragging it outward makes the watch bigger.
+  // so dragging it outward makes the watch bigger. In a tab bar the watch fits the bar, and
+  // the countdown sits beside it.
   placeGrip() {
     const a = this.plugin.settings.watchAnchor;
+    if (a && a.tray) {
+      setIfChanged(this.badgeEl, 'data-side', a.spot === 'l' ? 'right' : 'left');
+      return;
+    }
     // Placed freely: the handle goes bottom right.
     const spot = a && a.spot ? a.spot : 'tl';
     const corner = `${spot[0] === 'b' ? 't' : 'b'}${spot[1] === 'r' ? 'l' : 'r'}`;
@@ -2467,19 +2791,20 @@ class FloatingWatch {
     return { x: pos.fx * Math.max(0, window.innerWidth - w), y: pos.fy * Math.max(0, window.innerHeight - h) };
   }
 
-  showGhost(xy) {
-    if (!xy) {
+  showGhost(target) {
+    if (!target) {
       this.removeGhost();
       return;
     }
     if (!this.ghostEl) {
       this.ghostEl = document.body.createDiv('pocket-watch-ghost');
       this.ghostEl.setAttr('data-type', this.plugin.settings.watchType);
-      this.ghostEl.style.width = `${this.el.offsetWidth}px`;
-      this.ghostEl.style.height = `${this.el.offsetHeight}px`;
+      this.ghostEl.setAttr('data-slim', this.el.getAttribute('data-slim') || '');
     }
-    this.ghostEl.style.left = `${xy.x}px`;
-    this.ghostEl.style.top = `${xy.y}px`;
+    this.ghostEl.style.width = `${target.w}px`;
+    this.ghostEl.style.height = `${target.h}px`;
+    this.ghostEl.style.left = `${target.xy.x}px`;
+    this.ghostEl.style.top = `${target.xy.y}px`;
   }
 
   removeGhost() {
@@ -2513,7 +2838,7 @@ class FloatingWatch {
       this.el.style.left = `${left}px`;
       this.el.style.top = `${top}px`;
       target = ev.altKey ? null : this.snapTarget(ev.clientX, ev.clientY, left, top);
-      this.showGhost(target && target.xy);
+      this.showGhost(target);
       if (this.shelfEl) this.placeShelf();
     };
     const up = () => {
@@ -2529,7 +2854,8 @@ class FloatingWatch {
       this.removeGhost();
       const s = this.plugin.settings;
       if (target) {
-        s.watchAnchor = target.id ? { group: target.id, spot: target.spot } : { window: true, spot: target.spot };
+        s.watchAnchor = target.tray ? { group: target.id, tray: true, spot: target.spot }
+          : target.id ? { group: target.id, spot: target.spot } : { window: true, spot: target.spot };
         s.watchPos = null;
       } else {
         const freeX = window.innerWidth - r.width;
@@ -2538,7 +2864,8 @@ class FloatingWatch {
         s.watchPos = { fx: freeX > 0 ? left / freeX : 0, fy: freeY > 0 ? top / freeY : 0 };
       }
       this.plugin.saveSettings();
-      this.place();
+      // Moving in or out of a tab bar changes its size.
+      this.refresh();
     };
     this.el.addEventListener('pointermove', move);
     this.el.addEventListener('pointerup', up);
@@ -2578,7 +2905,7 @@ class FloatingWatch {
 
   // Alt and the scroll wheel over the watch resize it too.
   onWheel(e) {
-    if (!e.altKey) return;
+    if (!e.altKey || this.trayHeight()) return;
     e.preventDefault();
     this.setSize(this.plugin.settings.watchSize + (e.deltaY < 0 ? 6 : -6));
     window.clearTimeout(this.saveTimer);
@@ -2644,6 +2971,19 @@ class FloatingWatch {
     s.style.left = `${clamp(left, gap, W - sw - gap)}px`;
     s.setAttr('data-side', side);
   }
+}
+
+// A ring segment between radii r0 and r1, from angle a0 to a1 (degrees clockwise from 12).
+function wedgePath(r0, r1, a0, a1) {
+  if (a1 - a0 < 0.05) return '';
+  if (a1 - a0 >= 359.95) return `${circlePath(100, 100, r1)} ${circlePath(100, 100, r0)}`;
+  const large = a1 - a0 > 180 ? 1 : 0;
+  const [x1, y1] = polar(r1, a0);
+  const [x2, y2] = polar(r1, a1);
+  const [x3, y3] = polar(r0, a1);
+  const [x4, y4] = polar(r0, a0);
+  const f = (v) => v.toFixed(2);
+  return `M ${f(x1)} ${f(y1)} A ${r1} ${r1} 0 ${large} 1 ${f(x2)} ${f(y2)} L ${f(x3)} ${f(y3)} A ${r0} ${r0} 0 ${large} 0 ${f(x4)} ${f(y4)} Z`;
 }
 
 function turn(el, angle) {
@@ -2720,6 +3060,9 @@ class Dashboard {
     this.stateEl.setText(STATE_LABELS[p.state]);
     this.headEl.setAttr('data-state', p.state);
     this.pauseBtn.setText(p.paused ? 'Resume tracking' : 'Pause tracking');
+    setText(this.outsideLabelEl, p.outside ? 'Tracking outside' : 'Track outside');
+    this.outsideBtn.classList.toggle('is-active', p.outside);
+    this.outsideBtn.setAttr('aria-pressed', String(p.outside));
   }
 
   render() {
@@ -2749,8 +3092,17 @@ class Dashboard {
     const row = left.createDiv('pocket-watch-state-row');
     row.createSpan('pocket-watch-dot');
     this.stateEl = row.createSpan('pocket-watch-state');
-    this.pauseBtn = this.headEl.createEl('button');
+    const actions = this.headEl.createDiv('pocket-watch-head-actions');
+    this.pauseBtn = actions.createEl('button');
     this.pauseBtn.addEventListener('click', () => p.togglePause());
+    // A quick way to keep counting while you read or research in another app.
+    this.outsideBtn = actions.createEl('button', {
+      cls: 'pocket-watch-outside',
+      attr: { 'aria-label': 'Keep counting while you work in other apps, such as a browser or a PDF reader. The idle limit waits until you are back.' },
+    });
+    setIcon(this.outsideBtn.createSpan('pocket-watch-outside-icon'), 'external-link');
+    this.outsideLabelEl = this.outsideBtn.createSpan();
+    this.outsideBtn.addEventListener('click', () => p.toggleOutside());
 
     const idle = new Setting(el)
       .setName('Idle limit')
@@ -2967,12 +3319,12 @@ class Dashboard {
     dropdown(new Setting(el).setName('Type'), { analog: 'Analog', digital: 'Digital' }, s.watchType, (v) => change({ watchType: v }));
     if (s.watchType === 'digital') {
       dropdown(new Setting(el).setName('Style'), DIGITAL_STYLES, s.digitalStyle, (v) => change({ digitalStyle: v }));
-      dropdown(new Setting(el).setName('Layout'), DIGITAL_LAYOUTS, s.digitalLayout, (v) => change({ digitalLayout: v }));
+      if (!SHAPED_STYLES.includes(s.digitalStyle)) dropdown(new Setting(el).setName('Layout'), DIGITAL_LAYOUTS, s.digitalLayout, (v) => change({ digitalLayout: v }));
     } else {
       dropdown(new Setting(el).setName('Face'), faceNames(), s.face, (v) => change({ face: v }));
       dropdown(new Setting(el).setName('Hands'), HANDS, s.hands, (v) => change({ hands: v }));
     }
-    el.createDiv({ cls: 'pocket-watch-compare', text: 'More options, like what shows at 12, 3, 6 and 9 o\'clock, are in the plugin settings.' });
+    el.createDiv({ cls: 'pocket-watch-compare', text: 'Drag the watch onto a pane\'s tab bar to tuck it in there. More options, like what shows at 12, 3, 6 and 9 o\'clock, are in the plugin settings.' });
   }
 }
 
@@ -3004,6 +3356,7 @@ function drawPreview(plugin, container, patch, now) {
   preview.badgeEl = createDiv();
   preview.alertDotEl = createDiv();
   preview.faceEl = container;
+  preview.size = proxy.settings.watchSize;
   preview.build(now);
   preview.update(now);
 }
@@ -3086,11 +3439,20 @@ class PocketWatchSettingTab extends PluginSettingTab {
         .onChange((v) => set({ watchSize: v })));
     new Setting(el)
       .setName('Position')
-      .setDesc('Drag the watch onto a pane and it snaps to a corner or edge. Drop it on the ribbon or status bar to snap it to the window, or hold Alt to place it freely.')
+      .setDesc('Drag the watch onto a pane and it snaps to a corner or edge. Drop it on a pane\'s tab bar to tuck it in there, sized to fit. Drop it on the ribbon or status bar to snap it to the window, or hold Alt to place it freely.')
       .addButton((b) => b.setButtonText('Reset').onClick(() => set({ watchAnchor: null, watchPos: null })));
 
     // Customise the watch you are wearing.
-    if (s.watchType === 'digital') {
+    if (s.watchType === 'digital' && SHAPED_STYLES.includes(s.digitalStyle)) {
+      const name = DIGITAL_STYLES[s.digitalStyle];
+      const body = group('customise', `Customise ${name}`, 'Clock and seconds.');
+      dropdown(new Setting(body).setName('Clock'), CLOCKS, s.clock, (v) => set({ clock: v }, true));
+      toggle(body, 'Seconds', 'digitalSeconds');
+      toggle(body, 'Blinking colon', 'blinkColon');
+      if (s.digitalStyle !== 'capsule') {
+        toggle(body, s.digitalStyle === 'column' ? 'Fill' : 'Line', 'digitalBar', 'Fills up toward your daily goal, and counts down during a focus session.');
+      }
+    } else if (s.watchType === 'digital') {
       const body = group('customise', 'Customise the digital watch', 'Layout, clock, and what it shows.');
       dropdown(
         new Setting(body).setName('Layout').setDesc('Wide has the time over a line of details, slim is a single line, tall stacks the hours over the minutes, and compact is just the time.'),
@@ -3122,6 +3484,7 @@ class PocketWatchSettingTab extends PluginSettingTab {
           const setting = new Setting(body).setName(slot.name);
           dropdown(setting, COMPLICATIONS, s[slot.key], (v) => set({ [slot.key]: v }, true));
           if (face.window === slot.key) setting.setDesc(`${face.name} shows its movement here.`).setDisabled(true);
+          if (face.regulator === slot.key) setting.setDesc(`${face.name} shows the hours here.`).setDisabled(true);
         }
       }
       toggle(body, 'Goal ring', 'goalRing', 'A ring on the bezel that fills up toward your daily goal.');
@@ -3221,8 +3584,10 @@ class PocketWatchSettingTab extends PluginSettingTab {
     }
     gallery.createDiv({ cls: 'pocket-watch-gallery-label', text: 'Digital' });
     grid = gallery.createDiv({ cls: ['pocket-watch-gallery-grid', 'is-digital'] });
+    // The slim ones are drawn larger, so they fill their card like the others.
+    const slimSize = { hairline: 116, capsule: 124, column: 96 };
     for (const [key, name] of Object.entries(DIGITAL_STYLES)) {
-      card(grid, name, s.watchType === 'digital' && s.digitalStyle === key, { watchType: 'digital', digitalStyle: key }, 72);
+      card(grid, name, s.watchType === 'digital' && s.digitalStyle === key, { watchType: 'digital', digitalStyle: key }, slimSize[key] || 72);
     }
   }
 }
