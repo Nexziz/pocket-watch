@@ -571,6 +571,7 @@ module.exports = class PocketWatchPlugin extends Plugin {
     this.addCommand({ id: 'switch-project', name: 'Change the project you are tracking', callback: () => this.showProjectMenu() });
     this.addCommand({ id: 'new-project', name: 'New project', callback: () => new ProjectModal(this.app, this).open() });
     this.addCommand({ id: 'lock-project', name: 'Lock or unlock the project you are tracking', callback: () => this.toggleProjectLock() });
+    this.addCommand({ id: 'move-time', name: 'Move time to a project', callback: () => new MoveTimeModal(this.app, this, {}).open() });
     this.addCommand({ id: 'toggle-watch', name: 'Show or hide the watch', callback: () => this.updateWatch({ showWatch: !this.settings.showWatch }) });
     this.addCommand({ id: 'toggle-pause', name: 'Pause or resume the timer', callback: () => this.togglePause() });
     this.addCommand({ id: 'toggle-outside', name: 'Track time outside Obsidian too, or stop', callback: () => this.toggleOutside() });
@@ -1027,12 +1028,51 @@ module.exports = class PocketWatchPlugin extends Plugin {
   // The active project's share of a day, made when first needed; null when no project is active.
   projectDay(day) {
     const project = this.activeProject();
-    if (!project) return null;
+    return project ? this.projectBucket(day, project.id) : null;
+  }
+
+  // A project's share of a day, made empty when it has none yet.
+  projectBucket(day, id) {
     day.projects = day.projects || {};
-    if (!day.projects[project.id]) {
-      day.projects[project.id] = { ms: 0, written: 0, deleted: 0, sessions: 0, focusMs: 0, hours: new Array(24).fill(0), files: {} };
+    if (!day.projects[id]) day.projects[id] = { ms: 0, written: 0, deleted: 0, sessions: 0, focusMs: 0, hours: new Array(24).fill(0), files: {} };
+    return day.projects[id];
+  }
+
+  // Move the time on the given days from one project to another, either of which can be no
+  // project: its minutes, hours of the day, notes, words and focus sessions. Returns how much
+  // moved, and what undoMove needs to put it back.
+  async moveTime(keys, from, to) {
+    const undo = [];
+    let moved = 0;
+    if (from === to) return { moved, days: 0, undo };
+    for (const key of keys) {
+      const day = this.days[key];
+      if (!day) continue;
+      const share = projectSlice(day, from);
+      if (!share.ms && !share.written && !share.deleted && !share.sessions) continue;
+      undo.push([key, JSON.stringify(day.projects || null)]);
+      if (to !== NO_PROJECT) addSlice(this.projectBucket(day, to), share);
+      if (from !== NO_PROJECT) delete day.projects[from];
+      if (day.projects && !Object.keys(day.projects).length) delete day.projects;
+      moved += share.ms;
     }
-    return day.projects[project.id];
+    if (undo.length) {
+      await this.saveSettings();
+      this.refreshProjects();
+    }
+    return { moved, days: undo.length, undo };
+  }
+
+  async undoMove(undo) {
+    for (const [key, saved] of undo) {
+      const day = this.days[key];
+      if (!day) continue;
+      const projects = JSON.parse(saved);
+      if (projects) day.projects = projects;
+      else delete day.projects;
+    }
+    await this.saveSettings();
+    this.refreshProjects();
   }
 
   // Switch the project your time goes to. When tracking is locked, ask first.
@@ -4075,6 +4115,133 @@ class ProjectModal extends Modal {
   }
 }
 
+// Move time to the project it belongs to: from no project (or another project) to the right
+// one, over a day, a range of days or a span between two dates. It says how much will move
+// before it does, and the notice afterwards can undo it.
+class MoveTimeModal extends Modal {
+  constructor(app, plugin, opts) {
+    super(app);
+    this.plugin = plugin;
+    const active = plugin.activeProject();
+    const firstOther = plugin.settings.projects.find((x) => !x.archived && x.id !== opts.from);
+    this.from = opts.from || NO_PROJECT;
+    this.to = opts.to || (this.from === NO_PROJECT ? (active || firstOther || {}).id : NO_PROJECT) || NO_PROJECT;
+    this.day = opts.day || null;
+    this.span = opts.day ? 'day' : opts.span || '30';
+    this.start = opts.day || dayKey(daysAgo(29));
+    this.end = opts.day || dayKey(daysAgo(0));
+  }
+
+  name(id) {
+    const project = this.plugin.settings.projects.find((x) => x.id === id);
+    return project ? project.name : 'No project';
+  }
+
+  // The days the move covers, oldest first.
+  keys() {
+    const p = this.plugin;
+    if (this.span === 'day') return [this.day];
+    if (this.span === 'all') return Object.keys(p.days).sort();
+    if (this.span === 'custom') {
+      const [a, b] = [this.start, this.end].sort();
+      return Object.keys(p.days).filter((k) => k >= a && k <= b).sort();
+    }
+    const keys = [];
+    for (let i = Number(this.span) - 1; i >= 0; i--) keys.push(dayKey(daysAgo(i)));
+    return keys;
+  }
+
+  onOpen() {
+    const p = this.plugin;
+    const { contentEl } = this;
+    contentEl.addClass('pw-move-modal');
+    this.titleEl.setText('Move time to a project');
+    contentEl.createDiv({ cls: 'pw-move-intro', text: 'Time you tracked without a project, or on the wrong one, can move to the one it belongs to.' });
+    const options = (withNone, includeArchived) => {
+      const o = {};
+      for (const x of p.settings.projects) if (includeArchived || !x.archived) o[x.id] = x.archived ? `${x.name} (archived)` : x.name;
+      if (withNone) o[NO_PROJECT] = 'No project';
+      return o;
+    };
+    const fromOptions = Object.assign({ [NO_PROJECT]: 'No project' }, options(false, true));
+    dropdown(new Setting(contentEl).setName('From'), fromOptions, this.from, (v) => {
+      this.from = v;
+      this.update();
+    });
+    dropdown(new Setting(contentEl).setName('To'), options(true, false), this.to, (v) => {
+      this.to = v;
+      this.update();
+    });
+    const spans = {};
+    if (this.day) spans.day = keyToDate(this.day).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+    Object.assign(spans, { 7: 'The last 7 days', 30: 'The last 30 days', 90: 'The last 90 days', 365: 'The last year', all: 'All time', custom: 'Between two dates' });
+    dropdown(new Setting(contentEl).setName('Days'), spans, this.span, (v) => {
+      this.span = v;
+      this.update();
+    });
+    this.datesEl = new Setting(contentEl).setName('Between').setDesc('From the first date to the second, both included.');
+    for (const key of ['start', 'end']) {
+      const input = this.datesEl.controlEl.createEl('input', { cls: 'pw-move-date', attr: { type: 'date', value: this[key] } });
+      input.addEventListener('change', () => {
+        if (input.value) this[key] = input.value;
+        this.update();
+      });
+    }
+    this.previewEl = contentEl.createDiv('pw-move-preview');
+    const buttons = contentEl.createDiv('pw-project-modal-buttons');
+    buttons.createDiv('pw-project-modal-gap');
+    buttons.createEl('button', { text: 'Cancel' }).addEventListener('click', () => this.close());
+    this.moveBtn = buttons.createEl('button', { cls: 'mod-cta', text: 'Move' });
+    this.moveBtn.addEventListener('click', () => this.move());
+    this.update();
+  }
+
+  // How much the move would carry, said before you make it.
+  update() {
+    const p = this.plugin;
+    this.datesEl.settingEl.toggleClass('is-hidden', this.span !== 'custom');
+    let ms = 0;
+    let days = 0;
+    for (const key of this.keys()) {
+      const share = projectSlice(p.getDay(key), this.from);
+      if (share.ms >= 1000) {
+        ms += share.ms;
+        days++;
+      }
+    }
+    const same = this.from === this.to;
+    this.previewEl.empty();
+    if (same) this.previewEl.setText('Pick a different project to move it to.');
+    else if (!ms) this.previewEl.setText(`There's no time on ${this.name(this.from)} on these days.`);
+    else {
+      this.previewEl.createSpan({ cls: 'pw-move-amount', text: fmtShort(ms) });
+      this.previewEl.createSpan({ text: ` on ${days} ${days === 1 ? 'day' : 'days'} moves from ${this.name(this.from)} to ${this.name(this.to)}.` });
+    }
+    this.moveBtn.disabled = same || !ms;
+  }
+
+  async move() {
+    const p = this.plugin;
+    const result = await p.moveTime(this.keys(), this.from, this.to);
+    this.close();
+    if (!result.days) return;
+    const note = createFragment();
+    note.createSpan({ text: `Moved ${fmtShort(result.moved)} to ${this.name(this.to)}. ` });
+    const undo = note.createEl('a', { text: 'Undo', attr: { href: '#' } });
+    const notice = new Notice(note, 10000);
+    undo.addEventListener('click', async (e) => {
+      e.preventDefault();
+      await p.undoMove(result.undo);
+      notice.hide();
+      new Notice('Moved it back');
+    });
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // The stats page
 // ---------------------------------------------------------------------------
@@ -4082,6 +4249,33 @@ class ProjectModal extends Modal {
 // Time no project was tracking, as if it were a project of its own.
 const NO_PROJECT = '_none';
 const EMPTY_SLICE = Object.freeze({ ms: 0, written: 0, deleted: 0, sessions: 0, focusMs: 0 });
+const SLICE_NUMBERS = ['ms', 'written', 'deleted', 'sessions', 'focusMs'];
+
+// One project's share of a day. The share of no project is what's left of the day once
+// every project's share is taken out, so days from before projects all belong to it.
+function projectSlice(d, id) {
+  if (id !== NO_PROJECT) return (d.projects || {})[id] || EMPTY_SLICE;
+  const rest = {
+    ms: d.ms, written: d.written, deleted: d.deleted, sessions: d.sessions || 0, focusMs: d.focusMs || 0,
+    hours: (d.hours || new Array(24).fill(0)).slice(), files: Object.assign({}, d.files || {}),
+  };
+  for (const x of Object.values(d.projects || {})) {
+    for (const k of SLICE_NUMBERS) rest[k] = Math.max(0, rest[k] - (x[k] || 0));
+    (x.hours || []).forEach((ms, h) => (rest.hours[h] = Math.max(0, rest.hours[h] - ms)));
+    for (const [path, ms] of Object.entries(x.files || {})) {
+      rest.files[path] = (rest.files[path] || 0) - ms;
+      if (rest.files[path] < 1000) delete rest.files[path];
+    }
+  }
+  return rest;
+}
+
+// Adds one share of a day into another.
+function addSlice(into, from) {
+  for (const k of SLICE_NUMBERS) into[k] = (into[k] || 0) + (from[k] || 0);
+  (from.hours || []).forEach((ms, h) => (into.hours[h] += ms));
+  for (const [path, ms] of Object.entries(from.files || {})) into.files[path] = (into.files[path] || 0) + ms;
+}
 
 const STAT_RANGES = [['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['365', 'Year'], ['all', 'All time']];
 
@@ -4207,23 +4401,8 @@ class StatsView extends ItemView {
 
   // --- Data ---------------------------------------------------------------
 
-  // One project's share of a day. The share of no project is what's left of the day once
-  // every project's share is taken out, so days from before projects all belong to it.
   slice(d, id) {
-    if (id !== NO_PROJECT) return (d.projects || {})[id] || EMPTY_SLICE;
-    const rest = {
-      ms: d.ms, written: d.written, deleted: d.deleted, sessions: d.sessions || 0, focusMs: d.focusMs || 0,
-      hours: (d.hours || new Array(24).fill(0)).slice(), files: Object.assign({}, d.files || {}),
-    };
-    for (const x of Object.values(d.projects || {})) {
-      for (const k of ['ms', 'written', 'deleted', 'sessions', 'focusMs']) rest[k] = Math.max(0, rest[k] - (x[k] || 0));
-      (x.hours || []).forEach((ms, h) => (rest.hours[h] = Math.max(0, rest.hours[h] - ms)));
-      for (const [path, ms] of Object.entries(x.files || {})) {
-        rest.files[path] = (rest.files[path] || 0) - ms;
-        if (rest.files[path] < 1000) delete rest.files[path];
-      }
-    }
-    return rest;
+    return projectSlice(d, id);
   }
 
   // A day as the page shows it: all of it, or only the projects you've turned on.
@@ -4572,6 +4751,15 @@ class StatsView extends ItemView {
     tile('Time', fmtShort(d.ms));
     tile('Words written', fmtNum(d.written), `${fmtNum(d.deleted)} deleted`);
     tile('Focus sessions', String(d.sessions || 0), d.focusMs ? `${fmtShort(d.focusMs)} of focus` : '');
+    // Time that day without a project can go to the one it belongs to.
+    const loose = p.settings.projects.length ? projectSlice(p.getDay(key), NO_PROJECT).ms : 0;
+    if (loose >= 60000) {
+      const line = panel.createDiv('pw-stats-loose');
+      line.createSpan('pw-project-dot').style.background = 'var(--pw-p-none)';
+      line.createSpan({ text: `${fmtShort(loose)} on no project this day` });
+      const move = line.createEl('button', { text: 'Move to a project' });
+      move.addEventListener('click', () => new MoveTimeModal(this.app, p, { from: NO_PROJECT, day: key }).open());
+    }
     if (d.hours && d.hours.some((h) => h > 0)) {
       panel.createDiv({ cls: 'pw-stats-label', text: 'Hour by hour' });
       const strip = panel.createDiv('pw-hour-strip');
@@ -4671,6 +4859,11 @@ class StatsView extends ItemView {
       share.createDiv('pw-project-share-fill').style.cssText = `width: ${total ? (entry.ms / total) * 100 : 0}%; background: ${entry.color}`;
       row.createDiv({ cls: 'pw-project-time', text: fmtShort(entry.ms) });
       row.createDiv({ cls: 'pw-project-pct', text: total ? `${Math.round((entry.ms / total) * 100)}%` : '' });
+      if (entry.ms > 0) {
+        const move = row.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': entry.project ? `Move ${entry.name}'s time to another project` : 'Move this time to a project' } });
+        setIcon(move, 'arrow-right-left');
+        move.addEventListener('click', () => new MoveTimeModal(this.app, p, { from: entry.id, span: this.range }).open());
+      } else row.createDiv('pw-project-edit-gap');
       if (entry.project) {
         const edit = row.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': `Edit ${entry.name}` } });
         setIcon(edit, 'pencil');

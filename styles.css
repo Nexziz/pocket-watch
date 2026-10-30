@@ -4166,7 +4166,7 @@ body.theme-light {
 
 .pw-project-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1.4fr) minmax(0, 1fr) auto auto auto;
+  grid-template-columns: auto minmax(0, 1.4fr) minmax(0, 1fr) auto auto auto auto;
   align-items: center;
   gap: 12px;
   padding: 8px 0;
@@ -4326,4 +4326,53 @@ body.theme-light {
 
 .pw-project-modal-gap {
   flex: 1;
+}
+
+/* ---------------------------------------------------------------------------
+   Moving time to the project it belongs to
+   --------------------------------------------------------------------------- */
+
+.pw-move-intro {
+  margin-bottom: 8px;
+  color: var(--text-muted);
+}
+
+.pw-move-modal .setting-item.is-hidden {
+  display: none;
+}
+
+.pw-move-date {
+  width: auto;
+}
+
+.pw-move-date + .pw-move-date {
+  margin-left: 8px;
+}
+
+.pw-move-preview {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--text-muted);
+  background: var(--background-secondary);
+}
+
+.pw-move-amount {
+  font-weight: 650;
+  color: var(--text-normal);
+}
+
+/* On a picked day: its time without a project, ready to move */
+.pw-stats-loose {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-top: 12px;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+.pw-stats-loose button {
+  margin-left: auto;
 }
