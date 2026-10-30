@@ -1,6 +1,6 @@
 'use strict';
 
-const { Plugin, PluginSettingTab, Setting, MarkdownView, Notice, Menu, setIcon } = require('obsidian');
+const { Plugin, PluginSettingTab, Setting, MarkdownView, Notice, Menu, ItemView, setIcon } = require('obsidian');
 
 // ---------------------------------------------------------------------------
 // Options
@@ -263,6 +263,9 @@ let drawings = 0;
 const DEFAULT_WATCH_POS = { fx: 0.97, fy: 0.9 };
 const SNAP_INSET = 14;
 const SPOTS = ['tl', 'tc', 'tr', 'ml', 'mr', 'bl', 'bc', 'br'];
+// The stats page, which opens in a tab of its own.
+const VIEW_STATS = 'pocket-watch-stats';
+
 // Where to buy the maker a coffee.
 const SUPPORT_URL = 'https://buymeacoffee.com/nexsiz';
 
@@ -550,7 +553,9 @@ module.exports = class PocketWatchPlugin extends Plugin {
     this.addRibbonIcon('clock', 'Open Pocket Watch', () => this.watch && this.watch.toggleShelf());
     this.addSettingTab(new PocketWatchSettingTab(this.app, this));
 
+    this.registerView(VIEW_STATS, (leaf) => new StatsView(leaf, this));
     this.addCommand({ id: 'toggle-shelf', name: 'Open or close the stats shelf', callback: () => this.watch && this.watch.toggleShelf() });
+    this.addCommand({ id: 'open-stats', name: 'Open your stats', callback: () => this.openStats() });
     this.addCommand({ id: 'toggle-watch', name: 'Show or hide the watch', callback: () => this.updateWatch({ showWatch: !this.settings.showWatch }) });
     this.addCommand({ id: 'toggle-pause', name: 'Pause or resume the timer', callback: () => this.togglePause() });
     this.addCommand({ id: 'toggle-outside', name: 'Track time outside Obsidian too, or stop', callback: () => this.toggleOutside() });
@@ -694,6 +699,9 @@ module.exports = class PocketWatchPlugin extends Plugin {
     if (state === 'tracking' || state === 'outside') {
       const day = this.today();
       day.ms += delta;
+      // And the hour of the day it falls in, for the stats page.
+      day.hours = day.hours || new Array(24).fill(0);
+      day.hours[new Date(now).getHours()] += delta;
       if (state === 'tracking') {
         this.sinceActivityMs += delta;
         // The note you're working in gets the time too. Time outside Obsidian isn't in a note.
@@ -730,6 +738,18 @@ module.exports = class PocketWatchPlugin extends Plugin {
     if (!this.paused) this.markActive();
     new Notice(this.paused ? 'Pocket Watch paused' : 'Pocket Watch resumed');
     this.tick();
+  }
+
+  // The stats page, in a tab of its own; the one already open if there is one.
+  async openStats() {
+    const ws = this.app.workspace;
+    let leaf = ws.getLeavesOfType(VIEW_STATS)[0];
+    if (!leaf) {
+      leaf = ws.getLeaf('tab');
+      await leaf.setViewState({ type: VIEW_STATS, active: true });
+    }
+    ws.revealLeaf(leaf);
+    if (this.watch) this.watch.closeShelf();
   }
 
   // Count the time you spend in other apps too, until you turn it off again.
@@ -877,6 +897,7 @@ module.exports = class PocketWatchPlugin extends Plugin {
     }
     menu.addSeparator();
     menu.addItem((i) => i.setTitle('Open the shelf').setIcon('calendar-days').onClick(() => this.watch && !this.watch.shelfEl && this.watch.openShelf()));
+    menu.addItem((i) => i.setTitle('Open your stats').setIcon('bar-chart-2').onClick(() => this.openStats()));
     menu.addItem((i) => i.setTitle(this.paused ? 'Resume tracking' : 'Pause tracking').setIcon('timer').onClick(() => this.togglePause()));
     menu.addItem((i) => i.setTitle('Track outside Obsidian').setIcon('external-link').setChecked(this.outside).onClick(() => this.toggleOutside()));
     menu.addItem((i) => i.setTitle('Hide the watch').setIcon('eye-off').onClick(() => this.updateWatch({ showWatch: false })));
@@ -3534,7 +3555,7 @@ class Dashboard {
     this.renderFocus(el.createDiv('pocket-watch-section'));
     this.renderCalendar(el.createDiv('pocket-watch-section'));
     this.renderDay(el.createDiv('pocket-watch-section'));
-    this.renderStats(el.createDiv('pocket-watch-section'));
+    this.renderStatsLink(el.createDiv('pocket-watch-section'));
     this.renderWatchOptions(el.createDiv('pocket-watch-section'));
     el.scrollTop = scroll;
     this.refreshLive();
@@ -3731,140 +3752,23 @@ class Dashboard {
     }
   }
 
-  renderStats(el) {
+  // The rest of your stats live on a page of their own.
+  renderStatsLink(el) {
     const p = this.plugin;
-    const s = p.stats();
     const week = p.sumLastDays(7);
-    const month = p.sumLastDays(30);
-    el.createEl('h4', { text: 'Stats' });
-
-    const tiles = el.createDiv('pocket-watch-tiles');
-    const tile = (label, value, sub) => {
-      const t = tiles.createDiv('pocket-watch-tile');
-      t.createDiv({ cls: 'pocket-watch-tile-val', text: value });
-      t.createDiv({ cls: 'pocket-watch-tile-label', text: label });
-      if (sub) t.createDiv({ cls: 'pocket-watch-tile-sub', text: sub });
-    };
-    tile('Last 7 days', fmtShort(week.ms), `${fmtNum(week.written)} words`);
-    tile('Last 30 days', fmtShort(month.ms), `${fmtNum(month.written)} words`);
-    tile('All time', fmtShort(s.ms), `${s.activeDays} active days`);
-    tile('Daily average', fmtShort(s.activeDays ? s.ms / s.activeDays : 0), 'on active days');
-    tile('Streak', `${s.streak} ${s.streak === 1 ? 'day' : 'days'}`, 'at least 1 min a day');
-    tile('Best day', fmtShort(s.bestMs), s.bestKey || '');
-    tile('Words written', fmtNum(s.written), 'all time');
-    tile('Words deleted', fmtNum(s.deleted), 'all time');
-    tile('Focus sessions', fmtNum(s.sessions), 'all time');
-    tile('Focus time', fmtShort(s.focusMs), 'all time');
-
-    el.createDiv({ cls: 'pocket-watch-label', text: 'Last 14 days' });
-    const bars = el.createDiv('pocket-watch-bars');
-    const days = [];
-    for (let i = 13; i >= 0; i--) {
-      const date = daysAgo(i);
-      days.push({ date, ms: p.getDay(dayKey(date)).ms });
-    }
-    const max = Math.max(1, ...days.map((x) => x.ms));
-    for (const { date, ms } of days) {
-      const col = bars.createDiv('pocket-watch-bar-col');
-      col.setAttr('aria-label', `${dayKey(date)}: ${fmtShort(ms)}`);
-      const track = col.createDiv('pocket-watch-bar-track');
-      track.createDiv('pocket-watch-bar').style.height = `${(ms / max) * 100}%`;
-      col.createDiv({ cls: 'pocket-watch-bar-day', text: String(date.getDate()) });
-    }
-
-    const lastWeek = [];
-    for (let i = 0; i < 7; i++) lastWeek.push(dayKey(daysAgo(i)));
-    const notes = p.topFiles(lastWeek, 5);
-    if (notes.length) {
-      el.createDiv({ cls: ['pocket-watch-label', 'is-spaced'], text: 'Top notes, last 7 days' });
-      this.renderNotes(el, notes);
-    }
-
-    this.renderYear(el);
+    const streak = p.streak();
+    const link = el.createEl('button', { cls: 'pocket-watch-stats-link' });
+    const icon = link.createDiv('pocket-watch-stats-link-icon');
+    setIcon(icon, 'bar-chart-2');
+    const words = link.createDiv('pocket-watch-stats-link-text');
+    words.createDiv({ cls: 'pocket-watch-stats-link-title', text: 'Open your stats' });
+    words.createDiv({ cls: 'pocket-watch-stats-link-sub', text: `${fmtShort(week.ms)} in the last 7 days · ${streak}-day streak` });
+    setIcon(link.createDiv('pocket-watch-stats-link-arrow'), 'arrow-up-right');
+    link.addEventListener('click', () => p.openStats());
   }
 
-  // A list of notes with the time in each, as bars against the longest. Click one to open it.
   renderNotes(el, notes) {
-    const p = this.plugin;
-    const list = el.createDiv('pocket-watch-notes');
-    const max = notes[0][1];
-    for (const [path, ms] of notes) {
-      const file = p.app.vault.getAbstractFileByPath(path);
-      const item = list.createDiv({ cls: 'pocket-watch-note', attr: { 'aria-label': path } });
-      item.createDiv('pocket-watch-note-fill').style.width = `${(ms / max) * 100}%`;
-      const name = item.createDiv('pocket-watch-note-name');
-      name.createSpan({ text: noteName(path) });
-      const folder = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
-      if (folder) name.createSpan({ cls: 'pocket-watch-note-folder', text: folder });
-      item.createDiv({ cls: 'pocket-watch-note-time', text: fmtShort(ms) });
-      if (file && file.extension) {
-        item.addClass('is-link');
-        item.addEventListener('click', () => {
-          p.app.workspace.getLeaf(false).openFile(file);
-          if (p.watch) p.watch.closeShelf();
-        });
-      } else {
-        item.addClass('is-gone');
-      }
-    }
-  }
-
-  // The past year, a square for every day, coloured like the calendar: the columns are weeks,
-  // ending with this one. Click a day to look at it.
-  renderYear(el) {
-    const p = this.plugin;
-    const t = new Date();
-    const mon = p.settings.weekStartsMonday;
-    const intoWeek = (t.getDay() - (mon ? 1 : 0) + 7) % 7;
-    const weeks = 53;
-    const first = new Date(t.getFullYear(), t.getMonth(), t.getDate() - intoWeek - (weeks - 1) * 7);
-    const todayKey = dayKey(t);
-    el.createDiv({ cls: ['pocket-watch-label', 'is-spaced'], text: 'Past year' });
-    const wrap = el.createDiv('pocket-watch-year');
-    const months = wrap.createDiv('pocket-watch-year-months');
-    const grid = wrap.createDiv('pocket-watch-year-grid');
-    let total = 0;
-    let active = 0;
-    let run = 0;
-    let longest = 0;
-    let lastLabel = -4;
-    for (let w = 0; w < weeks; w++) {
-      for (let i = 0; i < 7; i++) {
-        const date = new Date(first.getFullYear(), first.getMonth(), first.getDate() + w * 7 + i);
-        const key = dayKey(date);
-        if (date.getDate() === 1 && w - lastLabel >= 4 && w < weeks - 2) {
-          const label = months.createDiv({ cls: 'pocket-watch-year-month', text: date.toLocaleDateString(undefined, { month: 'short' }) });
-          label.style.gridColumn = `${w + 1} / span 4`;
-          lastLabel = w;
-        }
-        if (date > t) {
-          grid.createDiv({ cls: ['pocket-watch-year-day', 'is-future'] });
-          continue;
-        }
-        const ms = p.getDay(key).ms;
-        total += ms;
-        if (ms >= ACTIVE_DAY_MS) {
-          active++;
-          longest = Math.max(longest, ++run);
-        } else run = 0;
-        const level = ms === 0 ? 0 : ms < 30 * 60000 ? 1 : ms < 90 * 60000 ? 2 : ms < 180 * 60000 ? 3 : 4;
-        const cell = grid.createDiv({ cls: ['pocket-watch-year-day', `pocket-watch-l${level}`] });
-        if (key === todayKey) cell.addClass('is-today');
-        if (key === this.selected) cell.addClass('is-selected');
-        cell.setAttr('aria-label', `${date.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}: ${fmtShort(ms)}`);
-        cell.addEventListener('click', () => {
-          this.selected = key;
-          this.month = new Date(date.getFullYear(), date.getMonth(), 1);
-          this.render();
-        });
-      }
-    }
-    const legend = wrap.createDiv('pocket-watch-year-foot');
-    legend.createSpan({ text: `${fmtShort(total)} · ${active} active ${active === 1 ? 'day' : 'days'} · longest streak ${longest} ${longest === 1 ? 'day' : 'days'}` });
-    const scale = legend.createSpan('pocket-watch-year-scale');
-    scale.createSpan({ text: 'Less' });
-    for (let l = 0; l <= 4; l++) scale.createSpan({ cls: ['pocket-watch-year-day', `pocket-watch-l${l}`] });
-    scale.createSpan({ text: 'More' });
+    noteBars(this.plugin, el, notes, { onOpen: () => this.plugin.watch && this.plugin.watch.closeShelf() });
   }
 
   // Quick changes to the watch; everything else is in the plugin settings.
@@ -3938,6 +3842,689 @@ function dropdown(setting, options, value, onChange) {
     for (const [k, v] of Object.entries(options)) d.addOption(k, v);
     d.setValue(String(value)).onChange(onChange);
   });
+}
+
+// ---------------------------------------------------------------------------
+// The stats page
+// ---------------------------------------------------------------------------
+
+const STAT_RANGES = [['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['365', 'Year'], ['all', 'All time']];
+
+// Steps for an axis of time, the first that needs no more than four of them is used.
+const TIME_STEPS = [5, 10, 15, 30, 60, 120, 180, 240, 360, 720, 1440, 2880, 5760, 11520].map((m) => m * 60000);
+
+// Clean steps for an axis of time or of a count, up to and including max.
+function axisTicks(max, time) {
+  let step;
+  if (time) step = TIME_STEPS.find((s) => s * 4 >= max) || TIME_STEPS[TIME_STEPS.length - 1];
+  else {
+    const raw = Math.max(1, max / 4);
+    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    step = [1, 2, 5, 10].map((m) => m * mag).find((s) => s >= raw);
+  }
+  const ticks = [];
+  for (let v = 0; v < max + step; v += step) {
+    ticks.push(v);
+    if (v >= max) break;
+  }
+  return ticks;
+}
+
+function fmtCount(n) {
+  if (Math.abs(n) < 1000) return String(Math.round(n));
+  if (Math.abs(n) < 10000) return fmtNum(Math.round(n));
+  return `${(n / 1000).toFixed(Math.abs(n) < 100000 ? 1 : 0).replace(/\.0$/, '')}K`;
+}
+
+// A bar from a baseline at y0 up (or down) to y, rounded only at its data end.
+function barPath(x, w, y0, y) {
+  const h = Math.abs(y0 - y);
+  if (h < 0.5) return '';
+  const r = Math.min(4, w / 2, h);
+  if (y < y0) return `M ${x} ${y0} V ${y + r} Q ${x} ${y} ${x + r} ${y} H ${x + w - r} Q ${x + w} ${y} ${x + w} ${y + r} V ${y0} Z`;
+  return `M ${x} ${y0} V ${y - r} Q ${x} ${y} ${x + r} ${y} H ${x + w - r} Q ${x + w} ${y} ${x + w} ${y - r} V ${y0} Z`;
+}
+
+// A ring segment around (cx, cy), from angle a0 to a1 in degrees clockwise from the top.
+function ringPath(cx, cy, r0, r1, a0, a1) {
+  const at = (r, a) => {
+    const rad = (a * Math.PI) / 180;
+    return `${(cx + r * Math.sin(rad)).toFixed(2)} ${(cy - r * Math.cos(rad)).toFixed(2)}`;
+  };
+  return `M ${at(r1, a0)} A ${r1} ${r1} 0 0 1 ${at(r1, a1)} L ${at(r0, a1)} A ${r0} ${r0} 0 0 0 ${at(r0, a0)} Z`;
+}
+
+// Notes (or folders) with the time in each, as bars against the longest. A note that still
+// exists opens when you click it.
+function noteBars(plugin, el, rows, opts = {}) {
+  const list = el.createDiv('pocket-watch-notes');
+  const max = rows.length ? rows[0][1] : 1;
+  for (const [path, ms] of rows) {
+    const item = list.createDiv({ cls: 'pocket-watch-note', attr: { 'aria-label': `${path}: ${fmtShort(ms)}` } });
+    item.createDiv('pocket-watch-note-fill').style.width = `${(ms / max) * 100}%`;
+    const name = item.createDiv('pocket-watch-note-name');
+    if (opts.folders) {
+      name.createSpan({ text: path || 'Vault root' });
+    } else {
+      name.createSpan({ text: noteName(path) });
+      const folder = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+      if (folder) name.createSpan({ cls: 'pocket-watch-note-folder', text: folder });
+    }
+    item.createDiv({ cls: 'pocket-watch-note-time', text: fmtShort(ms) });
+    if (opts.folders) continue;
+    const file = plugin.app.vault.getAbstractFileByPath(path);
+    if (file && file.extension) {
+      item.addClass('is-link');
+      item.addEventListener('click', () => {
+        plugin.app.workspace.getLeaf(false).openFile(file);
+        if (opts.onOpen) opts.onOpen();
+      });
+    } else {
+      item.addClass('is-gone');
+    }
+  }
+}
+
+// Everything you've tracked, on a page of its own in a tab: the past year at a glance, then
+// for the range you pick your time against the period before, every day's time against
+// your goal, the hours you work, your week, your writing, where the time went, your records
+// and a table of every day.
+class StatsView extends ItemView {
+  constructor(leaf, plugin) {
+    super(leaf);
+    this.plugin = plugin;
+    this.range = '30';
+    this.selected = null;
+  }
+
+  getViewType() {
+    return VIEW_STATS;
+  }
+
+  getDisplayText() {
+    return 'Pocket Watch stats';
+  }
+
+  getIcon() {
+    return 'bar-chart-2';
+  }
+
+  async onOpen() {
+    this.contentEl.addClass('pocket-watch-stats');
+    this.render();
+    // Keep up with the day, but never redraw under the mouse.
+    this.registerInterval(window.setInterval(() => {
+      if (!this.contentEl.matches(':hover')) this.render();
+    }, 60000));
+  }
+
+  async onClose() {
+    window.clearTimeout(this.resizeTimer);
+    if (this.tip) this.tip.remove();
+  }
+
+  onResize() {
+    window.clearTimeout(this.resizeTimer);
+    this.resizeTimer = window.setTimeout(() => this.render(), 150);
+  }
+
+  // --- Data ---------------------------------------------------------------
+
+  // The days of the chosen range, oldest first, and as many days again before them.
+  rangeKeys() {
+    const p = this.plugin;
+    let n;
+    if (this.range === 'all') {
+      const tracked = Object.keys(p.days).filter((k) => p.days[k].ms > 0).sort();
+      const first = tracked.length ? keyToDate(tracked[0]) : daysAgo(0);
+      n = Math.max(1, Math.round((daysAgo(0) - first) / 86400000) + 1);
+    } else {
+      n = Number(this.range);
+    }
+    const keys = [];
+    for (let i = n - 1; i >= 0; i--) keys.push(dayKey(daysAgo(i)));
+    const before = [];
+    if (this.range !== 'all') for (let i = 2 * n - 1; i >= n; i--) before.push(dayKey(daysAgo(i)));
+    return { keys, before, n };
+  }
+
+  sum(keys) {
+    const p = this.plugin;
+    const s = { ms: 0, written: 0, deleted: 0, sessions: 0, focusMs: 0, active: 0 };
+    for (const key of keys) {
+      const d = p.getDay(key);
+      s.ms += d.ms;
+      s.written += d.written;
+      s.deleted += d.deleted;
+      s.sessions += d.sessions || 0;
+      s.focusMs += d.focusMs || 0;
+      if (d.ms >= ACTIVE_DAY_MS) s.active++;
+    }
+    return s;
+  }
+
+  // The range as points for a chart: a day each, or a week each when it's long.
+  series(r) {
+    const p = this.plugin;
+    const weekly = r.keys.length > 120;
+    const out = [];
+    for (let i = 0; i < r.keys.length; i += weekly ? 7 : 1) {
+      const keys = r.keys.slice(i, weekly ? i + 7 : i + 1);
+      const date = keyToDate(keys[0]);
+      const s = this.sum(keys);
+      out.push({
+        key: keys[0],
+        keys,
+        ms: s.ms,
+        written: s.written,
+        deleted: s.deleted,
+        axis: weekly ? date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : String(date.getDate()),
+        long: weekly
+          ? `Week of ${date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`
+          : date.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }),
+      });
+    }
+    return { points: out, weekly };
+  }
+
+  // --- Drawing helpers ----------------------------------------------------
+
+  // A tooltip that follows the pointer: the value first, then what it is.
+  hover(el, value, label) {
+    el.addEventListener('pointerenter', () => {
+      this.tip.empty();
+      this.tip.createDiv({ cls: 'pw-stats-tip-value', text: value });
+      if (label) this.tip.createDiv({ cls: 'pw-stats-tip-label', text: label });
+      this.tip.addClass('is-shown');
+    });
+    el.addEventListener('pointermove', (e) => {
+      const w = this.tip.offsetWidth;
+      this.tip.style.left = `${Math.min(e.clientX + 14, window.innerWidth - w - 8)}px`;
+      this.tip.style.top = `${e.clientY + 16}px`;
+    });
+    el.addEventListener('pointerleave', () => this.tip.removeClass('is-shown'));
+  }
+
+  // A card with a heading, an optional note beside it, and room for its chart.
+  card(parent, title, note) {
+    const card = parent.createDiv('pw-stats-card');
+    const head = card.createDiv('pw-stats-card-head');
+    head.createEl('h2', { text: title });
+    if (note) head.createDiv({ cls: 'pw-stats-card-note', text: note });
+    return card;
+  }
+
+  width(el, fallback = 520) {
+    return Math.max(220, el.clientWidth || fallback);
+  }
+
+  // Columns from a baseline, with a clean axis, a hairline grid, an optional goal line, and
+  // a tooltip on each column. Each point is { value, axis, long, key }.
+  columns(card, points, opts) {
+    const box = card.createDiv('pw-chart-box');
+    const W = this.width(box);
+    const H = opts.height || 190;
+    const [L, R, T, B] = [40, 8, 12, 22];
+    const svg = box.createSvg('svg', { attr: { width: W, height: H, viewBox: `0 0 ${W} ${H}` }, cls: 'pw-chart' });
+    const max = Math.max(opts.goal || 0, ...points.map((pt) => pt.value), opts.time ? 30 * 60000 : 1);
+    const ticks = axisTicks(max, opts.time);
+    const top = ticks[ticks.length - 1];
+    const y = (v) => T + (H - T - B) * (1 - v / top);
+    for (const t of ticks) {
+      svg.createSvg('line', { attr: { x1: L, x2: W - R, y1: y(t), y2: y(t) }, cls: t ? 'pw-chart-grid' : 'pw-chart-base' });
+      svg.createSvg('text', { attr: { x: L - 8, y: y(t) }, cls: ['pw-chart-tick', 'is-y'] }).textContent = opts.time ? (t ? fmtCompact(t) : '0') : fmtCount(t);
+    }
+    const band = (W - L - R) / points.length;
+    const bw = Math.max(1.5, Math.min(24, band - 2));
+    // Room for each label on the axis, by how long the labels are.
+    const room = Math.max(26, Math.max(...points.map((pt) => pt.axis.length)) * 7 + 12);
+    const every = Math.max(1, Math.ceil(points.length / Math.max(1, Math.floor((W - L - R) / room))));
+    points.forEach((pt, i) => {
+      const x = L + i * band + (band - bw) / 2;
+      const d = barPath(x, bw, y(0), y(pt.value));
+      if (d) svg.createSvg('path', { attr: { d }, cls: ['pw-chart-bar', pt.key && pt.key === this.selected ? 'is-selected' : ''] });
+      const hit = svg.createSvg('rect', { attr: { x: L + i * band, y: T, width: band, height: H - T - B }, cls: 'pw-chart-hit' });
+      this.hover(hit, opts.time ? fmtShort(pt.value) : fmtNum(Math.round(pt.value)), pt.long);
+      if (opts.onClick && pt.key) {
+        hit.addClass('is-link');
+        hit.addEventListener('click', () => opts.onClick(pt.key));
+      }
+      if ((points.length - 1 - i) % every === 0) {
+        svg.createSvg('text', { attr: { x: L + i * band + band / 2, y: H - 6 }, cls: ['pw-chart-tick', 'is-x'] }).textContent = pt.axis;
+      }
+    });
+    if (opts.goal) {
+      const gy = y(opts.goal);
+      svg.createSvg('line', { attr: { x1: L, x2: W - R, y1: gy, y2: gy }, cls: 'pw-chart-goal' });
+      svg.createSvg('text', { attr: { x: W - R, y: gy - 5 }, cls: ['pw-chart-tick', 'is-goal'] }).textContent = `Goal ${fmtShort(opts.goal)}`;
+    }
+  }
+
+  // --- The page -----------------------------------------------------------
+
+  render() {
+    const root = this.contentEl;
+    const scroll = root.scrollTop;
+    root.empty();
+    if (this.tip) this.tip.remove();
+    this.tip = document.body.createDiv('pw-stats-tip');
+    const page = root.createDiv('pw-stats-page');
+    this.renderHeader(page);
+    this.renderYear(page);
+    this.renderRange(page);
+    const r = this.rangeKeys();
+    this.renderHero(page, r);
+    let row = page.createDiv('pw-stats-grid');
+    this.renderDaily(row, r);
+    this.renderHours(row, r);
+    row = page.createDiv('pw-stats-grid');
+    this.renderWeekdays(row, r);
+    this.renderWriting(row, r);
+    row = page.createDiv('pw-stats-grid');
+    this.renderWhere(row, r);
+    this.renderRecords(row);
+    this.renderTable(page, r);
+    root.scrollTop = scroll;
+    if (this.reveal && this.dayEl) this.dayEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    this.reveal = false;
+  }
+
+  select(key) {
+    this.selected = this.selected === key ? null : key;
+    this.reveal = !!this.selected;
+    this.render();
+  }
+
+  renderHeader(page) {
+    const p = this.plugin;
+    const head = page.createDiv('pw-stats-head');
+    const left = head.createDiv();
+    left.createDiv({ cls: 'pw-stats-eyebrow', text: 'Pocket Watch' });
+    left.createEl('h1', { cls: 'pw-stats-title', text: 'Your time' });
+    left.createDiv({ cls: 'pw-stats-sub', text: new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) });
+    const today = head.createDiv({ cls: 'pw-stats-today', attr: { 'data-state': p.state } });
+    today.createDiv({ cls: 'pw-stats-eyebrow', text: 'Today' });
+    today.createDiv({ cls: 'pw-stats-today-value', text: fmtShort(p.getDay(dayKey(new Date())).ms) });
+    const state = today.createDiv('pw-stats-today-state');
+    state.createSpan('pw-stats-dot');
+    state.createSpan({ text: STATE_LABELS[p.state] });
+  }
+
+  // A square for every day of the past year, the columns weeks, ending with this one.
+  renderYear(page) {
+    const p = this.plugin;
+    const card = this.card(page, 'The past year');
+    const t = new Date();
+    const mon = p.settings.weekStartsMonday;
+    const intoWeek = (t.getDay() - (mon ? 1 : 0) + 7) % 7;
+    const weeks = 53;
+    const first = new Date(t.getFullYear(), t.getMonth(), t.getDate() - intoWeek - (weeks - 1) * 7);
+    const todayKey = dayKey(t);
+    // A narrow tab scrolls the year sideways rather than shrink the squares past reading.
+    const scroller = card.createDiv('pw-heat-scroll');
+    const heat = scroller.createDiv('pw-heat');
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(first.getFullYear(), first.getMonth(), first.getDate() + i);
+      const label = heat.createDiv({ cls: 'pw-heat-weekday', text: [1, 3, 5].includes(d.getDay()) ? d.toLocaleDateString(undefined, { weekday: 'short' }) : '' });
+      label.style.gridRow = String(i + 2);
+    }
+    let total = 0;
+    let active = 0;
+    let run = 0;
+    let longest = 0;
+    let lastLabel = -4;
+    for (let w = 0; w < weeks; w++) {
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(first.getFullYear(), first.getMonth(), first.getDate() + w * 7 + i);
+        if (date > t) continue;
+        const key = dayKey(date);
+        if (date.getDate() === 1 && w - lastLabel >= 4 && w < weeks - 2) {
+          const label = heat.createDiv({ cls: 'pw-heat-month', text: date.toLocaleDateString(undefined, { month: 'short' }) });
+          label.style.gridColumn = `${w + 2} / span 4`;
+          lastLabel = w;
+        }
+        const ms = p.getDay(key).ms;
+        total += ms;
+        if (ms >= ACTIVE_DAY_MS) {
+          active++;
+          longest = Math.max(longest, ++run);
+        } else run = 0;
+        const level = ms === 0 ? 0 : ms < 30 * 60000 ? 1 : ms < 90 * 60000 ? 2 : ms < 180 * 60000 ? 3 : 4;
+        const cell = heat.createDiv({ cls: ['pw-heat-cell', `is-l${level}`] });
+        cell.style.gridColumn = String(w + 2);
+        cell.style.gridRow = String(i + 2);
+        if (key === todayKey) cell.addClass('is-today');
+        if (key === this.selected) cell.addClass('is-selected');
+        cell.setAttr('aria-label', `${date.toLocaleDateString()}: ${fmtShort(ms)}`);
+        this.hover(cell, fmtShort(ms), date.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }));
+        cell.addEventListener('click', () => this.select(key));
+      }
+    }
+    const foot = card.createDiv('pw-heat-foot');
+    foot.createDiv({ text: `${fmtShort(total)} in the past year · ${active} active ${active === 1 ? 'day' : 'days'} · longest streak ${longest} ${longest === 1 ? 'day' : 'days'}` });
+    const legend = foot.createDiv('pw-heat-legend');
+    legend.createSpan({ text: 'Less' });
+    for (let l = 0; l <= 4; l++) legend.createSpan({ cls: ['pw-heat-cell', `is-l${l}`] });
+    legend.createSpan({ text: 'More' });
+    if (this.selected) this.renderDay(card, this.selected);
+    // Open on the latest weeks.
+    scroller.scrollLeft = scroller.scrollWidth;
+  }
+
+  // One day, picked on the year or on a chart: its numbers, its hours and its notes.
+  renderDay(card, key) {
+    const p = this.plugin;
+    const d = p.getDay(key);
+    const panel = card.createDiv('pw-stats-day');
+    this.dayEl = panel;
+    const head = panel.createDiv('pw-stats-day-head');
+    head.createEl('h3', { text: keyToDate(key).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) });
+    const close = head.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': 'Close' } });
+    setIcon(close, 'x');
+    close.addEventListener('click', () => this.select(key));
+    const tiles = panel.createDiv('pw-stats-tiles');
+    const tile = (label, value, sub) => {
+      const t = tiles.createDiv('pw-stats-tile');
+      t.createDiv({ cls: 'pw-stats-label', text: label });
+      t.createDiv({ cls: 'pw-stats-tile-value', text: value });
+      if (sub) t.createDiv({ cls: 'pw-stats-tile-sub', text: sub });
+    };
+    tile('Time', fmtShort(d.ms));
+    tile('Words written', fmtNum(d.written), `${fmtNum(d.deleted)} deleted`);
+    tile('Focus sessions', String(d.sessions || 0), d.focusMs ? `${fmtShort(d.focusMs)} of focus` : '');
+    if (d.hours && d.hours.some((h) => h > 0)) {
+      panel.createDiv({ cls: 'pw-stats-label', text: 'Hour by hour' });
+      const strip = panel.createDiv('pw-hour-strip');
+      const max = Math.max(...d.hours);
+      d.hours.forEach((ms, h) => {
+        const cell = strip.createDiv('pw-hour-cell');
+        cell.style.setProperty('--pw-fill', String(ms / max));
+        if (h % 6 === 0) cell.createDiv({ cls: 'pw-hour-label', text: `${pad2(h)}` });
+        this.hover(cell, fmtShort(ms), `${pad2(h)}:00 to ${pad2((h + 1) % 24)}:00`);
+      });
+    }
+    const notes = p.topFiles([key], 8);
+    if (notes.length) {
+      panel.createDiv({ cls: 'pw-stats-label', text: 'Where the time went' });
+      noteBars(p, panel, notes);
+    }
+  }
+
+  renderRange(page) {
+    const bar = page.createDiv('pw-stats-range');
+    const seg = bar.createDiv({ cls: 'pw-stats-seg', attr: { role: 'radiogroup', 'aria-label': 'Range' } });
+    for (const [key, name] of STAT_RANGES) {
+      const b = seg.createEl('button', { text: name, attr: { role: 'radio', 'aria-checked': String(this.range === key) } });
+      if (this.range === key) b.addClass('is-active');
+      b.addEventListener('click', () => {
+        this.range = key;
+        this.render();
+      });
+    }
+  }
+
+  // Your time in the range, against the same number of days before, with its trend, and
+  // the numbers that go with it.
+  renderHero(page, r) {
+    const p = this.plugin;
+    const now = this.sum(r.keys);
+    const row = page.createDiv('pw-stats-hero-row');
+    const hero = row.createDiv({ cls: ['pw-stats-card', 'pw-stats-hero'] });
+    hero.createDiv({ cls: 'pw-stats-label', text: this.range === 'all' ? 'Time in Obsidian, all time' : `Time in Obsidian, last ${r.n} days` });
+    hero.createDiv({ cls: 'pw-stats-hero-value', text: fmtShort(now.ms) });
+    if (r.before.length) {
+      const diff = now.ms - this.sum(r.before).ms;
+      const delta = hero.createDiv({ cls: 'pw-stats-delta', attr: { 'data-dir': diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat' } });
+      delta.setText(diff === 0 ? `The same as the ${r.n} days before` : `${diff > 0 ? '▲' : '▼'} ${fmtShort(Math.abs(diff))} ${diff > 0 ? 'more' : 'less'} than the ${r.n} days before`);
+    }
+    // The trend, a point a day (or a week), ending on the latest.
+    const { points } = this.series(r);
+    const box = hero.createDiv('pw-chart-box');
+    const W = this.width(box, 300);
+    const H = 54;
+    const max = Math.max(1, ...points.map((pt) => pt.ms));
+    const xs = (i) => 5 + (points.length > 1 ? (i / (points.length - 1)) * (W - 10) : (W - 10) / 2);
+    const ys = (v) => H - 6 - (v / max) * (H - 12);
+    const svg = box.createSvg('svg', { attr: { width: W, height: H, viewBox: `0 0 ${W} ${H}` }, cls: 'pw-chart' });
+    const line = points.map((pt, i) => `${i ? 'L' : 'M'} ${xs(i).toFixed(1)} ${ys(pt.ms).toFixed(1)}`).join(' ');
+    svg.createSvg('path', { attr: { d: `${line} L ${xs(points.length - 1)} ${H} L ${xs(0)} ${H} Z` }, cls: 'pw-spark-area' });
+    svg.createSvg('path', { attr: { d: line }, cls: 'pw-spark-line' });
+    svg.createSvg('circle', { attr: { cx: xs(points.length - 1), cy: ys(points[points.length - 1].ms), r: 4 }, cls: 'pw-spark-dot' });
+
+    const tiles = row.createDiv({ cls: ['pw-stats-tiles', 'is-side'] });
+    const tile = (label, value, sub) => {
+      const t = tiles.createDiv({ cls: ['pw-stats-card', 'pw-stats-tile'] });
+      t.createDiv({ cls: 'pw-stats-label', text: label });
+      t.createDiv({ cls: 'pw-stats-tile-value', text: value });
+      if (sub) t.createDiv({ cls: 'pw-stats-tile-sub', text: sub });
+    };
+    tile('Daily average', fmtShort(now.active ? now.ms / now.active : 0), 'on active days');
+    tile('Active days', String(now.active), `of ${r.n}`);
+    tile('Streak', `${p.streak()} ${p.streak() === 1 ? 'day' : 'days'}`, `best ${this.longestStreak()} days`);
+    tile('Words written', fmtCount(now.written), `${fmtCount(now.deleted)} deleted`);
+    tile('Focus sessions', String(now.sessions), `${fmtShort(now.focusMs)} of focus`);
+    tile('Goal met', `${r.keys.filter((k) => p.getDay(k).ms >= p.settings.dailyGoalMinutes * 60000).length} days`, `${fmtShort(p.settings.dailyGoalMinutes * 60000)} a day`);
+  }
+
+  longestStreak() {
+    const p = this.plugin;
+    const keys = Object.keys(p.days).filter((k) => p.days[k].ms >= ACTIVE_DAY_MS).sort();
+    let best = 0;
+    let run = 0;
+    let prev = null;
+    for (const key of keys) {
+      const date = keyToDate(key);
+      run = prev && Math.round((date - prev) / 86400000) === 1 ? run + 1 : 1;
+      best = Math.max(best, run);
+      prev = date;
+    }
+    return best;
+  }
+
+  renderDaily(row, r) {
+    const { points, weekly } = this.series(r);
+    const goal = this.plugin.settings.dailyGoalMinutes * 60000 * (weekly ? 7 : 1);
+    const card = this.card(row, weekly ? 'Every week' : 'Every day', weekly ? 'Click a week to see its first day' : 'Click a column to see that day');
+    this.columns(card, points.map((pt) => ({ value: pt.ms, axis: pt.axis, long: pt.long, key: pt.key })), {
+      time: true, goal, height: 290, onClick: (key) => this.select(key),
+    });
+  }
+
+  // A 24-hour dial: midnight at the top, noon at the bottom, a bar for each hour.
+  renderHours(row, r) {
+    const p = this.plugin;
+    const hours = new Array(24).fill(0);
+    for (const key of r.keys) {
+      const h = p.getDay(key).hours;
+      if (h) h.forEach((ms, i) => (hours[i] += ms));
+    }
+    const total = hours.reduce((a, b) => a + b, 0);
+    const card = this.card(row, 'When you work', total ? 'Midnight at the top, noon at the bottom' : '');
+    const box = card.createDiv({ cls: ['pw-chart-box', 'pw-clock-box'] });
+    const size = Math.min(280, this.width(box, 280));
+    const c = size / 2;
+    const r1 = c - 20;
+    const r0 = r1 * 0.38;
+    const svg = box.createSvg('svg', { attr: { width: size, height: size, viewBox: `0 0 ${size} ${size}` }, cls: ['pw-chart', 'pw-clock'] });
+    svg.createSvg('circle', { attr: { cx: c, cy: c, r: r1 }, cls: 'pw-chart-grid' });
+    svg.createSvg('circle', { attr: { cx: c, cy: c, r: r0 + (r1 - r0) / 2 }, cls: 'pw-chart-grid' });
+    for (let h = 0; h < 24; h++) {
+      const a = h * 15;
+      const rad = (a * Math.PI) / 180;
+      const len = h % 6 === 0 ? 7 : 3;
+      svg.createSvg('line', { attr: { x1: c + (r1 + 3) * Math.sin(rad), y1: c - (r1 + 3) * Math.cos(rad), x2: c + (r1 + 3 + len) * Math.sin(rad), y2: c - (r1 + 3 + len) * Math.cos(rad) }, cls: 'pw-clock-tick' });
+    }
+    for (const h of [0, 6, 12, 18]) {
+      const rad = (h * 15 * Math.PI) / 180;
+      const rr = r0 - 11;
+      svg.createSvg('text', { attr: { x: c + rr * Math.sin(rad), y: c - rr * Math.cos(rad) }, cls: ['pw-chart-tick', 'is-clock'] }).textContent = pad2(h);
+    }
+    const max = Math.max(1, ...hours);
+    let peak = 0;
+    hours.forEach((ms, h) => {
+      if (ms > hours[peak]) peak = h;
+      const rv = r0 + 2 + (r1 - r0 - 2) * (ms / max);
+      if (ms > 0) svg.createSvg('path', { attr: { d: ringPath(c, c, r0 + 2, rv, h * 15 + 1.2, h * 15 + 13.8) }, cls: 'pw-clock-bar' });
+      const hit = svg.createSvg('path', { attr: { d: ringPath(c, c, r0, r1 + 12, h * 15, h * 15 + 15) }, cls: 'pw-chart-hit' });
+      this.hover(hit, fmtShort(ms), `${pad2(h)}:00 to ${pad2((h + 1) % 24)}:00`);
+    });
+    // The hand points at the hour it is now.
+    const t = new Date();
+    const rad = (((t.getHours() + t.getMinutes() / 60) * 15) * Math.PI) / 180;
+    svg.createSvg('line', { attr: { x1: c, y1: c, x2: c + (r1 + 2) * Math.sin(rad), y2: c - (r1 + 2) * Math.cos(rad) }, cls: 'pw-clock-hand' });
+    svg.createSvg('circle', { attr: { cx: c, cy: c, r: 3.5 }, cls: 'pw-clock-pin' });
+    if (total) {
+      card.createDiv({ cls: 'pw-stats-caption', text: `Your busiest hour is ${pad2(peak)}:00 to ${pad2((peak + 1) % 24)}:00.` });
+    } else {
+      card.createDiv({ cls: 'pw-stats-caption', text: 'Pocket Watch notes the hours you work from version 1.10. Come back after a session or two.' });
+    }
+  }
+
+  // Your average time on each day of the week, in the range.
+  renderWeekdays(row, r) {
+    const p = this.plugin;
+    const sums = new Array(7).fill(0);
+    const counts = new Array(7).fill(0);
+    for (const key of r.keys) {
+      const dow = keyToDate(key).getDay();
+      sums[dow] += p.getDay(key).ms;
+      counts[dow]++;
+    }
+    const order = p.settings.weekStartsMonday ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6];
+    const ref = daysAgo(0);
+    const name = (dow, style) => new Date(ref.getFullYear(), ref.getMonth(), ref.getDate() - ref.getDay() + dow).toLocaleDateString(undefined, { weekday: style });
+    const card = this.card(row, 'Your week', 'Average time on each day');
+    this.columns(card, order.map((dow) => ({ value: counts[dow] ? sums[dow] / counts[dow] : 0, axis: name(dow, 'short'), long: `${name(dow, 'long')}s, on average` })), { time: true, height: 170 });
+  }
+
+  // Words written above the line and words deleted below it, on one scale.
+  renderWriting(row, r) {
+    const { points } = this.series(r);
+    const now = this.sum(r.keys);
+    const net = now.written - now.deleted;
+    const card = this.card(row, 'Writing', `${net >= 0 ? '+' : '−'}${fmtNum(Math.abs(net))} words net`);
+    const legend = card.createDiv('pw-chart-legend');
+    for (const [cls, label] of [['is-written', 'Written'], ['is-deleted', 'Deleted']]) {
+      const item = legend.createSpan('pw-chart-key');
+      item.createSpan({ cls: ['pw-chart-swatch', cls] });
+      item.createSpan({ text: label });
+    }
+    const box = card.createDiv('pw-chart-box');
+    const W = this.width(box);
+    const H = 170;
+    const [L, R, T, B] = [40, 8, 10, 22];
+    const ext = axisTicks(Math.max(10, ...points.map((pt) => Math.max(pt.written, pt.deleted))), false).pop();
+    const mid = T + (H - T - B) / 2;
+    const half = (H - T - B) / 2;
+    const y = (v) => mid - (v / ext) * half;
+    const svg = box.createSvg('svg', { attr: { width: W, height: H, viewBox: `0 0 ${W} ${H}` }, cls: 'pw-chart' });
+    for (const v of [ext, 0, -ext]) {
+      svg.createSvg('line', { attr: { x1: L, x2: W - R, y1: y(v), y2: y(v) }, cls: v ? 'pw-chart-grid' : 'pw-chart-base' });
+      svg.createSvg('text', { attr: { x: L - 8, y: y(v) }, cls: ['pw-chart-tick', 'is-y'] }).textContent = v ? `${v > 0 ? '+' : '−'}${fmtCount(Math.abs(v))}` : '0';
+    }
+    const band = (W - L - R) / points.length;
+    const bw = Math.max(1.5, Math.min(24, band - 2));
+    const room = Math.max(26, Math.max(...points.map((pt) => pt.axis.length)) * 7 + 12);
+    const every = Math.max(1, Math.ceil(points.length / Math.max(1, Math.floor((W - L - R) / room))));
+    points.forEach((pt, i) => {
+      const x = L + i * band + (band - bw) / 2;
+      const up = barPath(x, bw, mid - 1, y(pt.written) - 1);
+      const down = barPath(x, bw, mid + 1, y(-pt.deleted) + 1);
+      if (up) svg.createSvg('path', { attr: { d: up }, cls: ['pw-chart-bar', 'is-written'] });
+      if (down) svg.createSvg('path', { attr: { d: down }, cls: ['pw-chart-bar', 'is-deleted'] });
+      const hit = svg.createSvg('rect', { attr: { x: L + i * band, y: T, width: band, height: H - T - B }, cls: 'pw-chart-hit' });
+      this.hover(hit, `+${fmtNum(pt.written)}  −${fmtNum(pt.deleted)}`, pt.long);
+      if ((points.length - 1 - i) % every === 0) {
+        svg.createSvg('text', { attr: { x: L + i * band + band / 2, y: H - 6 }, cls: ['pw-chart-tick', 'is-x'] }).textContent = pt.axis;
+      }
+    });
+  }
+
+  renderWhere(row, r) {
+    const p = this.plugin;
+    const card = this.card(row, 'Where the time went', 'Click a note to open it');
+    const notes = p.topFiles(r.keys, 8);
+    if (!notes.length) {
+      card.createDiv({ cls: 'pw-stats-caption', text: 'Your time in each note shows here once you have spent a minute in one.' });
+      return;
+    }
+    noteBars(p, card, notes);
+    const folders = {};
+    for (const key of r.keys) {
+      for (const [path, ms] of Object.entries(p.getDay(key).files || {})) {
+        const folder = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+        folders[folder] = (folders[folder] || 0) + ms;
+      }
+    }
+    const top = Object.entries(folders).filter(([, ms]) => ms >= 60000).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    if (top.length > 1) {
+      card.createDiv({ cls: 'pw-stats-label', text: 'Folders' });
+      noteBars(p, card, top, { folders: true });
+    }
+  }
+
+  // Your best day, your longest streak and other bests, over everything you've tracked.
+  renderRecords(row) {
+    const p = this.plugin;
+    const card = this.card(row, 'Records', 'Over everything you have tracked');
+    const s = p.stats();
+    let wordsKey = null;
+    let words = 0;
+    let first = null;
+    for (const [key, d] of Object.entries(p.days)) {
+      if (d.written > words) {
+        words = d.written;
+        wordsKey = key;
+      }
+      if (d.ms > 0 && (!first || key < first)) first = key;
+    }
+    const date = (key) => (key ? keyToDate(key).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+    const list = card.createDiv('pw-records');
+    const record = (label, value, sub) => {
+      const item = list.createDiv('pw-record');
+      item.createDiv({ cls: 'pw-record-label', text: label });
+      const v = item.createDiv('pw-record-value');
+      v.createSpan({ text: value });
+      if (sub) v.createSpan({ cls: 'pw-record-sub', text: sub });
+    };
+    record('Best day', fmtShort(s.bestMs), date(s.bestKey));
+    record('Most words in a day', fmtNum(words), date(wordsKey));
+    record('Longest streak', `${this.longestStreak()} days`);
+    record('All time', fmtShort(s.ms), `${s.activeDays} active days`);
+    record('Focus sessions', fmtNum(s.sessions), `${fmtShort(s.focusMs)} of focus`);
+    record('Tracking since', first ? date(first) : 'Today');
+  }
+
+  // Every day of the range in a table, newest first.
+  renderTable(page, r) {
+    const p = this.plugin;
+    const card = page.createDiv('pw-stats-card');
+    const details = card.createEl('details', 'pw-stats-details');
+    const summary = details.createEl('summary');
+    summary.createEl('h2', { text: 'Day by day' });
+    summary.createDiv({ cls: 'pw-stats-card-note', text: 'Every day of the range in a table' });
+    const keys = r.keys.filter((k) => p.getDay(k).ms > 0).reverse();
+    if (!keys.length) {
+      details.createDiv({ cls: 'pw-stats-caption', text: 'Nothing tracked in this range yet.' });
+      return;
+    }
+    const table = details.createEl('table', 'pw-stats-table');
+    const head = table.createEl('thead').createEl('tr');
+    for (const h of ['Date', 'Time', 'Written', 'Deleted', 'Focus', 'Top note']) head.createEl('th', { text: h });
+    const body = table.createEl('tbody');
+    for (const key of keys) {
+      const d = p.getDay(key);
+      const tr = body.createEl('tr');
+      tr.createEl('td', { text: keyToDate(key).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) });
+      tr.createEl('td', { text: fmtShort(d.ms) });
+      tr.createEl('td', { text: fmtNum(d.written) });
+      tr.createEl('td', { text: fmtNum(d.deleted) });
+      tr.createEl('td', { text: d.sessions ? `${d.sessions} (${fmtShort(d.focusMs || 0)})` : '0' });
+      const top = p.topFiles([key], 1)[0];
+      tr.createEl('td', { text: top ? noteName(top[0]) : '' });
+      tr.addEventListener('click', () => this.select(key));
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -41,10 +41,12 @@ A fine timepiece that sits over your notes, with a Pomodoro timer for a steady r
 
 - **Idle limit**: the timer stops after 30 minutes (or what you choose) with no typing, clicking, scrolling or mouse movement. Reading and scrolling count.
 - **Track outside Obsidian**: one click on the shelf (or the watch's menu, or the command palette) keeps counting while you read or research in another app. The idle limit waits until you're back, and it stays on until you turn it off or restart Obsidian.
-- **Calendar and stats**: time per day, focus sessions, words written and deleted, streaks and a 14-day chart.
-- **Time in each note**: the shelf shows the note you're in and your time in it today, where each day's time went, and your top notes of the last 7 days. Click one to open it. Renamed notes and folders keep their time.
-- **The past year at a glance**: a square for every day, coloured by your time, with your total, active days and longest streak. Click a day to look at it.
+- **Calendar**: click the watch for today, focus sessions and a calendar of your time, with where each day's time went. Click a note to open it.
+- **Your stats, on a page of their own**: the past year as a square for every day, then for the last 7, 30 or 90 days, the year or all time: your time against the period before, every day against your goal, the hours you work on a 24-hour dial, your week, your writing, the notes and folders your time went to, your records, and a table of every day. Open it from the shelf, the watch's menu or the command palette.
+- **Time in each note**: the note you're in gets the time too. Renamed notes and folders keep their time.
 - **Status bar**: today's time and the minutes left in a session.
+
+![Your stats](images/stats.png)
 
 ![Sits on top of your notes](images/in-context.png)
 
