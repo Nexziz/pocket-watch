@@ -1,6 +1,6 @@
 'use strict';
 
-const { Plugin, PluginSettingTab, Setting, MarkdownView, Notice, Menu, ItemView, setIcon } = require('obsidian');
+const { Plugin, PluginSettingTab, Setting, MarkdownView, Notice, Menu, ItemView, Modal, setIcon } = require('obsidian');
 
 // ---------------------------------------------------------------------------
 // Options
@@ -255,7 +255,17 @@ const DEFAULT_SETTINGS = {
   // Where the watch sits when dropped freely (Alt), as fractions of the free space
   // to its left and above it, so it keeps its spot when the window is resized.
   watchPos: null,
+
+  // Projects you track your time toward: { id, name, color (1 to 8), archived }. While one is
+  // active, everything you track goes to it as well; locking it asks before switching.
+  projects: [],
+  activeProject: null,
+  projectLocked: false,
 };
+
+// Eight project colours, told apart even with colour blindness, in the order new projects
+// take them. Each has a light and a dark step in styles.css (--pw-p1 to --pw-p8).
+const PROJECT_COLOURS = ['Blue', 'Orange', 'Aqua', 'Yellow', 'Magenta', 'Green', 'Violet', 'Red'];
 
 // Every face drawn gets its own number, so the ids of its gradients never clash with another's.
 let drawings = 0;
@@ -527,6 +537,8 @@ module.exports = class PocketWatchPlugin extends Plugin {
   async onload() {
     const saved = (await this.loadData()) || {};
     this.settings = Object.assign({}, DEFAULT_SETTINGS, migrateSettings(saved.settings));
+    // Projects are edited in place, so each plugin gets its own copies.
+    this.settings.projects = (this.settings.projects || []).map((x) => Object.assign({}, x));
     this.days = saved.days || {};
     // The running focus session or break, if any: { kind, total, endsAt, paused, remaining }.
     this.session = saved.session || null;
@@ -556,6 +568,9 @@ module.exports = class PocketWatchPlugin extends Plugin {
     this.registerView(VIEW_STATS, (leaf) => new StatsView(leaf, this));
     this.addCommand({ id: 'toggle-shelf', name: 'Open or close the stats shelf', callback: () => this.watch && this.watch.toggleShelf() });
     this.addCommand({ id: 'open-stats', name: 'Open your stats', callback: () => this.openStats() });
+    this.addCommand({ id: 'switch-project', name: 'Change the project you are tracking', callback: () => this.showProjectMenu() });
+    this.addCommand({ id: 'new-project', name: 'New project', callback: () => new ProjectModal(this.app, this).open() });
+    this.addCommand({ id: 'lock-project', name: 'Lock or unlock the project you are tracking', callback: () => this.toggleProjectLock() });
     this.addCommand({ id: 'toggle-watch', name: 'Show or hide the watch', callback: () => this.updateWatch({ showWatch: !this.settings.showWatch }) });
     this.addCommand({ id: 'toggle-pause', name: 'Pause or resume the timer', callback: () => this.togglePause() });
     this.addCommand({ id: 'toggle-outside', name: 'Track time outside Obsidian too, or stop', callback: () => this.toggleOutside() });
@@ -702,6 +717,11 @@ module.exports = class PocketWatchPlugin extends Plugin {
       // And the hour of the day it falls in, for the stats page.
       day.hours = day.hours || new Array(24).fill(0);
       day.hours[new Date(now).getHours()] += delta;
+      const project = this.projectDay(day);
+      if (project) {
+        project.ms += delta;
+        project.hours[new Date(now).getHours()] += delta;
+      }
       if (state === 'tracking') {
         this.sinceActivityMs += delta;
         // The note you're working in gets the time too. Time outside Obsidian isn't in a note.
@@ -709,6 +729,7 @@ module.exports = class PocketWatchPlugin extends Plugin {
         if (file) {
           day.files = day.files || {};
           day.files[file.path] = (day.files[file.path] || 0) + delta;
+          if (project) project.files[file.path] = (project.files[file.path] || 0) + delta;
         }
       }
       this.dirty = true;
@@ -852,6 +873,11 @@ module.exports = class PocketWatchPlugin extends Plugin {
       const d = this.today();
       d.sessions = (d.sessions || 0) + 1;
       d.focusMs = (d.focusMs || 0) + x.total;
+      const project = this.projectDay(d);
+      if (project) {
+        project.sessions += 1;
+        project.focusMs += x.total;
+      }
       this.cycle += 1;
     } else if (x.kind === 'long') {
       this.cycle = 0;
@@ -947,8 +973,11 @@ module.exports = class PocketWatchPlugin extends Plugin {
       // Changes that arrive without you typing or clicking (sync, other plugins) don't count.
       if (Date.now() - this.lastInput > 5000) return;
       const diff = now - before;
+      const project = this.projectDay(this.today());
       if (diff > 0) this.today().written += diff;
       else if (diff < 0) this.today().deleted += -diff;
+      if (project && diff > 0) project.written += diff;
+      else if (project && diff < 0) project.deleted += -diff;
       if (diff !== 0) this.dirty = true;
     }, 500));
   }
@@ -973,16 +1002,112 @@ module.exports = class PocketWatchPlugin extends Plugin {
 
   // A renamed note keeps its time, and a renamed folder takes its notes' time with it.
   renameInDays(oldPath, newPath) {
-    for (const day of Object.values(this.days)) {
-      if (!day.files) continue;
-      for (const path of Object.keys(day.files)) {
+    const move = (files) => {
+      for (const path of Object.keys(files)) {
         const moved = path === oldPath ? newPath : path.startsWith(`${oldPath}/`) ? newPath + path.slice(oldPath.length) : null;
         if (!moved) continue;
-        day.files[moved] = (day.files[moved] || 0) + day.files[path];
-        delete day.files[path];
+        files[moved] = (files[moved] || 0) + files[path];
+        delete files[path];
         this.dirty = true;
       }
+    };
+    for (const day of Object.values(this.days)) {
+      if (day.files) move(day.files);
+      for (const project of Object.values(day.projects || {})) if (project.files) move(project.files);
     }
+  }
+
+  // --- Projects ---
+
+  activeProject() {
+    const s = this.settings;
+    return s.projects.find((x) => x.id === s.activeProject && !x.archived) || null;
+  }
+
+  // The active project's share of a day, made when first needed; null when no project is active.
+  projectDay(day) {
+    const project = this.activeProject();
+    if (!project) return null;
+    day.projects = day.projects || {};
+    if (!day.projects[project.id]) {
+      day.projects[project.id] = { ms: 0, written: 0, deleted: 0, sessions: 0, focusMs: 0, hours: new Array(24).fill(0), files: {} };
+    }
+    return day.projects[project.id];
+  }
+
+  // Switch the project your time goes to. When tracking is locked, ask first.
+  async setProject(id) {
+    const s = this.settings;
+    if ((id || null) === (s.activeProject || null)) return;
+    const current = this.activeProject();
+    const next = s.projects.find((x) => x.id === id);
+    if (s.projectLocked && current) {
+      const ok = window.confirm(`Tracking is locked to ${current.name}. Switch to ${next ? next.name : 'no project'} anyway?`);
+      if (!ok) return;
+    }
+    s.activeProject = next ? next.id : null;
+    await this.saveSettings();
+    new Notice(next ? `Now tracking ${next.name}` : 'Not tracking a project');
+    this.refreshProjects();
+  }
+
+  async toggleProjectLock() {
+    this.settings.projectLocked = !this.settings.projectLocked;
+    await this.saveSettings();
+    this.refreshProjects();
+  }
+
+  async saveProject(fields, id) {
+    const s = this.settings;
+    let project = s.projects.find((x) => x.id === id);
+    if (project) Object.assign(project, fields);
+    else {
+      // An id no other project has, even one made in the same moment.
+      let id = `p${Date.now().toString(36)}`;
+      while (s.projects.some((x) => x.id === id)) id = `p${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
+      project = Object.assign({ id, archived: false }, fields);
+      s.projects.push(project);
+    }
+    await this.saveSettings();
+    this.refreshProjects();
+    return project;
+  }
+
+  async archiveProject(id, archived) {
+    const s = this.settings;
+    const project = s.projects.find((x) => x.id === id);
+    if (!project) return;
+    project.archived = archived;
+    if (archived && s.activeProject === id) s.activeProject = null;
+    await this.saveSettings();
+    this.refreshProjects();
+  }
+
+  // The colour a new project takes: the first not yet used.
+  nextColour() {
+    const used = new Set(this.settings.projects.filter((x) => !x.archived).map((x) => x.color));
+    for (let i = 1; i <= PROJECT_COLOURS.length; i++) if (!used.has(i)) return i;
+    return 1;
+  }
+
+  refreshProjects() {
+    if (this.watch && this.watch.dashboard) this.watch.dashboard.render();
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_STATS)) leaf.view.render();
+  }
+
+  // Pick the project to track, start a new one, or unlock.
+  showProjectMenu(e) {
+    const s = this.settings;
+    const menu = new Menu();
+    for (const project of s.projects.filter((x) => !x.archived)) {
+      menu.addItem((i) => i.setTitle(project.name).setIcon('circle').setChecked(project.id === s.activeProject).onClick(() => this.setProject(project.id)));
+    }
+    menu.addItem((i) => i.setTitle('No project').setIcon('circle-off').setChecked(!this.activeProject()).onClick(() => this.setProject(null)));
+    menu.addSeparator();
+    menu.addItem((i) => i.setTitle('New project…').setIcon('plus').onClick(() => new ProjectModal(this.app, this).open()));
+    menu.addItem((i) => i.setTitle(s.projectLocked ? 'Unlock switching' : 'Lock to this project').setIcon(s.projectLocked ? 'unlock' : 'lock').onClick(() => this.toggleProjectLock()));
+    if (e && e.clientX !== undefined) menu.showAtMouseEvent(e);
+    else menu.showAtPosition({ x: window.innerWidth / 2 - 100, y: window.innerHeight / 3 });
   }
 
   // The notes you spent the most time in over the given days, most first.
@@ -3573,6 +3698,7 @@ class Dashboard {
     this.stateEl = row.createSpan('pocket-watch-state');
     // The note you're in, and your time in it today.
     this.noteEl = left.createDiv('pocket-watch-now-note');
+    projectSwitcher(p, left);
     const actions = this.headEl.createDiv('pocket-watch-head-actions');
     this.pauseBtn = actions.createEl('button');
     this.pauseBtn.addEventListener('click', () => p.togglePause());
@@ -3845,8 +3971,117 @@ function dropdown(setting, options, value, onChange) {
 }
 
 // ---------------------------------------------------------------------------
+// Projects
+// ---------------------------------------------------------------------------
+
+// The project you're tracking, as a button that changes it, and a lock beside it. While a
+// project is tracked and not locked, the lock is suggested, so a stray click can't switch it.
+function projectSwitcher(plugin, el) {
+  const s = plugin.settings;
+  const project = plugin.activeProject();
+  const wrap = el.createDiv('pw-project-switch');
+  const pick = wrap.createEl('button', { cls: 'pw-project-pick', attr: { 'aria-label': 'Change the project you are tracking' } });
+  const dot = pick.createSpan('pw-project-dot');
+  if (project) dot.style.background = `var(--pw-p${project.color})`;
+  else dot.addClass('is-none');
+  pick.createSpan({ cls: 'pw-project-name', text: project ? project.name : 'No project' });
+  setIcon(pick.createSpan('pw-project-chevron'), 'chevron-down');
+  pick.addEventListener('click', (e) => plugin.showProjectMenu(e));
+  if (!project) return wrap;
+  const lock = wrap.createEl('button', { cls: 'pw-project-lock' });
+  setIcon(lock, s.projectLocked ? 'lock' : 'unlock');
+  lock.toggleClass('is-locked', s.projectLocked);
+  lock.toggleClass('is-suggested', !s.projectLocked);
+  lock.setAttr('aria-label', s.projectLocked
+    ? `Locked to ${project.name}: switching asks first. Click to unlock.`
+    : 'Lock to this project, so a stray click can\'t switch it (suggested)');
+  lock.addEventListener('click', () => plugin.toggleProjectLock());
+  return wrap;
+}
+
+// A new project, or changes to one: its name and colour, and whether to track it now.
+class ProjectModal extends Modal {
+  constructor(app, plugin, project) {
+    super(app);
+    this.plugin = plugin;
+    this.project = project || null;
+    this.name = project ? project.name : '';
+    this.color = project ? project.color : plugin.nextColour();
+    this.track = !project;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass('pw-project-modal');
+    this.titleEl.setText(this.project ? 'Edit project' : 'New project');
+    const input = contentEl.createEl('input', { cls: 'pw-project-input', attr: { type: 'text', placeholder: 'Project name, like Proposal', value: this.name } });
+    input.addEventListener('input', () => {
+      this.name = input.value;
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this.save();
+      }
+    });
+    contentEl.createDiv({ cls: 'pw-project-modal-label', text: 'Colour' });
+    const swatches = contentEl.createDiv({ cls: 'pw-project-swatches', attr: { role: 'radiogroup', 'aria-label': 'Colour' } });
+    PROJECT_COLOURS.forEach((name, i) => {
+      const slot = i + 1;
+      const b = swatches.createEl('button', { cls: 'pw-project-swatch', attr: { role: 'radio', 'aria-label': name, 'aria-checked': String(slot === this.color) } });
+      b.style.background = `var(--pw-p${slot})`;
+      if (slot === this.color) b.addClass('is-selected');
+      b.addEventListener('click', () => {
+        this.color = slot;
+        swatches.querySelectorAll('.pw-project-swatch').forEach((x, j) => {
+          x.toggleClass('is-selected', j === i);
+          x.setAttr('aria-checked', String(j === i));
+        });
+      });
+    });
+    if (!this.project) {
+      new Setting(contentEl).setName('Track it now').setDesc('Your time goes to this project from now on.')
+        .addToggle((t) => t.setValue(this.track).onChange((v) => {
+          this.track = v;
+        }));
+    }
+    const buttons = contentEl.createDiv('pw-project-modal-buttons');
+    if (this.project) {
+      const archive = buttons.createEl('button', { text: this.project.archived ? 'Restore' : 'Archive' });
+      archive.addEventListener('click', async () => {
+        await this.plugin.archiveProject(this.project.id, !this.project.archived);
+        this.close();
+      });
+    }
+    buttons.createDiv('pw-project-modal-gap');
+    buttons.createEl('button', { text: 'Cancel' }).addEventListener('click', () => this.close());
+    buttons.createEl('button', { cls: 'mod-cta', text: this.project ? 'Save' : 'Create' }).addEventListener('click', () => this.save());
+    window.setTimeout(() => input.focus(), 0);
+  }
+
+  async save() {
+    const name = this.name.trim();
+    if (!name) {
+      new Notice('Give the project a name');
+      return;
+    }
+    const project = await this.plugin.saveProject({ name, color: this.color }, this.project && this.project.id);
+    this.close();
+    if (this.track) await this.plugin.setProject(project.id);
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The stats page
 // ---------------------------------------------------------------------------
+
+// Time no project was tracking, as if it were a project of its own.
+const NO_PROJECT = '_none';
+const EMPTY_SLICE = Object.freeze({ ms: 0, written: 0, deleted: 0, sessions: 0, focusMs: 0 });
 
 const STAT_RANGES = [['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['365', 'Year'], ['all', 'All time']];
 
@@ -3935,6 +4170,8 @@ class StatsView extends ItemView {
     this.plugin = plugin;
     this.range = '30';
     this.selected = null;
+    // The projects shown, by id (NO_PROJECT for time without one); null shows everything.
+    this.shown = null;
   }
 
   getViewType() {
@@ -3970,6 +4207,79 @@ class StatsView extends ItemView {
 
   // --- Data ---------------------------------------------------------------
 
+  // One project's share of a day. The share of no project is what's left of the day once
+  // every project's share is taken out, so days from before projects all belong to it.
+  slice(d, id) {
+    if (id !== NO_PROJECT) return (d.projects || {})[id] || EMPTY_SLICE;
+    const rest = {
+      ms: d.ms, written: d.written, deleted: d.deleted, sessions: d.sessions || 0, focusMs: d.focusMs || 0,
+      hours: (d.hours || new Array(24).fill(0)).slice(), files: Object.assign({}, d.files || {}),
+    };
+    for (const x of Object.values(d.projects || {})) {
+      for (const k of ['ms', 'written', 'deleted', 'sessions', 'focusMs']) rest[k] = Math.max(0, rest[k] - (x[k] || 0));
+      (x.hours || []).forEach((ms, h) => (rest.hours[h] = Math.max(0, rest.hours[h] - ms)));
+      for (const [path, ms] of Object.entries(x.files || {})) {
+        rest.files[path] = (rest.files[path] || 0) - ms;
+        if (rest.files[path] < 1000) delete rest.files[path];
+      }
+    }
+    return rest;
+  }
+
+  // A day as the page shows it: all of it, or only the projects you've turned on.
+  day(key) {
+    const d = this.plugin.getDay(key);
+    if (!this.shown) return d;
+    const out = { ms: 0, written: 0, deleted: 0, sessions: 0, focusMs: 0, hours: new Array(24).fill(0), files: {} };
+    for (const id of this.shown) {
+      const x = this.slice(d, id);
+      for (const k of ['ms', 'written', 'deleted', 'sessions', 'focusMs']) out[k] += x[k] || 0;
+      (x.hours || []).forEach((ms, h) => (out.hours[h] += ms));
+      for (const [path, ms] of Object.entries(x.files || {})) out.files[path] = (out.files[path] || 0) + ms;
+    }
+    return out;
+  }
+
+  topFiles(keys, limit) {
+    const sum = {};
+    for (const key of keys) {
+      for (const [path, ms] of Object.entries(this.day(key).files || {})) sum[path] = (sum[path] || 0) + ms;
+    }
+    return Object.entries(sum).filter(([, ms]) => ms >= 60000).sort((a, b) => b[1] - a[1]).slice(0, limit);
+  }
+
+  currentStreak() {
+    let i = this.day(dayKey(daysAgo(0))).ms >= ACTIVE_DAY_MS ? 0 : 1;
+    let n = 0;
+    while (this.day(dayKey(daysAgo(i))).ms >= ACTIVE_DAY_MS) {
+      n++;
+      i++;
+    }
+    return n;
+  }
+
+  // Every project with time on the page or still in use, in your order, then no project.
+  projectEntries(keys) {
+    const p = this.plugin;
+    const time = (id) => keys.reduce((sum, k) => sum + this.slice(p.getDay(k), id).ms, 0);
+    const entries = p.settings.projects
+      .map((x) => ({ id: x.id, name: x.name, color: `var(--pw-p${x.color})`, project: x, ms: time(x.id) }))
+      .filter((x) => !x.project.archived || x.ms > 0);
+    entries.push({ id: NO_PROJECT, name: 'No project', color: 'var(--pw-p-none)', project: null, ms: time(NO_PROJECT) });
+    return entries;
+  }
+
+  isShown(id) {
+    return !this.shown || this.shown.has(id);
+  }
+
+  // What the page is showing, in words.
+  showing(entries) {
+    if (!this.shown) return 'Showing all projects';
+    const names = entries.filter((x) => this.shown.has(x.id)).map((x) => x.name);
+    return `Showing ${names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0] || 'nothing'}`;
+  }
+
   // The days of the chosen range, oldest first, and as many days again before them.
   rangeKeys() {
     const p = this.plugin;
@@ -3992,7 +4302,7 @@ class StatsView extends ItemView {
     const p = this.plugin;
     const s = { ms: 0, written: 0, deleted: 0, sessions: 0, focusMs: 0, active: 0 };
     for (const key of keys) {
-      const d = p.getDay(key);
+      const d = this.day(key);
       s.ms += d.ms;
       s.written += d.written;
       s.deleted += d.deleted;
@@ -4030,11 +4340,18 @@ class StatsView extends ItemView {
   // --- Drawing helpers ----------------------------------------------------
 
   // A tooltip that follows the pointer: the value first, then what it is.
-  hover(el, value, label) {
+  // Rows, when given, break the value down: [colour, name, value].
+  hover(el, value, label, rows) {
     el.addEventListener('pointerenter', () => {
       this.tip.empty();
       this.tip.createDiv({ cls: 'pw-stats-tip-value', text: value });
       if (label) this.tip.createDiv({ cls: 'pw-stats-tip-label', text: label });
+      for (const [color, name, v] of rows || []) {
+        const row = this.tip.createDiv('pw-stats-tip-row');
+        row.createSpan('pw-stats-tip-key').style.background = color;
+        row.createSpan({ cls: 'pw-stats-tip-name', text: name });
+        row.createSpan({ cls: 'pw-stats-tip-num', text: v });
+      }
       this.tip.addClass('is-shown');
     });
     el.addEventListener('pointermove', (e) => {
@@ -4081,10 +4398,25 @@ class StatsView extends ItemView {
     const every = Math.max(1, Math.ceil(points.length / Math.max(1, Math.floor((W - L - R) / room))));
     points.forEach((pt, i) => {
       const x = L + i * band + (band - bw) / 2;
-      const d = barPath(x, bw, y(0), y(pt.value));
-      if (d) svg.createSvg('path', { attr: { d }, cls: ['pw-chart-bar', pt.key && pt.key === this.selected ? 'is-selected' : ''] });
+      if (pt.stack) {
+        // Stacked by project, a 2px gap between them, only the top one rounded.
+        let base = 0;
+        const parts = pt.stack.filter((part) => part.value > 0);
+        parts.forEach((part, j) => {
+          const y0 = y(base) - (j ? 1 : 0);
+          const y1 = y(base + part.value) + (j < parts.length - 1 ? 1 : 0);
+          base += part.value;
+          if (y0 - y1 < 0.5) return;
+          const d = j === parts.length - 1 ? barPath(x, bw, y0, y1) : `M ${x} ${y0} V ${y1} H ${x + bw} V ${y0} Z`;
+          svg.createSvg('path', { attr: { d }, cls: ['pw-chart-bar', 'is-stacked'] }).style.fill = part.color;
+        });
+      } else {
+        const d = barPath(x, bw, y(0), y(pt.value));
+        if (d) svg.createSvg('path', { attr: { d }, cls: ['pw-chart-bar', pt.key && pt.key === this.selected ? 'is-selected' : ''] });
+      }
       const hit = svg.createSvg('rect', { attr: { x: L + i * band, y: T, width: band, height: H - T - B }, cls: 'pw-chart-hit' });
-      this.hover(hit, opts.time ? fmtShort(pt.value) : fmtNum(Math.round(pt.value)), pt.long);
+      const rows = pt.stack ? pt.stack.filter((part) => part.value > 0).map((part) => [part.color, part.name, fmtShort(part.value)]) : null;
+      this.hover(hit, opts.time ? fmtShort(pt.value) : fmtNum(Math.round(pt.value)), pt.long, rows);
       if (opts.onClick && pt.key) {
         hit.addClass('is-link');
         hit.addEventListener('click', () => opts.onClick(pt.key));
@@ -4108,12 +4440,17 @@ class StatsView extends ItemView {
     root.empty();
     if (this.tip) this.tip.remove();
     this.tip = document.body.createDiv('pw-stats-tip');
+    const r = this.rangeKeys();
+    // One project shown: the page takes its colour. Several, or all: the accent colour.
+    const one = this.shown && this.shown.size === 1 ? [...this.shown][0] : null;
+    const project = one && this.plugin.settings.projects.find((x) => x.id === one);
+    root.style.setProperty('--pw-s-bar', one === NO_PROJECT ? 'var(--pw-p-none)' : project ? `var(--pw-p${project.color})` : 'var(--interactive-accent)');
     const page = root.createDiv('pw-stats-page');
     this.renderHeader(page);
+    this.renderRange(page, r);
     this.renderYear(page);
-    this.renderRange(page);
-    const r = this.rangeKeys();
     this.renderHero(page, r);
+    this.renderProjects(page, r);
     let row = page.createDiv('pw-stats-grid');
     this.renderDaily(row, r);
     this.renderHours(row, r);
@@ -4148,6 +4485,9 @@ class StatsView extends ItemView {
     const state = today.createDiv('pw-stats-today-state');
     state.createSpan('pw-stats-dot');
     state.createSpan({ text: STATE_LABELS[p.state] });
+    const tracking = today.createDiv('pw-stats-tracking');
+    tracking.createSpan({ cls: 'pw-stats-eyebrow', text: 'Project' });
+    projectSwitcher(p, tracking);
   }
 
   // A square for every day of the past year, the columns weeks, ending with this one.
@@ -4183,7 +4523,7 @@ class StatsView extends ItemView {
           label.style.gridColumn = `${w + 2} / span 4`;
           lastLabel = w;
         }
-        const ms = p.getDay(key).ms;
+        const ms = this.day(key).ms;
         total += ms;
         if (ms >= ACTIVE_DAY_MS) {
           active++;
@@ -4214,7 +4554,7 @@ class StatsView extends ItemView {
   // One day, picked on the year or on a chart: its numbers, its hours and its notes.
   renderDay(card, key) {
     const p = this.plugin;
-    const d = p.getDay(key);
+    const d = this.day(key);
     const panel = card.createDiv('pw-stats-day');
     this.dayEl = panel;
     const head = panel.createDiv('pw-stats-day-head');
@@ -4243,14 +4583,14 @@ class StatsView extends ItemView {
         this.hover(cell, fmtShort(ms), `${pad2(h)}:00 to ${pad2((h + 1) % 24)}:00`);
       });
     }
-    const notes = p.topFiles([key], 8);
+    const notes = this.topFiles([key], 8);
     if (notes.length) {
       panel.createDiv({ cls: 'pw-stats-label', text: 'Where the time went' });
       noteBars(p, panel, notes);
     }
   }
 
-  renderRange(page) {
+  renderRange(page, r) {
     const bar = page.createDiv('pw-stats-range');
     const seg = bar.createDiv({ cls: 'pw-stats-seg', attr: { role: 'radiogroup', 'aria-label': 'Range' } });
     for (const [key, name] of STAT_RANGES) {
@@ -4261,6 +4601,84 @@ class StatsView extends ItemView {
         this.render();
       });
     }
+    // Turn projects on and off; everything below shows only the ones that are on.
+    if (!this.plugin.settings.projects.length) return;
+    const entries = this.projectEntries(r.keys);
+    const chips = bar.createDiv({ cls: 'pw-stats-chips', attr: { role: 'group', 'aria-label': 'Projects' } });
+    for (const entry of entries) {
+      const on = this.isShown(entry.id);
+      const chip = chips.createEl('button', { cls: 'pw-stats-chip', attr: { 'aria-pressed': String(on) } });
+      chip.toggleClass('is-on', on);
+      chip.createSpan('pw-stats-chip-dot').style.background = entry.color;
+      chip.createSpan({ text: entry.name });
+      chip.addEventListener('click', () => {
+        const next = new Set(this.shown || entries.map((x) => x.id));
+        if (next.has(entry.id)) next.delete(entry.id);
+        else next.add(entry.id);
+        if (!next.size) return;
+        this.shown = entries.every((x) => next.has(x.id)) ? null : next;
+        this.render();
+      });
+    }
+    const note = bar.createDiv({ cls: 'pw-stats-showing', text: this.showing(entries) });
+    if (this.shown) {
+      const all = note.createEl('button', { cls: 'pw-stats-all', text: 'Show all' });
+      all.addEventListener('click', () => {
+        this.shown = null;
+        this.render();
+      });
+    }
+  }
+
+  // Your projects: how your time splits between them in the range, each with its share, and
+  // the one you're tracking now. Click one to edit it.
+  renderProjects(page, r) {
+    const p = this.plugin;
+    const card = this.card(page, 'Projects', p.settings.projects.length ? `How your time splits, last ${r.n} days` : '');
+    if (!p.settings.projects.length) {
+      const empty = card.createDiv('pw-projects-empty');
+      empty.createDiv({ text: 'Track your time toward a project, like your proposal now and your dissertation after the deadline. Each gets its own colour, and you can show one, several or all of them here.' });
+      empty.createEl('button', { cls: 'mod-cta', text: 'New project' }).addEventListener('click', () => new ProjectModal(this.app, p).open());
+      return;
+    }
+    const entries = this.projectEntries(r.keys).filter((x) => x.project || x.ms > 0);
+    const total = entries.reduce((sum, x) => sum + x.ms, 0);
+    if (total > 0) {
+      const split = card.createDiv('pw-projects-split');
+      for (const entry of entries) {
+        if (!entry.ms) continue;
+        const seg = split.createDiv('pw-projects-seg');
+        seg.style.flexGrow = String(entry.ms);
+        seg.style.background = entry.color;
+        seg.toggleClass('is-off', !this.isShown(entry.id));
+        this.hover(seg, fmtShort(entry.ms), `${entry.name}, ${Math.round((entry.ms / total) * 100)}%`);
+      }
+    }
+    const list = card.createDiv('pw-projects');
+    const active = p.activeProject();
+    for (const entry of entries) {
+      const row = list.createDiv('pw-project-row');
+      row.toggleClass('is-off', !this.isShown(entry.id));
+      row.createSpan('pw-project-dot').style.background = entry.color;
+      const name = row.createDiv('pw-project-row-name');
+      name.createSpan({ text: entry.name });
+      if (entry.project && active && active.id === entry.id) {
+        const badge = name.createSpan({ cls: 'pw-project-badge', text: 'Tracking now' });
+        if (p.settings.projectLocked) setIcon(badge.createSpan('pw-project-badge-lock'), 'lock');
+      }
+      if (entry.project && entry.project.archived) name.createSpan({ cls: 'pw-project-archived', text: 'Archived' });
+      const share = row.createDiv('pw-project-share');
+      share.createDiv('pw-project-share-fill').style.cssText = `width: ${total ? (entry.ms / total) * 100 : 0}%; background: ${entry.color}`;
+      row.createDiv({ cls: 'pw-project-time', text: fmtShort(entry.ms) });
+      row.createDiv({ cls: 'pw-project-pct', text: total ? `${Math.round((entry.ms / total) * 100)}%` : '' });
+      if (entry.project) {
+        const edit = row.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': `Edit ${entry.name}` } });
+        setIcon(edit, 'pencil');
+        edit.addEventListener('click', () => new ProjectModal(this.app, p, entry.project).open());
+      } else row.createDiv('pw-project-edit-gap');
+    }
+    const foot = card.createDiv('pw-projects-foot');
+    foot.createEl('button', { text: 'New project' }).addEventListener('click', () => new ProjectModal(this.app, p).open());
   }
 
   // Your time in the range, against the same number of days before, with its trend, and
@@ -4270,7 +4688,8 @@ class StatsView extends ItemView {
     const now = this.sum(r.keys);
     const row = page.createDiv('pw-stats-hero-row');
     const hero = row.createDiv({ cls: ['pw-stats-card', 'pw-stats-hero'] });
-    hero.createDiv({ cls: 'pw-stats-label', text: this.range === 'all' ? 'Time in Obsidian, all time' : `Time in Obsidian, last ${r.n} days` });
+    const what = this.shown ? this.showing(this.projectEntries(r.keys)).replace(/^Showing /, 'Time on ') : 'Time in Obsidian';
+    hero.createDiv({ cls: 'pw-stats-label', text: this.range === 'all' ? `${what}, all time` : `${what}, last ${r.n} days` });
     hero.createDiv({ cls: 'pw-stats-hero-value', text: fmtShort(now.ms) });
     if (r.before.length) {
       const diff = now.ms - this.sum(r.before).ms;
@@ -4300,15 +4719,16 @@ class StatsView extends ItemView {
     };
     tile('Daily average', fmtShort(now.active ? now.ms / now.active : 0), 'on active days');
     tile('Active days', String(now.active), `of ${r.n}`);
-    tile('Streak', `${p.streak()} ${p.streak() === 1 ? 'day' : 'days'}`, `best ${this.longestStreak()} days`);
+    const streak = this.currentStreak();
+    tile('Streak', `${streak} ${streak === 1 ? 'day' : 'days'}`, `best ${this.longestStreak()} days`);
     tile('Words written', fmtCount(now.written), `${fmtCount(now.deleted)} deleted`);
     tile('Focus sessions', String(now.sessions), `${fmtShort(now.focusMs)} of focus`);
-    tile('Goal met', `${r.keys.filter((k) => p.getDay(k).ms >= p.settings.dailyGoalMinutes * 60000).length} days`, `${fmtShort(p.settings.dailyGoalMinutes * 60000)} a day`);
+    tile('Goal met', `${r.keys.filter((k) => this.day(k).ms >= p.settings.dailyGoalMinutes * 60000).length} days`, `${fmtShort(p.settings.dailyGoalMinutes * 60000)} a day`);
   }
 
   longestStreak() {
     const p = this.plugin;
-    const keys = Object.keys(p.days).filter((k) => p.days[k].ms >= ACTIVE_DAY_MS).sort();
+    const keys = Object.keys(p.days).filter((k) => this.day(k).ms >= ACTIVE_DAY_MS).sort();
     let best = 0;
     let run = 0;
     let prev = null;
@@ -4325,9 +4745,22 @@ class StatsView extends ItemView {
     const { points, weekly } = this.series(r);
     const goal = this.plugin.settings.dailyGoalMinutes * 60000 * (weekly ? 7 : 1);
     const card = this.card(row, weekly ? 'Every week' : 'Every day', weekly ? 'Click a week to see its first day' : 'Click a column to see that day');
-    this.columns(card, points.map((pt) => ({ value: pt.ms, axis: pt.axis, long: pt.long, key: pt.key })), {
-      time: true, goal, height: 290, onClick: (key) => this.select(key),
-    });
+    // With several projects on the page, each column stacks them in their colours.
+    const p = this.plugin;
+    const entries = p.settings.projects.length ? this.projectEntries(r.keys).filter((x) => this.isShown(x.id) && x.ms > 0) : [];
+    const stacked = entries.length > 1;
+    if (stacked) {
+      const legend = card.createDiv('pw-chart-legend');
+      for (const entry of entries) {
+        const item = legend.createSpan('pw-chart-key');
+        item.createSpan('pw-chart-swatch').style.background = entry.color;
+        item.createSpan({ text: entry.name });
+      }
+    }
+    this.columns(card, points.map((pt) => ({
+      value: pt.ms, axis: pt.axis, long: pt.long, key: pt.key,
+      stack: stacked ? entries.map((entry) => ({ color: entry.color, name: entry.name, value: pt.keys.reduce((sum, k) => sum + this.slice(p.getDay(k), entry.id).ms, 0) })) : null,
+    })), { time: true, goal, height: 290, onClick: (key) => this.select(key) });
   }
 
   // A 24-hour dial: midnight at the top, noon at the bottom, a bar for each hour.
@@ -4335,7 +4768,7 @@ class StatsView extends ItemView {
     const p = this.plugin;
     const hours = new Array(24).fill(0);
     for (const key of r.keys) {
-      const h = p.getDay(key).hours;
+      const h = this.day(key).hours;
       if (h) h.forEach((ms, i) => (hours[i] += ms));
     }
     const total = hours.reduce((a, b) => a + b, 0);
@@ -4387,7 +4820,7 @@ class StatsView extends ItemView {
     const counts = new Array(7).fill(0);
     for (const key of r.keys) {
       const dow = keyToDate(key).getDay();
-      sums[dow] += p.getDay(key).ms;
+      sums[dow] += this.day(key).ms;
       counts[dow]++;
     }
     const order = p.settings.weekStartsMonday ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6];
@@ -4443,7 +4876,7 @@ class StatsView extends ItemView {
   renderWhere(row, r) {
     const p = this.plugin;
     const card = this.card(row, 'Where the time went', 'Click a note to open it');
-    const notes = p.topFiles(r.keys, 8);
+    const notes = this.topFiles(r.keys, 8);
     if (!notes.length) {
       card.createDiv({ cls: 'pw-stats-caption', text: 'Your time in each note shows here once you have spent a minute in one.' });
       return;
@@ -4451,7 +4884,7 @@ class StatsView extends ItemView {
     noteBars(p, card, notes);
     const folders = {};
     for (const key of r.keys) {
-      for (const [path, ms] of Object.entries(p.getDay(key).files || {})) {
+      for (const [path, ms] of Object.entries(this.day(key).files || {})) {
         const folder = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
         folders[folder] = (folders[folder] || 0) + ms;
       }
@@ -4467,11 +4900,20 @@ class StatsView extends ItemView {
   renderRecords(row) {
     const p = this.plugin;
     const card = this.card(row, 'Records', 'Over everything you have tracked');
-    const s = p.stats();
+    const s = { ms: 0, sessions: 0, focusMs: 0, activeDays: 0, bestMs: 0, bestKey: null };
     let wordsKey = null;
     let words = 0;
     let first = null;
-    for (const [key, d] of Object.entries(p.days)) {
+    for (const key of Object.keys(p.days)) {
+      const d = this.day(key);
+      s.ms += d.ms;
+      s.sessions += d.sessions || 0;
+      s.focusMs += d.focusMs || 0;
+      if (d.ms >= ACTIVE_DAY_MS) s.activeDays++;
+      if (d.ms > s.bestMs) {
+        s.bestMs = d.ms;
+        s.bestKey = key;
+      }
       if (d.written > words) {
         words = d.written;
         wordsKey = key;
@@ -4503,7 +4945,7 @@ class StatsView extends ItemView {
     const summary = details.createEl('summary');
     summary.createEl('h2', { text: 'Day by day' });
     summary.createDiv({ cls: 'pw-stats-card-note', text: 'Every day of the range in a table' });
-    const keys = r.keys.filter((k) => p.getDay(k).ms > 0).reverse();
+    const keys = r.keys.filter((k) => this.day(k).ms > 0).reverse();
     if (!keys.length) {
       details.createDiv({ cls: 'pw-stats-caption', text: 'Nothing tracked in this range yet.' });
       return;
@@ -4513,14 +4955,14 @@ class StatsView extends ItemView {
     for (const h of ['Date', 'Time', 'Written', 'Deleted', 'Focus', 'Top note']) head.createEl('th', { text: h });
     const body = table.createEl('tbody');
     for (const key of keys) {
-      const d = p.getDay(key);
+      const d = this.day(key);
       const tr = body.createEl('tr');
       tr.createEl('td', { text: keyToDate(key).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) });
       tr.createEl('td', { text: fmtShort(d.ms) });
       tr.createEl('td', { text: fmtNum(d.written) });
       tr.createEl('td', { text: fmtNum(d.deleted) });
       tr.createEl('td', { text: d.sessions ? `${d.sessions} (${fmtShort(d.focusMs || 0)})` : '0' });
-      const top = p.topFiles([key], 1)[0];
+      const top = this.topFiles([key], 1)[0];
       tr.createEl('td', { text: top ? noteName(top[0]) : '' });
       tr.addEventListener('click', () => this.select(key));
     }

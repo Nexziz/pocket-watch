@@ -3953,3 +3953,377 @@
   font-size: var(--font-ui-smaller);
   color: var(--text-muted);
 }
+
+/* ---------------------------------------------------------------------------
+   Projects
+   --------------------------------------------------------------------------- */
+
+/* Eight colours, told apart even with colour blindness, stepped for dark and light themes. */
+body {
+  --pw-p1: #3987e5; --pw-p2: #d95926; --pw-p3: #199e70; --pw-p4: #c98500;
+  --pw-p5: #d55181; --pw-p6: #008300; --pw-p7: #9085e9; --pw-p8: #e66767;
+  --pw-p-none: #6f6f6c;
+}
+
+body.theme-light {
+  --pw-p1: #2a78d6; --pw-p2: #eb6834; --pw-p3: #1baf7a; --pw-p4: #eda100;
+  --pw-p5: #e87ba4; --pw-p6: #008300; --pw-p7: #6250d6; --pw-p8: #e34948;
+  --pw-p-none: #a3a29b;
+}
+
+/* The project you're tracking, and its lock */
+.pw-project-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.pw-project-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: auto;
+  padding: 4px 8px 4px 10px;
+  border-radius: 999px;
+  font-size: var(--font-ui-small);
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+  box-shadow: none;
+}
+
+.pw-project-pick:hover {
+  background: var(--background-modifier-active-hover, var(--background-modifier-hover));
+}
+
+.pw-project-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.pw-project-dot.is-none {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--text-faint);
+}
+
+.pw-project-name {
+  max-width: 160px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pw-project-chevron {
+  display: flex;
+  color: var(--text-faint);
+}
+
+.pw-project-chevron .svg-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.pw-project-lock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  color: var(--text-muted);
+  background: transparent;
+  box-shadow: none;
+}
+
+.pw-project-lock .svg-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.pw-project-lock:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.pw-project-lock.is-locked {
+  color: var(--text-normal);
+}
+
+/* Locking is suggested: a soft ring that breathes, until you lock it. */
+.pw-project-lock.is-suggested {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--interactive-accent) 55%, transparent);
+  animation: pw-lock-suggest 3.2s ease-in-out infinite;
+}
+
+@keyframes pw-lock-suggest {
+  50% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pw-project-lock.is-suggested {
+    animation: none;
+  }
+}
+
+/* On the stats page header */
+.pw-stats-tracking {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-top: 10px;
+}
+
+.pw-stats-tracking .pw-project-switch {
+  margin-top: 4px;
+}
+
+/* Project chips beside the range */
+.pw-stats-range {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+.pw-stats-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pw-stats-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: auto;
+  padding: 5px 12px 5px 10px;
+  border-radius: 999px;
+  font-size: var(--font-ui-small);
+  color: var(--text-faint);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--pw-s-line);
+}
+
+.pw-stats-chip.is-on {
+  color: var(--text-normal);
+  background: var(--pw-s-card);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-normal) 18%, transparent);
+}
+
+.pw-stats-chip-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.pw-stats-chip:not(.is-on) .pw-stats-chip-dot {
+  opacity: 0.35;
+}
+
+.pw-stats-showing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.pw-stats-all {
+  height: auto;
+  padding: 2px 8px;
+  font-size: var(--font-ui-smaller);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--pw-s-line);
+}
+
+/* The Projects card */
+.pw-projects-split {
+  display: flex;
+  gap: 2px;
+  height: 12px;
+  margin-bottom: 14px;
+  overflow: hidden;
+  border-radius: 6px;
+}
+
+.pw-projects-seg {
+  min-width: 2px;
+  transition: opacity 120ms ease;
+}
+
+.pw-projects-seg.is-off {
+  opacity: 0.25;
+}
+
+.pw-projects {
+  display: flex;
+  flex-direction: column;
+}
+
+.pw-project-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1.4fr) minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--pw-s-line);
+}
+
+.pw-project-row:last-child {
+  border-bottom: none;
+}
+
+.pw-project-row.is-off {
+  opacity: 0.45;
+}
+
+.pw-project-row-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.pw-project-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-normal);
+  background: var(--pw-s-empty);
+}
+
+.pw-project-badge-lock {
+  display: flex;
+}
+
+.pw-project-badge-lock .svg-icon {
+  width: 11px;
+  height: 11px;
+}
+
+.pw-project-archived {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+}
+
+.pw-project-share {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--pw-s-empty);
+}
+
+.pw-project-share-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+.pw-project-time {
+  font-weight: 650;
+  text-align: right;
+}
+
+.pw-project-pct {
+  min-width: 34px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.pw-project-edit-gap {
+  width: 26px;
+}
+
+.pw-projects-foot {
+  margin-top: 12px;
+}
+
+.pw-projects-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  color: var(--text-muted);
+}
+
+.pw-projects-empty > div {
+  flex: 1 1 320px;
+}
+
+/* Breaking a tooltip's value down by project */
+.pw-stats-tip-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 4px;
+  font-size: var(--font-ui-smaller);
+}
+
+.pw-stats-tip-key {
+  width: 10px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.pw-stats-tip-name {
+  flex: 1;
+  color: var(--text-muted);
+}
+
+.pw-stats-tip-num {
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+/* A new project, or changes to one */
+.pw-project-input {
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.pw-project-modal-label {
+  margin-bottom: 8px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.pw-project-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.pw-project-swatch {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  box-shadow: none;
+}
+
+.pw-project-swatch.is-selected {
+  box-shadow: 0 0 0 2px var(--background-primary), 0 0 0 4px var(--text-normal);
+}
+
+.pw-project-modal-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.pw-project-modal-gap {
+  flex: 1;
+}

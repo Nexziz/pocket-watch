@@ -44,9 +44,12 @@ A fine timepiece that sits over your notes, with a Pomodoro timer for a steady r
 - **Calendar**: click the watch for today, focus sessions and a calendar of your time, with where each day's time went. Click a note to open it.
 - **Your stats, on a page of their own**: the past year as a square for every day, then for the last 7, 30 or 90 days, the year or all time: your time against the period before, every day against your goal, the hours you work on a 24-hour dial, your week, your writing, the notes and folders your time went to, your records, and a table of every day. Open it from the shelf, the watch's menu or the command palette.
 - **Time in each note**: the note you're in gets the time too. Renamed notes and folders keep their time.
+- **Projects**: track your time toward a project, like your proposal now and your dissertation after the deadline. Each has its own colour. Change the project from the shelf, the stats page or the command palette, and lock it so a stray click can't switch it. On the stats page, turn projects on and off to see one, several or all of them: the page takes a project's colour when it shows just one, and stacks them by colour when it shows several.
 - **Status bar**: today's time and the minutes left in a session.
 
 ![Your stats](images/stats.png)
+
+![Projects, each in its own colour](images/projects.png)
 
 ![Sits on top of your notes](images/in-context.png)
 
