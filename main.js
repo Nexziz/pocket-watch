@@ -624,6 +624,7 @@ module.exports = class PocketWatchPlugin extends Plugin {
         this.wordCounts.set(file.path, this.wordCounts.get(oldPath));
         this.wordCounts.delete(oldPath);
       }
+      this.renameInDays(oldPath, file.path);
     }));
     this.registerInterval(window.setInterval(() => this.tick(), 1000));
     this.registerInterval(window.setInterval(() => this.flush(), 30 * 1000));
@@ -691,8 +692,17 @@ module.exports = class PocketWatchPlugin extends Plugin {
     else state = 'tracking';
 
     if (state === 'tracking' || state === 'outside') {
-      this.today().ms += delta;
-      if (state === 'tracking') this.sinceActivityMs += delta;
+      const day = this.today();
+      day.ms += delta;
+      if (state === 'tracking') {
+        this.sinceActivityMs += delta;
+        // The note you're working in gets the time too. Time outside Obsidian isn't in a note.
+        const file = this.app.workspace.getActiveFile();
+        if (file) {
+          day.files = day.files || {};
+          day.files[file.path] = (day.files[file.path] || 0) + delta;
+        }
+      }
       this.dirty = true;
     } else if (state === 'idle' && this.state !== 'idle' && this.settings.discardIdleTime) {
       const d = this.today();
@@ -938,6 +948,31 @@ module.exports = class PocketWatchPlugin extends Plugin {
     await this.saveSettings();
     this.tick();
     if (this.watch && this.watch.dashboard) this.watch.dashboard.render();
+  }
+
+  // A renamed note keeps its time, and a renamed folder takes its notes' time with it.
+  renameInDays(oldPath, newPath) {
+    for (const day of Object.values(this.days)) {
+      if (!day.files) continue;
+      for (const path of Object.keys(day.files)) {
+        const moved = path === oldPath ? newPath : path.startsWith(`${oldPath}/`) ? newPath + path.slice(oldPath.length) : null;
+        if (!moved) continue;
+        day.files[moved] = (day.files[moved] || 0) + day.files[path];
+        delete day.files[path];
+        this.dirty = true;
+      }
+    }
+  }
+
+  // The notes you spent the most time in over the given days, most first.
+  topFiles(keys, limit) {
+    const sum = {};
+    for (const key of keys) {
+      const files = this.getDay(key).files;
+      if (!files) continue;
+      for (const [path, ms] of Object.entries(files)) sum[path] = (sum[path] || 0) + ms;
+    }
+    return Object.entries(sum).filter(([, ms]) => ms >= 60000).sort((a, b) => b[1] - a[1]).slice(0, limit);
   }
 
   sumLastDays(n) {
@@ -3477,6 +3512,10 @@ class Dashboard {
     if (this.alertTextEl && p.alert) setText(this.alertTextEl, p.alertLabel());
     this.clockEl.setText(fmtShort(p.getDay(today).ms));
     this.stateEl.setText(STATE_LABELS[p.state]);
+    const file = p.app.workspace.getActiveFile();
+    const inNote = file ? (p.getDay(today).files || {})[file.path] || 0 : 0;
+    setText(this.noteEl, file ? `${noteName(file.path)} · ${fmtShort(inNote)} today` : '');
+    this.noteEl.toggleClass('is-empty', !file);
     this.headEl.setAttr('data-state', p.state);
     this.pauseBtn.setText(p.paused ? 'Resume tracking' : 'Pause tracking');
     setText(this.outsideLabelEl, p.outside ? 'Tracking outside' : 'Track outside');
@@ -3511,6 +3550,8 @@ class Dashboard {
     const row = left.createDiv('pocket-watch-state-row');
     row.createSpan('pocket-watch-dot');
     this.stateEl = row.createSpan('pocket-watch-state');
+    // The note you're in, and your time in it today.
+    this.noteEl = left.createDiv('pocket-watch-now-note');
     const actions = this.headEl.createDiv('pocket-watch-head-actions');
     this.pauseBtn = actions.createEl('button');
     this.pauseBtn.addEventListener('click', () => p.togglePause());
@@ -3670,6 +3711,12 @@ class Dashboard {
     const net = d.written - d.deleted;
     row('Net words', `${net > 0 ? '+' : ''}${fmtNum(net)}`);
 
+    const notes = p.topFiles([this.selected], 6);
+    if (notes.length) {
+      el.createDiv({ cls: ['pocket-watch-label', 'is-spaced'], text: 'Where the time went' });
+      this.renderNotes(el, notes);
+    }
+
     if (this.selected !== todayKey) {
       const t = p.getDay(todayKey).ms;
       const diff = t - d.ms;
@@ -3724,6 +3771,100 @@ class Dashboard {
       track.createDiv('pocket-watch-bar').style.height = `${(ms / max) * 100}%`;
       col.createDiv({ cls: 'pocket-watch-bar-day', text: String(date.getDate()) });
     }
+
+    const lastWeek = [];
+    for (let i = 0; i < 7; i++) lastWeek.push(dayKey(daysAgo(i)));
+    const notes = p.topFiles(lastWeek, 5);
+    if (notes.length) {
+      el.createDiv({ cls: ['pocket-watch-label', 'is-spaced'], text: 'Top notes, last 7 days' });
+      this.renderNotes(el, notes);
+    }
+
+    this.renderYear(el);
+  }
+
+  // A list of notes with the time in each, as bars against the longest. Click one to open it.
+  renderNotes(el, notes) {
+    const p = this.plugin;
+    const list = el.createDiv('pocket-watch-notes');
+    const max = notes[0][1];
+    for (const [path, ms] of notes) {
+      const file = p.app.vault.getAbstractFileByPath(path);
+      const item = list.createDiv({ cls: 'pocket-watch-note', attr: { 'aria-label': path } });
+      item.createDiv('pocket-watch-note-fill').style.width = `${(ms / max) * 100}%`;
+      const name = item.createDiv('pocket-watch-note-name');
+      name.createSpan({ text: noteName(path) });
+      const folder = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+      if (folder) name.createSpan({ cls: 'pocket-watch-note-folder', text: folder });
+      item.createDiv({ cls: 'pocket-watch-note-time', text: fmtShort(ms) });
+      if (file && file.extension) {
+        item.addClass('is-link');
+        item.addEventListener('click', () => {
+          p.app.workspace.getLeaf(false).openFile(file);
+          if (p.watch) p.watch.closeShelf();
+        });
+      } else {
+        item.addClass('is-gone');
+      }
+    }
+  }
+
+  // The past year, a square for every day, coloured like the calendar: the columns are weeks,
+  // ending with this one. Click a day to look at it.
+  renderYear(el) {
+    const p = this.plugin;
+    const t = new Date();
+    const mon = p.settings.weekStartsMonday;
+    const intoWeek = (t.getDay() - (mon ? 1 : 0) + 7) % 7;
+    const weeks = 53;
+    const first = new Date(t.getFullYear(), t.getMonth(), t.getDate() - intoWeek - (weeks - 1) * 7);
+    const todayKey = dayKey(t);
+    el.createDiv({ cls: ['pocket-watch-label', 'is-spaced'], text: 'Past year' });
+    const wrap = el.createDiv('pocket-watch-year');
+    const months = wrap.createDiv('pocket-watch-year-months');
+    const grid = wrap.createDiv('pocket-watch-year-grid');
+    let total = 0;
+    let active = 0;
+    let run = 0;
+    let longest = 0;
+    let lastLabel = -4;
+    for (let w = 0; w < weeks; w++) {
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(first.getFullYear(), first.getMonth(), first.getDate() + w * 7 + i);
+        const key = dayKey(date);
+        if (date.getDate() === 1 && w - lastLabel >= 4 && w < weeks - 2) {
+          const label = months.createDiv({ cls: 'pocket-watch-year-month', text: date.toLocaleDateString(undefined, { month: 'short' }) });
+          label.style.gridColumn = `${w + 1} / span 4`;
+          lastLabel = w;
+        }
+        if (date > t) {
+          grid.createDiv({ cls: ['pocket-watch-year-day', 'is-future'] });
+          continue;
+        }
+        const ms = p.getDay(key).ms;
+        total += ms;
+        if (ms >= ACTIVE_DAY_MS) {
+          active++;
+          longest = Math.max(longest, ++run);
+        } else run = 0;
+        const level = ms === 0 ? 0 : ms < 30 * 60000 ? 1 : ms < 90 * 60000 ? 2 : ms < 180 * 60000 ? 3 : 4;
+        const cell = grid.createDiv({ cls: ['pocket-watch-year-day', `pocket-watch-l${level}`] });
+        if (key === todayKey) cell.addClass('is-today');
+        if (key === this.selected) cell.addClass('is-selected');
+        cell.setAttr('aria-label', `${date.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}: ${fmtShort(ms)}`);
+        cell.addEventListener('click', () => {
+          this.selected = key;
+          this.month = new Date(date.getFullYear(), date.getMonth(), 1);
+          this.render();
+        });
+      }
+    }
+    const legend = wrap.createDiv('pocket-watch-year-foot');
+    legend.createSpan({ text: `${fmtShort(total)} · ${active} active ${active === 1 ? 'day' : 'days'} · longest streak ${longest} ${longest === 1 ? 'day' : 'days'}` });
+    const scale = legend.createSpan('pocket-watch-year-scale');
+    scale.createSpan({ text: 'Less' });
+    for (let l = 0; l <= 4; l++) scale.createSpan({ cls: ['pocket-watch-year-day', `pocket-watch-l${l}`] });
+    scale.createSpan({ text: 'More' });
   }
 
   // Quick changes to the watch; everything else is in the plugin settings.
@@ -3745,6 +3886,12 @@ class Dashboard {
     }
     el.createDiv({ cls: 'pocket-watch-compare', text: 'Drag the watch onto a pane\'s tab bar to tuck it in there. More options, like what shows at 12, 3, 6 and 9 o\'clock, are in the plugin settings.' });
   }
+}
+
+// A note's name as you'd say it: Markdown notes without their extension, other files with it.
+function noteName(path) {
+  const name = path.slice(path.lastIndexOf('/') + 1);
+  return name.endsWith('.md') ? name.slice(0, -3) : name;
 }
 
 // What the Focus section shows: a running session, time being up, or neither.
@@ -3842,6 +3989,15 @@ class PocketWatchSettingTab extends PluginSettingTab {
       });
       return details.createDiv('pocket-watch-group-body');
     };
+
+    // A thank-you at the top, for anyone who'd like to support the plugin.
+    const support = el.createDiv('pocket-watch-support');
+    const words = support.createDiv('pocket-watch-support-text');
+    words.createDiv({ cls: 'pocket-watch-support-title', text: 'Enjoying Pocket Watch?' });
+    words.createDiv({ cls: 'pocket-watch-support-desc', text: 'It is made by one person in their spare time. A coffee helps keep new watches coming.' });
+    const coffee = support.createEl('a', { cls: 'pocket-watch-coffee', attr: { href: SUPPORT_URL, target: '_blank', rel: 'noopener', 'aria-label': 'Buy me a coffee (opens in your browser)' } });
+    setIcon(coffee.createSpan('pocket-watch-coffee-icon'), 'coffee');
+    coffee.createSpan({ text: 'Buy me a coffee' });
 
     new Setting(el)
       .setName('Show watch')
@@ -3971,15 +4127,6 @@ class PocketWatchSettingTab extends PluginSettingTab {
           new Notice('Pocket Watch data reset');
         }
       }));
-
-    // A thank-you at the end, for anyone who'd like to support the plugin.
-    const support = el.createDiv('pocket-watch-support');
-    const words = support.createDiv('pocket-watch-support-text');
-    words.createDiv({ cls: 'pocket-watch-support-title', text: 'Enjoying Pocket Watch?' });
-    words.createDiv({ cls: 'pocket-watch-support-desc', text: 'It is made by one person in their spare time. A coffee helps keep new watches coming.' });
-    const coffee = support.createEl('a', { cls: 'pocket-watch-coffee', attr: { href: SUPPORT_URL, target: '_blank', rel: 'noopener', 'aria-label': 'Buy me a coffee (opens in your browser)' } });
-    setIcon(coffee.createSpan('pocket-watch-coffee-icon'), 'coffee');
-    coffee.createSpan({ text: 'Buy me a coffee' });
 
     el.scrollTop = scroll;
   }

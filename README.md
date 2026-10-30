@@ -42,6 +42,8 @@ A fine timepiece that sits over your notes, with a Pomodoro timer for a steady r
 - **Idle limit**: the timer stops after 30 minutes (or what you choose) with no typing, clicking, scrolling or mouse movement. Reading and scrolling count.
 - **Track outside Obsidian**: one click on the shelf (or the watch's menu, or the command palette) keeps counting while you read or research in another app. The idle limit waits until you're back, and it stays on until you turn it off or restart Obsidian.
 - **Calendar and stats**: time per day, focus sessions, words written and deleted, streaks and a 14-day chart.
+- **Time in each note**: the shelf shows the note you're in and your time in it today, where each day's time went, and your top notes of the last 7 days. Click one to open it. Renamed notes and folders keep their time.
+- **The past year at a glance**: a square for every day, coloured by your time, with your total, active days and longest streak. Click a day to look at it.
 - **Status bar**: today's time and the minutes left in a session.
 
 ![Sits on top of your notes](images/in-context.png)
@@ -69,7 +71,7 @@ Pocket Watch works entirely offline. It makes no network requests and only write
 
 ## Support
 
-Pocket Watch is made by one person in their spare time. If it brings you a little joy, you can buy me a coffee, from the button at the bottom of the plugin's settings or here:
+Pocket Watch is made by one person in their spare time. If it brings you a little joy, you can buy me a coffee, from the button at the top of the plugin's settings or here:
 
 <a href="https://buymeacoffee.com/nexsiz"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-ffdd00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy me a coffee"></a>
 
