@@ -4591,7 +4591,8 @@ class StatsView extends ItemView {
         });
       } else {
         const d = barPath(x, bw, y(0), y(pt.value));
-        if (d) svg.createSvg('path', { attr: { d }, cls: ['pw-chart-bar', pt.key && pt.key === this.selected ? 'is-selected' : ''] });
+        // An empty class name throws in Obsidian, so the selected one gets its class on its own.
+        if (d) svg.createSvg('path', { attr: { d }, cls: 'pw-chart-bar' }).toggleClass('is-selected', !!pt.key && pt.key === this.selected);
       }
       const hit = svg.createSvg('rect', { attr: { x: L + i * band, y: T, width: band, height: H - T - B }, cls: 'pw-chart-hit' });
       const rows = pt.stack ? pt.stack.filter((part) => part.value > 0).map((part) => [part.color, part.name, fmtShort(part.value)]) : null;
