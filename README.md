@@ -9,12 +9,12 @@ A fine timepiece that sits over your notes, with a Pomodoro timer for a steady r
 - **Twenty-one watches, each its own.** Every face carries the Philip Pocket monogram, the interlaced PP (engraved into Malachite and Meteorite), and comes with its own hands and complications: a date, small seconds, your words today or a goal dial. Two have a moon phase, each in its own window: Porcelain's classic arch with gold moons, and Midnight's round window onto a realistic moon, with its age in days around it. Regulator gives the minutes the centre and turns the hours on a small dial of their own, Malachite is cut from polished green stone, Panda has a panda's face, and Open heart shows its movement through a heart-shaped window. You can also pick your own.
 - **Two square watches**: Koi, painted by hand, with two koi circling in a green pond past lily pads and a lotus, and Deco, black lacquer in stepped gold lines whose small seconds is a rising sun.
 - **Slim digital watches** that show just the time: Hairline, bare numerals in your theme's colours that fade back until you point at them; Capsule, a slim pill that fills up with your session; and Column, the hours over the minutes in a narrow strip.
-- **Two painted dials**: Sakura, a cherry branch in gold lacquer with mother-of-pearl blossoms on black, and Nocturne, a mountain lake at dusk whose moon is tonight's moon.
+- **Three painted dials**: Sakura, a cherry branch in gold lacquer with mother-of-pearl blossoms on black, Nocturne, a mountain lake at dusk whose moon is tonight's moon, and Koi, painted by hand.
 - **Snaps where you put it.** Drag it over a pane and it snaps to a corner or edge. Drop it on a pane's tab bar and it tucks in there, sized to fit the bar, analog or digital. Drop it on the ribbon or status bar to snap it to the window, or hold Alt to place it anywhere.
 - **Any size**: drag the handle on the watch, or hold Alt and scroll over it.
 - **Click it** for your calendar and stats. Right-click it to start a focus session.
 
-![Sixteen watches](images/make-it-yours.png)
+![Twenty-one watches](images/make-it-yours.png)
 
 ![Three new watches: Pomodoro, Regulator and Malachite](images/new-watches.png)
 
@@ -22,7 +22,7 @@ A fine timepiece that sits over your notes, with a Pomodoro timer for a steady r
 
 ![Slim watches, tucked into a tab bar](images/tab-bar.png)
 
-![Two painted dials](images/painted-dials.png)
+![Three painted dials: Sakura, Nocturne and Koi](images/painted-dials.png)
 
 ## Focus and breaks
 
@@ -44,7 +44,7 @@ A fine timepiece that sits over your notes, with a Pomodoro timer for a steady r
 - **Calendar**: click the watch for today, focus sessions and a calendar of your time, with where each day's time went. Click a note to open it.
 - **Your stats, on a page of their own**: the past year as a square for every day, then for the last 7, 30 or 90 days, the year or all time: your time against the period before, every day against your goal, the hours you work on a 24-hour dial, your week, your writing, the notes and folders your time went to, your records, and a table of every day. Open it from the shelf, the watch's menu or the command palette.
 - **Time in each note**: the note you're in gets the time too. Renamed notes and folders keep their time.
-- **Projects**: track your time toward a project, like your proposal now and your dissertation after the deadline. Each has its own colour. Change the project from the shelf, the stats page or the command palette, and lock it so a stray click can't switch it. On the stats page, turn projects on and off to see one, several or all of them: the page takes a project's colour when it shows just one, and stacks them by colour when it shows several. Time tracked without a project, or on the wrong one, can move to the right one: for a day, a range of days or between two dates, with its notes, hours, words and focus sessions, and an undo.
+- **Projects**: track your time toward a project, like a novel you are drafting and a garden journal on the side. Each has its own colour. Change the project from the shelf, the stats page or the command palette, and lock it so a stray click can't switch it. On the stats page, turn projects on and off to see one, several or all of them: the page takes a project's colour when it shows just one, and stacks them by colour when it shows several. Time tracked without a project, or on the wrong one, can move to the right one: for a day, a range of days or between two dates, with its notes, hours, words and focus sessions, and an undo.
 - **Status bar**: today's time and the minutes left in a session.
 
 ![Your stats](images/stats.png)

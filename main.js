@@ -4054,7 +4054,7 @@ class ProjectModal extends Modal {
     const { contentEl } = this;
     contentEl.addClass('pw-project-modal');
     this.titleEl.setText(this.project ? 'Edit project' : 'New project');
-    const input = contentEl.createEl('input', { cls: 'pw-project-input', attr: { type: 'text', placeholder: 'Project name, like Proposal', value: this.name } });
+    const input = contentEl.createEl('input', { cls: 'pw-project-input', attr: { type: 'text', placeholder: 'Project name, like Garden journal', value: this.name } });
     input.addEventListener('input', () => {
       this.name = input.value;
     });
@@ -4825,7 +4825,7 @@ class StatsView extends ItemView {
     const card = this.card(page, 'Projects', p.settings.projects.length ? `How your time splits, last ${r.n} days` : '');
     if (!p.settings.projects.length) {
       const empty = card.createDiv('pw-projects-empty');
-      empty.createDiv({ text: 'Track your time toward a project, like your proposal now and your dissertation after the deadline. Each gets its own colour, and you can show one, several or all of them here.' });
+      empty.createDiv({ text: 'Track your time toward a project, like a novel you are drafting and a garden journal on the side. Each gets its own colour, and you can show one, several or all of them here.' });
       empty.createEl('button', { cls: 'mod-cta', text: 'New project' }).addEventListener('click', () => new ProjectModal(this.app, p).open());
       return;
     }
