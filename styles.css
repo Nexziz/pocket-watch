@@ -3111,3 +3111,65 @@
   font-weight: 500;
   letter-spacing: -0.02em;
 }
+
+/* ---------------------------------------------------------------------------
+   Settings: a thank-you, with a button to buy the maker a coffee
+   --------------------------------------------------------------------------- */
+
+.pocket-watch-support {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 14px 16px;
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+}
+
+.pocket-watch-support-title {
+  font-weight: var(--font-semibold);
+}
+
+.pocket-watch-support-desc {
+  margin-top: 2px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.pocket-watch-coffee {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+  color: #1d1a12;
+  background: #ffdd00;
+  text-decoration: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.pocket-watch-coffee:hover {
+  color: #1d1a12;
+  text-decoration: none;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+}
+
+.pocket-watch-coffee:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
+.pocket-watch-coffee-icon {
+  display: flex;
+}
+
+.pocket-watch-coffee-icon .svg-icon {
+  width: 16px;
+  height: 16px;
+}

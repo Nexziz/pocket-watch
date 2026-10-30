@@ -263,6 +263,9 @@ let drawings = 0;
 const DEFAULT_WATCH_POS = { fx: 0.97, fy: 0.9 };
 const SNAP_INSET = 14;
 const SPOTS = ['tl', 'tc', 'tr', 'ml', 'mr', 'bl', 'bc', 'br'];
+// Where to buy the maker a coffee.
+const SUPPORT_URL = 'https://buymeacoffee.com/nexsiz';
+
 const MIN_SIZE = 64;
 const MAX_SIZE = 260;
 // The room left above and below the watch when it sits in a pane's tab bar.
@@ -3968,6 +3971,15 @@ class PocketWatchSettingTab extends PluginSettingTab {
           new Notice('Pocket Watch data reset');
         }
       }));
+
+    // A thank-you at the end, for anyone who'd like to support the plugin.
+    const support = el.createDiv('pocket-watch-support');
+    const words = support.createDiv('pocket-watch-support-text');
+    words.createDiv({ cls: 'pocket-watch-support-title', text: 'Enjoying Pocket Watch?' });
+    words.createDiv({ cls: 'pocket-watch-support-desc', text: 'It is made by one person in their spare time. A coffee helps keep new watches coming.' });
+    const coffee = support.createEl('a', { cls: 'pocket-watch-coffee', attr: { href: SUPPORT_URL, target: '_blank', rel: 'noopener', 'aria-label': 'Buy me a coffee (opens in your browser)' } });
+    setIcon(coffee.createSpan('pocket-watch-coffee-icon'), 'coffee');
+    coffee.createSpan({ text: 'Buy me a coffee' });
 
     el.scrollTop = scroll;
   }

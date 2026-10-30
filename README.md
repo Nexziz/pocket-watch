@@ -67,6 +67,12 @@ Words written and deleted come from how a note's word count changes while you ed
 
 Pocket Watch works entirely offline. It makes no network requests and only writes its own `data.json` in the plugin folder.
 
+## Support
+
+Pocket Watch is made by one person in their spare time. If it brings you a little joy, you can buy me a coffee, from the button at the bottom of the plugin's settings or here:
+
+<a href="https://buymeacoffee.com/nexsiz"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-ffdd00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy me a coffee"></a>
+
 ## Credits and license
 
 The Philip Pocket monogram is drawn from Great Vibes, under the [SIL Open Font License](https://openfontlicense.org). The plugin is under the [MIT](LICENSE) license.
