@@ -1,95 +1,108 @@
-# Pocket Watch
+<h1 align="center">Pocket Watch</h1>
 
-A fine timepiece that sits over your notes, with a Pomodoro timer for a steady rhythm of focus and breaks, and a quiet log of your writing time.
+<p align="center">
+  <b>Time tracking, a Pomodoro timer and writing stats for Obsidian, in a fine watch that sits over your notes.</b><br>
+  Focus sessions · Time tracking · Writing stats · Projects · Desktop and mobile
+</p>
+
+<p align="center">
+  <a href="https://github.com/Nexziz/pocket-watch/releases/latest"><img src="https://img.shields.io/github/v/release/Nexziz/pocket-watch?style=flat-square&label=release" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/desktop%20%C2%B7%20phone%20%C2%B7%20tablet-supported-7c5cff?style=flat-square" alt="Desktop, phone and tablet">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square" alt="MIT license"></a>
+  <a href="https://buymeacoffee.com/nexsiz"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-ffdd00?style=flat-square&logo=buymeacoffee&logoColor=black" alt="Buy me a coffee"></a>
+</p>
 
 ![Pocket Watch](images/hero.png)
 
-## A timepiece
+## At a glance
 
-- **Twenty-four watches, each its own.** Every face carries the Philip Pocket monogram, the interlaced PP (engraved into Malachite and Meteorite), and comes with its own hands and complications: a date, small seconds, your words today or a goal dial. Two have a moon phase, each in its own window: Porcelain's classic arch with gold moons, and Midnight's round window onto a realistic moon, with its age in days around it. Regulator gives the minutes the centre and turns the hours on a small dial of their own, Malachite is cut from polished green stone, Panda has a panda's face, and Open heart shows its movement through a heart-shaped window. You can also pick your own.
-- **Retro, Vinyl and Terrazzo**, each in a case of its own: Retro is a seventies cream dial with bands of brown, rust, orange and mustard in a thin gold bezel; Vinyl is a black record whose red label slowly turns, in a slim dark bezel with a turntable's strobe dots; and Terrazzo is chips of coloured stone in a matte, speckled ceramic bezel.
-- **Two square watches**: Koi, painted by hand, with two koi circling in a green pond past lily pads and a lotus, and Deco, black lacquer in stepped gold lines whose small seconds is a rising sun.
-- **Slim digital watches** that show just the time: Hairline, bare numerals in your theme's colours that fade back until you point at them; Capsule, a slim pill that fills up with your session; and Column, the hours over the minutes in a narrow strip.
-- **Square digital watches**: Tomato, a Pomodoro timer first, with the time left large, the session running round its edge and a dot for each session until the long break; Pixel, the time in amber lights on a dot-matrix screen; and Words, the time spelled out, with a light in a corner for each minute past.
-- **Three painted dials**: Sakura, a cherry branch in gold lacquer with mother-of-pearl blossoms on black, Nocturne, a mountain lake at dusk whose moon is tonight's moon, and Koi, painted by hand.
-- **Snaps where you put it.** Drag it over a pane and it snaps to a corner or edge. Drop it on a pane's tab bar and it tucks in there, sized to fit the bar, analog or digital. There most watches take a bolder mini version that's easy to read when small. Drop it on the ribbon or status bar to snap it to the window, or hold Alt to place it anywhere.
-- **Any size**: drag the handle on the watch, or hold Alt and scroll over it.
-- **Click it** for your calendar and stats. Right-click it to start a focus session. On a phone, tap it, and press and hold it for the menu.
+- ⏱️ **Time tracking** that just runs: your time in Obsidian, per day, per note and per project, pausing by itself when you're idle.
+- 🍅 **Pomodoro timer** built into the watch: focus sessions, short and long breaks, a soft chime, and a face that paints your session on the dial.
+- 📊 **A full stats page**: a year of days at a glance, trends, your goal, the hours you work, words written, records, and where your time went.
+- 🗂️ **Projects** in their own colours, so you can see what your time went toward, and move it if it landed on the wrong one.
+- ⌚ **24 analog watches and 12 digital ones**, from porcelain and malachite to a spinning vinyl record and a word clock.
+- 📱 **Desktop, phone and tablet**, with each device's time kept apart and added up, so sync never overwrites it.
 
-![Twenty-four watches](images/make-it-yours.png)
+## The watches
 
-![Retro, Vinyl and Terrazzo](images/retro-vinyl-terrazzo.png)
+Every watch has its own dial, hands, complications and case: a moon phase, small seconds, today's time or a goal dial. Drag one onto a corner of a pane and it snaps into place. Drop it on a tab bar and it tucks in there, in a bolder mini version that stays readable when it's small.
 
-![Three square digital watches: Tomato, Pixel and Words](images/square-digital.png)
+![Twenty-four watches and twelve digital styles](images/make-it-yours.png)
 
-![Pomodoro, Regulator and Malachite](images/new-watches.png)
+<table>
+  <tr>
+    <td><img src="images/retro-vinyl-terrazzo.png" alt="Retro, Vinyl and Terrazzo"></td>
+    <td><img src="images/square-digital.png" alt="Square digital watches: Tomato, Pixel and Words"></td>
+  </tr>
+  <tr>
+    <td><img src="images/painted-dials.png" alt="Painted dials: Sakura, Nocturne and Koi"></td>
+    <td><img src="images/tab-bar.png" alt="Tucked into a tab bar"></td>
+  </tr>
+</table>
 
-![Two square watches: Koi and Deco](images/square-watches.png)
+## Pomodoro and focus
 
-![Slim watches, tucked into a tab bar](images/tab-bar.png)
-
-![Three painted dials: Sakura, Nocturne and Koi](images/painted-dials.png)
-
-## Focus and breaks
-
-- **Pomodoro, built in.** Start from the watch, the shelf or the command palette. The bezel counts down, a soft chime marks the end, and your break can begin on its own, with a long break every few sessions.
-- **The Pomodoro face** paints your focus session on the dial, from the minute hand to when it ends, and the break after it in a second colour, so you can see at a glance how much focus is left and when the break comes. In the middle: the time left, and a dot for each session until the long break.
-- **When time is up**, the watch tells you until you respond, with a glow, a wash of colour or a small dot. The label next to it counts the minutes past, and the menu offers the next step.
-- **In colour or in greyscale.** In colour, orange is focus and green is a break. In greyscale, the watch is just a watch while you focus, and a soft light fades around it on a break.
+- Start a session from the watch, the shelf or the command palette. The bezel counts down, a chime marks the end, and the break can start on its own, with a long break every few sessions.
+- The **Pomodoro** face and the **Tomato** watch show how much focus is left and when the break comes, with a dot for each session until the long break.
+- When time is up, the watch glows, takes on a colour or shows a small dot until you respond.
+- In colour, orange is focus and green is a break. In greyscale the watch stays quiet while you focus.
 
 ![A focus session from start to finish](images/focus-demo.gif)
 
-![When time is up](images/times-up.png)
+<table>
+  <tr>
+    <td><img src="images/times-up.png" alt="When time is up"></td>
+    <td><img src="images/greyscale.png" alt="In colour or in greyscale"></td>
+  </tr>
+</table>
 
-![In colour, or in quiet greyscale](images/greyscale.png)
+## Time tracking and stats
 
-## Your time
+- **Click the watch** for today, your focus sessions and a calendar of your time.
+- **Open the stats page** for the past year, the last 7, 30 or 90 days or all time: time against the period before, your daily goal, the hours you work on a 24-hour dial, your week, your writing, the notes and folders your time went to, and your records.
+- **Idle limit**: the timer stops after a while with no typing, clicking or scrolling. Reading counts.
+- **Track outside Obsidian** with one click, while you research in a browser or a PDF reader.
+- **Projects** each have a colour. Switch from the shelf or the command palette, lock the one you're on, show one or several on the stats page, and move time between projects with an undo.
 
-- **Idle limit**: the timer stops after 30 minutes (or what you choose) with no typing, clicking, scrolling or mouse movement. Reading and scrolling count.
-- **Track outside Obsidian**: one click on the shelf (or the watch's menu, or the command palette) keeps counting while you read or research in another app. The idle limit waits until you're back, and it stays on until you turn it off or restart Obsidian.
-- **Calendar**: click the watch for today, focus sessions and a calendar of your time, with where each day's time went. Click a note to open it.
-- **Your stats, on a page of their own**: the past year as a square for every day, then for the last 7, 30 or 90 days, the year or all time: your time against the period before, every day against your goal, the hours you work on a 24-hour dial, your week, your writing, the notes and folders your time went to, your records, and a table of every day. Open it from the shelf, the watch's menu or the command palette.
-- **Time in each note**: the note you're in gets the time too. Renamed notes and folders keep their time.
-- **Projects**: track your time toward a project, like a novel you are drafting and a garden journal on the side. Each has its own colour. Change the project from the shelf, the stats page or the command palette, and lock it so a stray click can't switch it. On the stats page, turn projects on and off to see one, several or all of them: the page takes a project's colour when it shows just one, and stacks them by colour when it shows several. Time tracked without a project, or on the wrong one, can move to the right one: for a day, a range of days or between two dates, with its notes, hours, words and focus sessions, and an undo.
-- **Status bar**: today's time and the minutes left in a session.
-- **On your computer and your phone**: Pocket Watch works on phones and tablets too, counting while Obsidian is on screen. With your vault synced, each device keeps its own record of your time, so they never overwrite each other, and your stats add them all up. Moving time to a project, renaming a note or resetting reaches every device.
-- **Devices**: the stats page shows where your time comes from, this computer, your phone or any other device, with the words written on each. Rename a device or change its kind (computer, laptop, phone or tablet) from the stats page or the settings, and take an old device's time into this one, or forget it.
+![Your stats, with projects and devices](images/stats.png)
 
-![Your stats](images/stats.png)
+## On every device
 
-![Projects, each in its own colour](images/projects.png)
+Pocket Watch runs on desktop, phones and tablets. On a phone it counts while Obsidian is on screen. Tap the watch for your stats, and press and hold it for the menu.
 
-![Your devices: where your time comes from](images/devices.png)
-
-![Sits on top of your notes](images/in-context.png)
+With your vault synced, each device keeps its own record of your time, so your computer and phone never overwrite each other, and the stats page adds them all up. The **Devices** card shows where your time comes from, with the words written on each, and you can rename a device or change its kind.
 
 ## Install
 
-Search for **Pocket Watch** in Settings → Community plugins once it's listed. It works on desktop, phones and tablets. If you use it on more than one device, update it on all of them to 1.14 or later, so that every device keeps its own record. Until then, download `manifest.json`, `main.js` and `styles.css` from the [latest release](https://github.com/Nexziz/pocket-watch/releases/latest) into `.obsidian/plugins/pocket-watch/` in your vault, then enable **Pocket Watch** in Settings → Community plugins.
+Search for **Pocket Watch** in Settings → Community plugins once it's listed. Until then, download `manifest.json`, `main.js` and `styles.css` from the [latest release](https://github.com/Nexziz/pocket-watch/releases/latest) into `.obsidian/plugins/pocket-watch/` in your vault, and enable **Pocket Watch** in Settings → Community plugins.
 
-## Settings
+If you use it on more than one device, update every device to 1.14 or later.
 
-![Every watch in the settings](images/settings.png)
+<details>
+<summary><b>Settings</b></summary>
 
-- **Watch**: every watch in a gallery to pick from, its size, and its position.
-- **Customise**: for the watch you picked, its case, monogram, hour markers, hands, seconds hand, complications (as designed or your own), goal ring and movement, or for the digital watch its layout, clock and what it shows.
-- **Focus sessions**: lengths, long breaks, starting automatically, the countdown label, colour or greyscale, how time being up shows, and the chime.
-- **Tracking**: daily goal, idle limit, and more.
+- **Watch**: every watch in a gallery to pick from, its size and its position.
+- **Customise**: the case, monogram, hour markers, hands, seconds hand, complications, goal ring and movement, or for a digital watch its layout, clock and what it shows.
+- **Focus sessions**: lengths, long breaks, starting automatically, colour or greyscale, how time being up shows, and the chime.
+- **Tracking**: daily goal, idle limit, and your data.
+- **Devices**: rename your devices, or take in or forget an old one.
 
-<p align="center"><img src="images/open-heart.gif" width="340" alt="The open heart movement at 18,000 beats an hour"></p>
+</details>
 
-## Words and privacy
+## Privacy
 
-Words written and deleted come from how a note's word count changes while you edit it. Chinese, Japanese and Korean characters count as one word each, as in Obsidian's own count.
-
-Pocket Watch works entirely offline. It makes no network requests and only writes its own `data.json` in the plugin folder, which your own sync can carry between your devices. Each device also keeps a copy of its own record in Obsidian's local storage, in case sync brings back an older `data.json`.
+Pocket Watch works entirely offline. It makes no network requests and only writes its own `data.json` in the plugin folder. Words written are counted from how a note's word count changes as you edit it. Chinese, Japanese and Korean characters count as one word each, as in Obsidian's own count.
 
 ## Support
 
-Pocket Watch is made by one person in their spare time. If it brings you a little joy, you can buy me a coffee, from the button at the top of the plugin's settings or here:
+Pocket Watch is made by one person in their spare time. If it brings you a little joy, a coffee keeps new watches coming. There's also a button at the top of the plugin's settings.
 
-<a href="https://buymeacoffee.com/nexsiz"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-ffdd00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy me a coffee"></a>
+<p align="center">
+  <a href="https://buymeacoffee.com/nexsiz"><img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-ffdd00?style=for-the-badge&logo=buymeacoffee&logoColor=black" alt="Buy me a coffee"></a>
+</p>
+
+<p align="center"><img src="images/open-heart.gif" width="300" alt="The Open heart movement, ticking at 18,000 beats an hour"></p>
 
 ## Credits and license
 
-The Philip Pocket monogram is drawn from Great Vibes, under the [SIL Open Font License](https://openfontlicense.org). The plugin is under the [MIT](LICENSE) license.
+The Philip Pocket monogram is drawn from Great Vibes, under the [SIL Open Font License](https://openfontlicense.org). Pocket Watch is under the [MIT](LICENSE) license.

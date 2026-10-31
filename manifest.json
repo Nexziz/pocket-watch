@@ -3,7 +3,7 @@
   "name": "Pocket Watch",
   "version": "1.14.0",
   "minAppVersion": "1.4.0",
-  "description": "A fine timepiece over your notes, with a Pomodoro timer for a steady rhythm of focus and breaks, and a quiet log of your writing time.",
+  "description": "Time tracking and a Pomodoro timer in a fine watch over your notes: focus sessions, writing stats, projects and a full stats page, on desktop and mobile.",
   "author": "Nexziz",
   "isDesktopOnly": false,
   "authorUrl": "https://github.com/Nexziz",
