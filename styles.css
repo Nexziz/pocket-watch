@@ -4166,7 +4166,7 @@ body.theme-light {
 
 .pw-project-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1.4fr) minmax(0, 1fr) auto auto auto auto;
+  grid-template-columns: auto minmax(0, 1.4fr) minmax(0, 1fr) 84px 36px 26px 26px;
   align-items: center;
   gap: 12px;
   padding: 8px 0;
@@ -4857,4 +4857,93 @@ body.theme-light {
 .pw-w-line.is-hour {
   font-size: 1.55em;
   opacity: 1;
+}
+
+/* ---------------------------------------------------------------------------
+   Phones and tablets
+   --------------------------------------------------------------------------- */
+
+/* The watch is dragged with a finger, so the page doesn't scroll under it. */
+.pocket-watch-float {
+  touch-action: none;
+}
+
+@media (max-width: 560px) {
+  .pocket-watch-gallery-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Devices */
+.pw-device-row {
+  grid-template-columns: 16px minmax(0, 1.4fr) minmax(0, 1fr) 84px 92px 36px 26px;
+}
+
+.pw-device-icon {
+  display: flex;
+  color: var(--text-muted);
+}
+
+.pw-device-icon .svg-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.pw-device-seen,
+.pw-device-words {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.pw-device-words {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.pw-devices-hint,
+.pw-device-note {
+  margin-top: 10px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.pw-device-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pw-device-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pw-device-kind.is-selected {
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+}
+
+@media (max-width: 560px) {
+  .pw-project-row {
+    grid-template-columns: auto minmax(0, 1fr) auto auto 26px 26px;
+    gap: 8px;
+  }
+
+  .pw-device-row {
+    grid-template-columns: 16px minmax(0, 1fr) auto auto 26px;
+    gap: 8px;
+  }
+
+  .pw-project-row .pw-project-share,
+  .pw-device-row .pw-project-share,
+  .pw-device-row .pw-device-words {
+    display: none;
+  }
+}
+
+.pw-device-icon.is-inline {
+  display: inline-flex;
+  vertical-align: -2px;
+  margin-right: 6px;
 }

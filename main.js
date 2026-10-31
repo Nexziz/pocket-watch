@@ -1,6 +1,6 @@
 'use strict';
 
-const { Plugin, PluginSettingTab, Setting, MarkdownView, Notice, Menu, ItemView, Modal, setIcon } = require('obsidian');
+const { Plugin, PluginSettingTab, Setting, MarkdownView, Notice, Menu, ItemView, Modal, Platform, setIcon } = require('obsidian');
 
 // ---------------------------------------------------------------------------
 // Options
@@ -408,6 +408,18 @@ function fmtNum(n) {
   return n.toLocaleString();
 }
 
+// How long ago: "just now", "5 minutes ago", "yesterday", "12 days ago".
+function sinceText(at) {
+  if (!at) return 'a while ago';
+  const min = Math.floor((Date.now() - at) / 60000);
+  if (min < 2) return 'just now';
+  if (min < 60) return `${min} minutes ago`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return h === 1 ? 'an hour ago' : `${h} hours ago`;
+  const d = Math.floor(h / 24);
+  return d === 1 ? 'yesterday' : `${d} days ago`;
+}
+
 // "1 day", "6 days".
 function plural(n, word) {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -538,6 +550,129 @@ const ROMAN = ['XII', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X
 
 const EMPTY_DAY = Object.freeze({ ms: 0, written: 0, deleted: 0 });
 
+// The kinds of device your time can come from, and the icon for each.
+const DEVICE_KINDS = { computer: 'Computer', laptop: 'Laptop', phone: 'Phone', tablet: 'Tablet' };
+const DEVICE_ICONS = { computer: 'monitor', laptop: 'laptop', phone: 'smartphone', tablet: 'tablet' };
+
+// Settings that belong to each device rather than to the vault: where the watch sits, its
+// size, and whether it shows.
+const DEVICE_SETTINGS = ['watchAnchor', 'watchPos', 'watchSize', 'showWatch'];
+
+// Changes to every device's time, like moving time to a project, are kept this long, for a
+// device that has been away to catch up on.
+const CHANGE_DAYS = 180;
+
+// This device as Obsidian sees it, and a name to start with: you can change both.
+function deviceGuess() {
+  const kind = Platform.isPhone ? 'phone' : Platform.isTablet ? 'tablet' : 'computer';
+  const name = kind === 'phone' ? (Platform.isIosApp ? 'iPhone' : 'Android phone')
+    : kind === 'tablet' ? (Platform.isIosApp ? 'iPad' : 'Android tablet')
+      : Platform.isMacOS ? 'Mac' : Platform.isWin ? 'Windows PC' : Platform.isLinux ? 'Linux PC' : 'Computer';
+  return { kind, name };
+}
+
+function newId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+function pick(obj, keys) {
+  const out = {};
+  for (const k of keys) if (obj[k] !== undefined) out[k] = obj[k];
+  return out;
+}
+
+// The settings every device shares: all but where the watch sits.
+function sharedSettings(s) {
+  const out = Object.assign({}, s);
+  for (const k of DEVICE_SETTINGS) delete out[k];
+  return out;
+}
+
+// Days from several devices added up: minutes, words, sessions, hours, notes and projects.
+function sumDays(list) {
+  const out = { ms: 0, written: 0, deleted: 0, sessions: 0, focusMs: 0 };
+  for (const d of list) {
+    if (!d) continue;
+    for (const k of SLICE_NUMBERS) out[k] += d[k] || 0;
+    if (d.hours) {
+      out.hours = out.hours || new Array(24).fill(0);
+      d.hours.forEach((ms, h) => (out.hours[h] += ms));
+    }
+    if (d.files) {
+      out.files = out.files || {};
+      for (const [path, ms] of Object.entries(d.files)) out.files[path] = (out.files[path] || 0) + ms;
+    }
+    for (const [id, x] of Object.entries(d.projects || {})) {
+      out.projects = out.projects || {};
+      if (!out.projects[id]) out.projects[id] = { ms: 0, written: 0, deleted: 0, sessions: 0, focusMs: 0, hours: new Array(24).fill(0), files: {} };
+      addSlice(out.projects[id], x);
+    }
+  }
+  return out;
+}
+
+// Moves the time on the given days from one project to another, either of which can be no
+// project: its minutes, hours of the day, notes, words and focus sessions. Returns what
+// restoreDays needs to put it back.
+function moveDays(days, keys, from, to) {
+  const undo = [];
+  for (const key of keys) {
+    const day = days[key];
+    if (!day) continue;
+    const share = projectSlice(day, from);
+    if (!share.ms && !share.written && !share.deleted && !share.sessions) continue;
+    undo.push([key, JSON.stringify(day.projects || null)]);
+    if (to !== NO_PROJECT) addSlice(projectBucket(day, to), share);
+    if (from !== NO_PROJECT) delete day.projects[from];
+    if (day.projects && !Object.keys(day.projects).length) delete day.projects;
+  }
+  return undo;
+}
+
+function restoreDays(days, undo) {
+  for (const [key, saved] of undo || []) {
+    const day = days[key];
+    if (!day) continue;
+    const projects = JSON.parse(saved);
+    if (projects) day.projects = projects;
+    else delete day.projects;
+  }
+}
+
+// A renamed note keeps its time, and a renamed folder takes its notes' time with it.
+function renameDays(days, oldPath, newPath) {
+  const move = (files) => {
+    for (const path of Object.keys(files)) {
+      const moved = path === oldPath ? newPath : path.startsWith(`${oldPath}/`) ? newPath + path.slice(oldPath.length) : null;
+      if (!moved) continue;
+      files[moved] = (files[moved] || 0) + files[path];
+      delete files[path];
+    }
+  };
+  for (const day of Object.values(days)) {
+    if (day.files) move(day.files);
+    for (const project of Object.values(day.projects || {})) if (project.files) move(project.files);
+  }
+}
+
+// A project's share of a day, made empty when it has none yet.
+function projectBucket(day, id) {
+  day.projects = day.projects || {};
+  if (!day.projects[id]) day.projects[id] = { ms: 0, written: 0, deleted: 0, sessions: 0, focusMs: 0, hours: new Array(24).fill(0), files: {} };
+  return day.projects[id];
+}
+
+// Applies a change to every device's time to one device's days, and returns its days.
+function runChange(change, days, undos) {
+  if (change.kind === 'move') undos[change.id] = moveDays(days, change.keys, change.from, change.to);
+  else if (change.kind === 'unmove') {
+    restoreDays(days, undos[change.of]);
+    delete undos[change.of];
+  } else if (change.kind === 'rename') renameDays(days, change.from, change.to);
+  else if (change.kind === 'reset') return {};
+  return days;
+}
+
 const STATE_LABELS = {
   tracking: 'Tracking',
   idle: 'Idle: type, click or scroll to resume',
@@ -609,18 +744,8 @@ function migrateSettings(s) {
 
 module.exports = class PocketWatchPlugin extends Plugin {
   async onload() {
-    const saved = (await this.loadData()) || {};
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, migrateSettings(saved.settings));
-    // Projects are edited in place, so each plugin gets its own copies.
-    this.settings.projects = (this.settings.projects || []).map((x) => Object.assign({}, x));
-    this.days = saved.days || {};
-    // The running focus session or break, if any: { kind, total, endsAt, paused, remaining }.
-    this.session = saved.session || null;
-    // Focus sessions finished since the last long break.
-    this.cycle = saved.cycle || 0;
-    // When a session or break has ended: { kind, endedAt, until }. The watch shows it until you
-    // respond, or until its `until` time when the next one started on its own.
-    this.alert = saved.alert || null;
+    this.dirty = false;
+    this.loadRecords((await this.loadData()) || {});
 
     this.paused = false;
     // Keep counting while you work in another app, such as a browser or a PDF reader.
@@ -630,7 +755,6 @@ module.exports = class PocketWatchPlugin extends Plugin {
     this.lastInput = 0;
     this.lastTick = Date.now();
     this.sinceActivityMs = 0;
-    this.dirty = false;
     // Word count of each open note when we last looked, keyed by path.
     this.wordCounts = new Map();
     this.pendingCounts = new Map();
@@ -722,7 +846,13 @@ module.exports = class PocketWatchPlugin extends Plugin {
       this.renameInDays(oldPath, file.path);
     }));
     this.registerInterval(window.setInterval(() => this.tick(), 1000));
-    this.registerInterval(window.setInterval(() => this.flush(), 30 * 1000));
+    // Save, and catch up with your other devices, every half minute; and at once when Obsidian
+    // goes to the background, as a phone may close it there.
+    this.registerInterval(window.setInterval(() => this.sync(), 30 * 1000));
+    this.registerDomEvent(document, 'visibilitychange', () => {
+      if (document.visibilityState === 'hidden') this.sync();
+      else this.markActive();
+    });
 
     this.app.workspace.onLayoutReady(() => {
       for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
@@ -767,6 +897,8 @@ module.exports = class PocketWatchPlugin extends Plugin {
 
   isFocused() {
     const doc = typeof activeDocument !== 'undefined' ? activeDocument : document;
+    // On a phone or tablet Obsidian is in use while it's on screen.
+    if (Platform.isMobile) return doc.visibilityState === 'visible';
     return doc.hasFocus();
   }
 
@@ -1003,6 +1135,7 @@ module.exports = class PocketWatchPlugin extends Plugin {
     menu.addItem((i) => i.setTitle('Track outside Obsidian').setIcon('external-link').setChecked(this.outside).onClick(() => this.toggleOutside()));
     menu.addItem((i) => i.setTitle('Hide the watch').setIcon('eye-off').onClick(() => this.updateWatch({ showWatch: false })));
     menu.showAtMouseEvent(e);
+    this.menuAt = Date.now();
   }
 
   async updateWatch(patch) {
@@ -1011,14 +1144,34 @@ module.exports = class PocketWatchPlugin extends Plugin {
     if (this.watch) this.watch.applySettings();
   }
 
+  // Today on this device, where the time you spend here goes.
   today() {
     const key = dayKey(new Date());
-    if (!this.days[key]) this.days[key] = { ms: 0, written: 0, deleted: 0 };
-    return this.days[key];
+    if (!this.ownDays[key]) this.ownDays[key] = { ms: 0, written: 0, deleted: 0 };
+    return this.ownDays[key];
   }
 
+  // A day over all your devices.
   getDay(key) {
-    return this.days[key] || EMPTY_DAY;
+    const own = this.ownDays[key];
+    const other = this.othersMerged && this.othersMerged[key];
+    if (!other) return own || EMPTY_DAY;
+    return own ? sumDays([other, own]) : other;
+  }
+
+  // Every day over all your devices. With one device these are its own days.
+  get days() {
+    if (!this.othersMerged || !Object.keys(this.othersMerged).length) return this.ownDays;
+    const now = Date.now();
+    if (this.mergedCache && now - this.mergedCache.at < 500) return this.mergedCache.days;
+    const days = Object.assign({}, this.othersMerged);
+    for (const [key, d] of Object.entries(this.ownDays)) days[key] = days[key] ? sumDays([days[key], d]) : d;
+    this.mergedCache = { at: now, days };
+    return days;
+  }
+
+  set days(days) {
+    this.ownDays = days;
   }
 
   seedWordCount(file) {
@@ -1057,39 +1210,321 @@ module.exports = class PocketWatchPlugin extends Plugin {
     }, 500));
   }
 
-  async flush() {
+  // --- Devices ---
+  //
+  // Each device keeps its own record of your time and only ever writes its own, so sync can
+  // carry data.json between your computer and your phone without one overwriting the other's
+  // time. What they share is merged by when it was made: the settings, the devices' names,
+  // and changes to every device's time, like moving time to a project, which each device
+  // applies to its own record when it sees them.
+
+  loadRecords(saved) {
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, migrateSettings(saved.settings));
+    // Projects are edited in place, so each plugin gets its own copies.
+    this.settings.projects = (this.settings.projects || []).map((x) => Object.assign({}, x));
+    this.settingsAt = saved.settingsAt || 0;
+    this.info = Object.assign({}, saved.info);
+    this.changes = (saved.ops || []).filter((x) => x.at > Date.now() - CHANGE_DAYS * 86400000);
+    this.removed = Object.assign({}, saved.removed);
+    this.others = {};
+
+    let id = this.local('device');
+    if (id && this.removed[id]) id = null;
+    let own = null;
+    if (!saved.devices && (saved.days || saved.settings)) {
+      // From before devices: everything so far becomes this device's.
+      own = { days: saved.days || {}, session: saved.session, cycle: saved.cycle, alert: saved.alert, layout: pick(this.settings, DEVICE_SETTINGS) };
+      this.dirty = true;
+    } else if (id) {
+      own = saved.devices[id] || null;
+      // Sync can bring back an older copy of this device's record than it last saved; the
+      // copy kept on the device itself is then newer.
+      const kept = this.local('record');
+      if (kept && kept.id === id && kept.record && (!own || (kept.record.rev || 0) > (own.rev || 0))) own = kept.record;
+    }
+    if (!id) {
+      id = newId();
+      this.local('device', id);
+    }
+    // A new device starts with its own empty record; changes made before it came are not its.
+    if (!own) own = { days: {}, applied: this.changes.map((x) => x.id) };
+    this.deviceId = id;
+    if (!this.info[id]) {
+      const guess = deviceGuess();
+      this.info[id] = { name: this.freeName(guess.name), kind: guess.kind, at: Date.now() };
+      this.dirty = true;
+    }
+    for (const [other, record] of Object.entries(saved.devices || {})) {
+      if (other !== id && !this.removed[other]) this.others[other] = record;
+    }
+
+    this.ownDays = own.days || {};
+    // The running focus session or break, if any: { kind, total, endsAt, paused, remaining }.
+    this.session = own.session || null;
+    // Focus sessions finished since the last long break.
+    this.cycle = own.cycle || 0;
+    // When a session or break has ended: { kind, endedAt, until }. The watch shows it until you
+    // respond, or until its `until` time when the next one started on its own.
+    this.alert = own.alert || null;
+    this.applied = new Set(own.applied || []);
+    this.undos = Object.assign({}, own.undo);
+    this.rev = own.rev || 0;
+    // Where the watch sits is this device's own. A new phone starts with a smaller watch.
+    const layout = own.layout || Object.assign(pick(DEFAULT_SETTINGS, DEVICE_SETTINGS), Platform.isPhone ? { watchSize: 84 } : {});
+    Object.assign(this.settings, layout);
+    this.sharedJson = JSON.stringify(sharedSettings(this.settings));
+    if (this.applyChanges()) this.dirty = true;
+    this.mergeOthers();
+  }
+
+  // Kept on this device only, never synced: which device this is, and a copy of its record.
+  local(key, value) {
+    const name = `pocket-watch-${key}`;
+    const app = this.app;
+    try {
+      if (value === undefined) {
+        if (app.loadLocalStorage) return app.loadLocalStorage(name);
+        return JSON.parse(window.localStorage.getItem(`${name}-${app.vault.getName()}`));
+      }
+      if (app.saveLocalStorage) app.saveLocalStorage(name, value);
+      else window.localStorage.setItem(`${name}-${app.vault.getName()}`, JSON.stringify(value));
+    } catch (e) {
+      // Without it, the record in data.json still holds.
+    }
+    return null;
+  }
+
+  freeName(name) {
+    const taken = new Set(Object.values(this.info).map((x) => x.name));
+    let n = 2;
+    let free = name;
+    while (taken.has(free)) free = `${name} ${n++}`;
+    return free;
+  }
+
+  record() {
+    return {
+      days: this.ownDays, session: this.session, cycle: this.cycle, alert: this.alert, layout: pick(this.settings, DEVICE_SETTINGS),
+      applied: [...this.applied], undo: this.undos, rev: this.rev, seen: Date.now(),
+    };
+  }
+
+  // Saves this device's record after taking in what the other devices have saved since.
+  async sync() {
+    if (this.syncing) {
+      this.syncAgain = true;
+      return;
+    }
+    this.syncing = true;
+    try {
+      do {
+        this.syncAgain = false;
+        await this.syncOnce();
+      } while (this.syncAgain);
+    } finally {
+      this.syncing = false;
+    }
+  }
+
+  async syncOnce() {
+    // A change to the settings made here is stamped first, so it wins over older ones.
+    const shared = JSON.stringify(sharedSettings(this.settings));
+    if (shared !== this.sharedJson) {
+      this.sharedJson = shared;
+      // Always later than the settings it replaces, even within the same millisecond.
+      this.settingsAt = Math.max(Date.now(), this.settingsAt + 1);
+      this.dirty = true;
+    }
+    const disk = await this.loadData();
+    if (disk && disk.devices) {
+      this.absorb(disk);
+      // Sync brought back an older copy of this device's record: save it again.
+      const mine = disk.devices[this.deviceId];
+      if (!mine || (mine.rev || 0) < this.rev) this.dirty = true;
+    } else this.dirty = true;
     if (!this.dirty) return;
     this.dirty = false;
-    await this.saveData({ settings: this.settings, days: this.days, session: this.session, cycle: this.cycle, alert: this.alert });
+    this.rev++;
+    const record = this.record();
+    const devices = Object.assign({}, this.others, { [this.deviceId]: record });
+    await this.saveData({
+      version: 2, settings: this.settings, settingsAt: this.settingsAt, info: this.info, devices, ops: this.changes, removed: this.removed,
+    });
+    this.local('record', { id: this.deviceId, record });
+  }
+
+  flush() {
+    return this.sync();
+  }
+
+  // Sync changed data.json: catch up with the other devices at once.
+  async onExternalSettingsChange() {
+    await this.sync();
+  }
+
+  // Takes in what other devices saved: their records, newer settings and names, and changes.
+  absorb(disk) {
+    let changed = false;
+    let settings = false;
+    if ((disk.settingsAt || 0) > this.settingsAt && disk.settings) {
+      const next = Object.assign({}, DEFAULT_SETTINGS, migrateSettings(disk.settings), pick(this.settings, DEVICE_SETTINGS));
+      next.projects = (next.projects || []).map((x) => Object.assign({}, x));
+      Object.assign(this.settings, next);
+      this.settingsAt = disk.settingsAt;
+      this.sharedJson = JSON.stringify(sharedSettings(this.settings));
+      changed = settings = true;
+    }
+    for (const [id, info] of Object.entries(disk.info || {})) {
+      if (!this.info[id] || info.at > this.info[id].at) {
+        this.info[id] = info;
+        changed = true;
+      }
+    }
+    for (const [id, at] of Object.entries(disk.removed || {})) {
+      if (this.removed[id]) continue;
+      this.removed[id] = at;
+      delete this.others[id];
+      changed = true;
+    }
+    if (this.removed[this.deviceId]) this.rejoin();
+    for (const [id, record] of Object.entries(disk.devices)) {
+      if (id === this.deviceId || this.removed[id]) continue;
+      const mine = this.others[id];
+      if (mine && (record.rev || 0) < (mine.rev || 0)) continue;
+      if (!mine || record.rev !== mine.rev) changed = true;
+      this.others[id] = record;
+    }
+    const known = new Set(this.changes.map((x) => x.id));
+    const since = Date.now() - CHANGE_DAYS * 86400000;
+    for (const change of disk.ops || []) {
+      if (known.has(change.id) || change.at < since) continue;
+      this.changes.push(change);
+      changed = true;
+    }
+    if (this.applyChanges()) this.dirty = changed = true;
+    if (!changed) return;
+    this.mergeOthers();
+    if (settings && this.watch) this.watch.applySettings();
+    this.refreshProjects();
+  }
+
+  // Applies the changes this device hasn't yet to its own record; true when there were any.
+  applyChanges() {
+    const since = Date.now() - CHANGE_DAYS * 86400000;
+    this.changes = this.changes.filter((x) => x.at >= since);
+    let any = false;
+    for (const change of this.changes) {
+      if (this.applied.has(change.id)) continue;
+      this.applied.add(change.id);
+      this.ownDays = runChange(change, this.ownDays, this.undos);
+      any = true;
+    }
+    // Forget what was applied once the change itself is gone.
+    const ids = new Set(this.changes.map((x) => x.id));
+    for (const id of this.applied) if (!ids.has(id)) this.applied.delete(id);
+    for (const id of Object.keys(this.undos)) if (!ids.has(id)) delete this.undos[id];
+    return any;
+  }
+
+  // A change to your time on every device: applied here now, and by the others when they see it.
+  async change(change) {
+    Object.assign(change, { id: newId(), at: Date.now(), by: this.deviceId });
+    this.changes.push(change);
+    this.applied.add(change.id);
+    this.ownDays = runChange(change, this.ownDays, this.undos);
+    this.mergeOthers();
+    this.dirty = true;
+    await this.sync();
+    return change;
+  }
+
+  // The other devices' days, added up, as they will be once they've applied every change.
+  mergeOthers() {
+    this.otherViews = {};
+    const byDay = {};
+    for (const [id, record] of Object.entries(this.others)) {
+      const done = new Set(record.applied || []);
+      const pending = this.changes.filter((x) => !done.has(x.id) && x.by !== id);
+      let days = record.days || {};
+      if (pending.length) {
+        days = JSON.parse(JSON.stringify(days));
+        const undos = JSON.parse(JSON.stringify(record.undo || {}));
+        for (const change of pending) days = runChange(change, days, undos);
+      }
+      this.otherViews[id] = days;
+      for (const [key, d] of Object.entries(days)) (byDay[key] = byDay[key] || []).push(d);
+    }
+    this.othersMerged = {};
+    for (const [key, list] of Object.entries(byDay)) this.othersMerged[key] = list.length === 1 ? list[0] : sumDays(list);
+    this.mergedCache = null;
+  }
+
+  // Another device took this one's time in, or forgot it: carry on as a new device.
+  rejoin() {
+    const was = this.info[this.deviceId];
+    this.deviceId = newId();
+    this.local('device', this.deviceId);
+    this.ownDays = {};
+    this.applied = new Set(this.changes.map((x) => x.id));
+    this.undos = {};
+    this.rev = 0;
+    const guess = deviceGuess();
+    this.info[this.deviceId] = { name: this.freeName(was ? was.name : guess.name), kind: was ? was.kind : guess.kind, at: Date.now() };
+    this.dirty = true;
+    new Notice('Pocket Watch: this device\'s time was taken in by another device. It carries on from here.');
+  }
+
+  // Your devices, this one first: { id, name, kind, days, seen, isThis }.
+  deviceList() {
+    const list = [{ id: this.deviceId, days: this.ownDays, seen: Date.now(), isThis: true }];
+    for (const [id, record] of Object.entries(this.others || {})) {
+      list.push({ id, days: (this.otherViews && this.otherViews[id]) || record.days || {}, seen: record.seen || 0, isThis: false });
+    }
+    return list.map((x) => Object.assign(x, this.deviceInfo(x.id)));
+  }
+
+  deviceInfo(id) {
+    const info = (this.info && this.info[id]) || { name: 'A device', kind: 'computer' };
+    return { name: info.name, kind: DEVICE_KINDS[info.kind] ? info.kind : 'computer' };
+  }
+
+  async setDevice(id, name, kind) {
+    this.info[id] = { name: name.trim() || this.deviceInfo(id).name, kind, at: Date.now() };
+    this.dirty = true;
+    await this.sync();
+    this.refreshProjects();
+  }
+
+  // Forget a device you no longer use, or first take its time into this device's own.
+  async forgetDevice(id, keep) {
+    if (keep) {
+      for (const [key, d] of Object.entries((this.otherViews && this.otherViews[id]) || {})) {
+        this.ownDays[key] = this.ownDays[key] ? sumDays([this.ownDays[key], d]) : JSON.parse(JSON.stringify(d));
+      }
+    }
+    this.removed[id] = Date.now();
+    delete this.others[id];
+    this.mergeOthers();
+    this.dirty = true;
+    await this.sync();
+    this.refreshProjects();
+    this.tick();
   }
 
   async saveSettings() {
     this.dirty = true;
-    await this.flush();
+    await this.sync();
   }
 
   async resetData() {
-    this.days = {};
-    await this.saveSettings();
+    await this.change({ kind: 'reset' });
     this.tick();
-    if (this.watch && this.watch.dashboard) this.watch.dashboard.render();
+    this.refreshProjects();
   }
 
-  // A renamed note keeps its time, and a renamed folder takes its notes' time with it.
+  // A renamed note keeps its time, on every device.
   renameInDays(oldPath, newPath) {
-    const move = (files) => {
-      for (const path of Object.keys(files)) {
-        const moved = path === oldPath ? newPath : path.startsWith(`${oldPath}/`) ? newPath + path.slice(oldPath.length) : null;
-        if (!moved) continue;
-        files[moved] = (files[moved] || 0) + files[path];
-        delete files[path];
-        this.dirty = true;
-      }
-    };
-    for (const day of Object.values(this.days)) {
-      if (day.files) move(day.files);
-      for (const project of Object.values(day.projects || {})) if (project.files) move(project.files);
-    }
+    this.change({ kind: 'rename', from: oldPath, to: newPath });
   }
 
   // --- Projects ---
@@ -1105,47 +1540,30 @@ module.exports = class PocketWatchPlugin extends Plugin {
     return project ? this.projectBucket(day, project.id) : null;
   }
 
-  // A project's share of a day, made empty when it has none yet.
   projectBucket(day, id) {
-    day.projects = day.projects || {};
-    if (!day.projects[id]) day.projects[id] = { ms: 0, written: 0, deleted: 0, sessions: 0, focusMs: 0, hours: new Array(24).fill(0), files: {} };
-    return day.projects[id];
+    return projectBucket(day, id);
   }
 
-  // Move the time on the given days from one project to another, either of which can be no
-  // project: its minutes, hours of the day, notes, words and focus sessions. Returns how much
-  // moved, and what undoMove needs to put it back.
+  // Move the time on the given days from one project to another, on every device. Returns how
+  // much moved, and the change, which undoMove puts back.
   async moveTime(keys, from, to) {
-    const undo = [];
     let moved = 0;
-    if (from === to) return { moved, days: 0, undo };
+    let days = 0;
+    if (from === to) return { moved, days, undo: null };
     for (const key of keys) {
-      const day = this.days[key];
-      if (!day) continue;
-      const share = projectSlice(day, from);
+      const share = projectSlice(this.getDay(key), from);
       if (!share.ms && !share.written && !share.deleted && !share.sessions) continue;
-      undo.push([key, JSON.stringify(day.projects || null)]);
-      if (to !== NO_PROJECT) addSlice(this.projectBucket(day, to), share);
-      if (from !== NO_PROJECT) delete day.projects[from];
-      if (day.projects && !Object.keys(day.projects).length) delete day.projects;
       moved += share.ms;
+      days++;
     }
-    if (undo.length) {
-      await this.saveSettings();
-      this.refreshProjects();
-    }
-    return { moved, days: undo.length, undo };
+    if (!days) return { moved, days, undo: null };
+    const change = await this.change({ kind: 'move', keys, from, to });
+    this.refreshProjects();
+    return { moved, days, undo: change.id };
   }
 
-  async undoMove(undo) {
-    for (const [key, saved] of undo) {
-      const day = this.days[key];
-      if (!day) continue;
-      const projects = JSON.parse(saved);
-      if (projects) day.projects = projects;
-      else delete day.projects;
-    }
-    await this.saveSettings();
+  async undoMove(id) {
+    await this.change({ kind: 'unmove', of: id });
     this.refreshProjects();
   }
 
@@ -1304,7 +1722,8 @@ class FloatingWatch {
     this.el.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     this.el.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      this.plugin.showWatchMenu(e);
+      // A long press on a touch screen may already have opened it.
+      if (Date.now() - (this.plugin.menuAt || 0) > 800) this.plugin.showWatchMenu(e);
     });
     this.gripEl.addEventListener('pointerdown', (e) => this.onResizeStart(e));
     this.el.addEventListener('wheel', (e) => this.onWheel(e), { passive: false });
@@ -3822,11 +4241,19 @@ class FloatingWatch {
     let top = r.top;
     let target = null;
     this.el.setPointerCapture(e.pointerId);
+    // On a touch screen, a long press opens the menu that a right-click opens elsewhere.
+    let pressed = false;
+    const press = e.pointerType === 'touch' ? window.setTimeout(() => {
+      if (this.dragging || Date.now() - (this.plugin.menuAt || 0) < 800) return;
+      pressed = true;
+      this.plugin.showWatchMenu(e);
+    }, 500) : null;
 
     const move = (ev) => {
       const dx = ev.clientX - start.x;
       const dy = ev.clientY - start.y;
-      if (!this.dragging && Math.hypot(dx, dy) < 4) return;
+      if (!this.dragging && Math.hypot(dx, dy) < (e.pointerType === 'touch' ? 8 : 4)) return;
+      window.clearTimeout(press);
       if (!this.dragging) {
         this.dragging = true;
         this.el.addClass('is-dragging');
@@ -3843,8 +4270,9 @@ class FloatingWatch {
       this.el.removeEventListener('pointermove', move);
       this.el.removeEventListener('pointerup', up);
       this.el.removeEventListener('pointercancel', up);
+      window.clearTimeout(press);
       if (!this.dragging) {
-        this.toggleShelf();
+        if (!pressed) this.toggleShelf();
         return;
       }
       this.dragging = false;
@@ -4422,6 +4850,79 @@ function projectSwitcher(plugin, el) {
 }
 
 // A new project, or changes to one: its name and colour, and whether to track it now.
+// Rename a device or change what kind it is; and for another device, take its time into
+// this one or forget it, for a device you no longer use.
+class DeviceModal extends Modal {
+  constructor(app, plugin, device) {
+    super(app);
+    this.plugin = plugin;
+    this.device = device;
+    this.name = device.name;
+    this.kind = device.kind;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    const x = this.device;
+    contentEl.addClass('pw-project-modal');
+    this.titleEl.setText(x.isThis ? 'This device' : x.name);
+    const input = contentEl.createEl('input', { cls: 'pw-project-input', attr: { type: 'text', placeholder: 'A name, like Work laptop', value: this.name } });
+    input.addEventListener('input', () => {
+      this.name = input.value;
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this.save();
+      }
+    });
+    contentEl.createDiv({ cls: 'pw-project-modal-label', text: 'Kind' });
+    const kinds = contentEl.createDiv({ cls: 'pw-device-kinds', attr: { role: 'radiogroup', 'aria-label': 'Kind' } });
+    for (const [key, label] of Object.entries(DEVICE_KINDS)) {
+      const b = kinds.createEl('button', { cls: 'pw-device-kind', attr: { role: 'radio', 'aria-checked': String(key === this.kind) } });
+      setIcon(b.createSpan(), DEVICE_ICONS[key]);
+      b.createSpan({ text: label });
+      b.toggleClass('is-selected', key === this.kind);
+      b.addEventListener('click', () => {
+        this.kind = key;
+        kinds.querySelectorAll('.pw-device-kind').forEach((el) => {
+          const on = el === b;
+          el.toggleClass('is-selected', on);
+          el.setAttr('aria-checked', String(on));
+        });
+      });
+    }
+    if (!x.isThis) {
+      contentEl.createDiv({ cls: 'pw-device-note', text: `Last here ${sinceText(x.seen)}. If you no longer use it, or it's this device from before a reinstall, take its time into this device, or forget it.` });
+    }
+    const buttons = contentEl.createDiv('pw-project-modal-buttons');
+    if (!x.isThis) {
+      buttons.createEl('button', { text: 'Take its time' }).addEventListener('click', async () => {
+        if (!window.confirm(`Add ${x.name}'s time to this device, and remove ${x.name}?`)) return;
+        await this.plugin.forgetDevice(x.id, true);
+        this.close();
+      });
+      buttons.createEl('button', { cls: 'mod-warning', text: 'Forget' }).addEventListener('click', async () => {
+        if (!window.confirm(`Forget ${x.name} and the time tracked on it? This cannot be undone.`)) return;
+        await this.plugin.forgetDevice(x.id, false);
+        this.close();
+      });
+    }
+    buttons.createDiv('pw-project-modal-gap');
+    buttons.createEl('button', { text: 'Cancel' }).addEventListener('click', () => this.close());
+    buttons.createEl('button', { cls: 'mod-cta', text: 'Save' }).addEventListener('click', () => this.save());
+  }
+
+  async save() {
+    await this.plugin.setDevice(this.device.id, this.name, this.kind);
+    this.close();
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+}
+
 class ProjectModal extends Modal {
   constructor(app, plugin, project) {
     super(app);
@@ -4789,7 +5290,10 @@ class StatsView extends ItemView {
 
   // A day as the page shows it: all of it, or only the projects you've turned on.
   day(key) {
-    const d = this.plugin.getDay(key);
+    return this.only(this.plugin.getDay(key));
+  }
+
+  only(d) {
     if (!this.shown) return d;
     const out = { ms: 0, written: 0, deleted: 0, sessions: 0, focusMs: 0, hours: new Array(24).fill(0), files: {} };
     for (const id of this.shown) {
@@ -5013,6 +5517,7 @@ class StatsView extends ItemView {
     this.renderYear(page);
     this.renderHero(page, r);
     this.renderProjects(page, r);
+    this.renderDevices(page, r);
     let row = page.createDiv('pw-stats-grid');
     this.renderDaily(row, r);
     this.renderHours(row, r);
@@ -5255,6 +5760,59 @@ class StatsView extends ItemView {
     }
     const foot = card.createDiv('pw-projects-foot');
     foot.createEl('button', { text: 'New project' }).addEventListener('click', () => new ProjectModal(this.app, p).open());
+  }
+
+  // Where your time comes from: this computer, your phone, and any other device, with the
+  // words written on each. Click one to rename it or change what kind of device it is.
+  renderDevices(page, r) {
+    const p = this.plugin;
+    const devices = p.deviceList().map((x) => {
+      let ms = 0;
+      let written = 0;
+      for (const key of r.keys) {
+        const d = x.days[key];
+        if (!d) continue;
+        const part = this.only(d);
+        ms += part.ms;
+        written += part.written || 0;
+      }
+      return Object.assign(x, { ms, written });
+    });
+    const total = devices.reduce((sum, x) => sum + x.ms, 0);
+    const card = this.card(page, 'Devices', devices.length > 1 ? `Where your time comes from, last ${r.n} days` : '');
+    // Shades of the page's colour, the most used device the strongest.
+    const order = devices.slice().sort((a, b) => b.ms - a.ms);
+    const shade = (x) => `color-mix(in srgb, var(--pw-s-bar) ${[100, 62, 38, 24][Math.min(3, order.indexOf(x))]}%, transparent)`;
+    if (devices.length > 1 && total > 0) {
+      const split = card.createDiv('pw-projects-split');
+      for (const x of order) {
+        if (!x.ms) continue;
+        const seg = split.createDiv('pw-projects-seg');
+        seg.style.flexGrow = String(x.ms);
+        seg.style.background = shade(x);
+        this.hover(seg, fmtShort(x.ms), `${x.name}, ${Math.round((x.ms / total) * 100)}%`);
+      }
+    }
+    const list = card.createDiv('pw-projects');
+    for (const x of devices) {
+      const row = list.createDiv({ cls: ['pw-project-row', 'pw-device-row'] });
+      setIcon(row.createSpan('pw-device-icon'), DEVICE_ICONS[x.kind]);
+      const name = row.createDiv('pw-project-row-name');
+      name.createSpan({ text: x.name });
+      if (x.isThis) name.createSpan({ cls: 'pw-project-badge', text: 'This device' });
+      else name.createSpan({ cls: 'pw-device-seen', text: `Last here ${sinceText(x.seen)}` });
+      const share = row.createDiv('pw-project-share');
+      share.createDiv('pw-project-share-fill').style.cssText = `width: ${total ? (x.ms / total) * 100 : 0}%; background: ${shade(x)}`;
+      row.createDiv({ cls: 'pw-project-time', text: fmtShort(x.ms) });
+      row.createDiv({ cls: 'pw-device-words', text: `${fmtNum(x.written)} words` });
+      row.createDiv({ cls: 'pw-project-pct', text: total ? `${Math.round((x.ms / total) * 100)}%` : '' });
+      const edit = row.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': `Rename ${x.name}, or change its kind` } });
+      setIcon(edit, 'pencil');
+      edit.addEventListener('click', () => new DeviceModal(this.app, p, x).open());
+    }
+    if (devices.length === 1) {
+      card.createDiv({ cls: 'pw-devices-hint', text: 'Use Pocket Watch on your phone or another computer with this vault, and their time shows here too, each on its own row.' });
+    }
   }
 
   // Your time in the range, against the same number of days before, with its trend, and
@@ -5606,12 +6164,12 @@ class PocketWatchSettingTab extends PluginSettingTab {
 
     new Setting(el)
       .setName('Show watch')
-      .setDesc('Click the watch for your calendar and stats, and right-click it for focus sessions.')
+      .setDesc(Platform.isMobile ? 'Tap the watch for your calendar and stats, and press and hold it for focus sessions.' : 'Click the watch for your calendar and stats, and right-click it for focus sessions.')
       .addToggle((t) => t.setValue(s.showWatch).onChange((v) => set({ showWatch: v })));
     this.renderGallery(el, set);
     new Setting(el)
       .setName('Size')
-      .setDesc('Or drag the handle on the watch, or hold Alt and scroll over it.')
+      .setDesc(Platform.isMobile ? 'How big the watch is on this device.' : 'Or drag the handle on the watch, or hold Alt and scroll over it. Each device keeps its own.')
       .addSlider((sl) => sl
         .setLimits(MIN_SIZE, MAX_SIZE, 2)
         .setValue(s.watchSize)
@@ -5619,7 +6177,7 @@ class PocketWatchSettingTab extends PluginSettingTab {
         .onChange((v) => set({ watchSize: v })));
     new Setting(el)
       .setName('Position')
-      .setDesc('Drag the watch onto a pane and it snaps to a corner or edge. Drop it on a pane\'s tab bar to tuck it in there, sized to fit. Drop it on the ribbon or status bar to snap it to the window, or hold Alt to place it freely.')
+      .setDesc(Platform.isMobile ? 'Drag the watch with your finger and it snaps to a corner or edge.' : 'Drag the watch onto a pane and it snaps to a corner or edge. Drop it on a pane\'s tab bar to tuck it in there, sized to fit. Drop it on the ribbon or status bar to snap it to the window, or hold Alt to place it freely.')
       .addButton((b) => b.setButtonText('Reset').onClick(() => set({ watchAnchor: null, watchPos: null })));
 
     // Customise the watch you are wearing.
@@ -5741,13 +6299,30 @@ class PocketWatchSettingTab extends PluginSettingTab {
       .addToggle((t) => t.setValue(s.weekStartsMonday).onChange((v) => save('weekStartsMonday', v)));
     new Setting(tracking)
       .setName('Reset all data')
-      .setDesc('Deletes every tracked day. This cannot be undone.')
+      .setDesc('Deletes every tracked day, on every device. This cannot be undone.')
       .addButton((b) => b.setButtonText('Reset').setWarning().onClick(async () => {
         if (window.confirm('Delete all Pocket Watch time and word stats?')) {
           await p.resetData();
           new Notice('Pocket Watch data reset');
         }
       }));
+
+    // Your devices: rename them, change their kind, or take in or forget an old one.
+    const devices = group('devices', 'Devices', 'The computers and phones your time comes from.');
+    for (const x of p.deviceList()) {
+      const setting = new Setting(devices).setName(x.name)
+        .setDesc(`${DEVICE_KINDS[x.kind]}${x.isThis ? ', this device' : `, last here ${sinceText(x.seen)}`}`);
+      setIcon(setting.nameEl.createSpan({ cls: ['pw-device-icon', 'is-inline'] }), DEVICE_ICONS[x.kind]);
+      setting.nameEl.prepend(setting.nameEl.lastChild);
+      setting.addExtraButton((b) => b.setIcon('pencil').setTooltip('Rename, or change its kind').onClick(() => {
+        const modal = new DeviceModal(this.app, p, x);
+        modal.onClose = () => {
+          modal.contentEl.empty();
+          this.display();
+        };
+        modal.open();
+      }));
+    }
 
     el.scrollTop = scroll;
   }

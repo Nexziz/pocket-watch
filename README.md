@@ -14,7 +14,7 @@ A fine timepiece that sits over your notes, with a Pomodoro timer for a steady r
 - **Three painted dials**: Sakura, a cherry branch in gold lacquer with mother-of-pearl blossoms on black, Nocturne, a mountain lake at dusk whose moon is tonight's moon, and Koi, painted by hand.
 - **Snaps where you put it.** Drag it over a pane and it snaps to a corner or edge. Drop it on a pane's tab bar and it tucks in there, sized to fit the bar, analog or digital. There most watches take a bolder mini version that's easy to read when small. Drop it on the ribbon or status bar to snap it to the window, or hold Alt to place it anywhere.
 - **Any size**: drag the handle on the watch, or hold Alt and scroll over it.
-- **Click it** for your calendar and stats. Right-click it to start a focus session.
+- **Click it** for your calendar and stats. Right-click it to start a focus session. On a phone, tap it, and press and hold it for the menu.
 
 ![Twenty-four watches](images/make-it-yours.png)
 
@@ -52,16 +52,20 @@ A fine timepiece that sits over your notes, with a Pomodoro timer for a steady r
 - **Time in each note**: the note you're in gets the time too. Renamed notes and folders keep their time.
 - **Projects**: track your time toward a project, like a novel you are drafting and a garden journal on the side. Each has its own colour. Change the project from the shelf, the stats page or the command palette, and lock it so a stray click can't switch it. On the stats page, turn projects on and off to see one, several or all of them: the page takes a project's colour when it shows just one, and stacks them by colour when it shows several. Time tracked without a project, or on the wrong one, can move to the right one: for a day, a range of days or between two dates, with its notes, hours, words and focus sessions, and an undo.
 - **Status bar**: today's time and the minutes left in a session.
+- **On your computer and your phone**: Pocket Watch works on phones and tablets too, counting while Obsidian is on screen. With your vault synced, each device keeps its own record of your time, so they never overwrite each other, and your stats add them all up. Moving time to a project, renaming a note or resetting reaches every device.
+- **Devices**: the stats page shows where your time comes from, this computer, your phone or any other device, with the words written on each. Rename a device or change its kind (computer, laptop, phone or tablet) from the stats page or the settings, and take an old device's time into this one, or forget it.
 
 ![Your stats](images/stats.png)
 
 ![Projects, each in its own colour](images/projects.png)
 
+![Your devices: where your time comes from](images/devices.png)
+
 ![Sits on top of your notes](images/in-context.png)
 
 ## Install
 
-Search for **Pocket Watch** in Settings → Community plugins once it's listed. Until then, download `manifest.json`, `main.js` and `styles.css` from the [latest release](https://github.com/Nexziz/pocket-watch/releases/latest) into `.obsidian/plugins/pocket-watch/` in your vault, then enable **Pocket Watch** in Settings → Community plugins.
+Search for **Pocket Watch** in Settings → Community plugins once it's listed. It works on desktop, phones and tablets. If you use it on more than one device, update it on all of them to 1.14 or later, so that every device keeps its own record. Until then, download `manifest.json`, `main.js` and `styles.css` from the [latest release](https://github.com/Nexziz/pocket-watch/releases/latest) into `.obsidian/plugins/pocket-watch/` in your vault, then enable **Pocket Watch** in Settings → Community plugins.
 
 ## Settings
 
@@ -78,7 +82,7 @@ Search for **Pocket Watch** in Settings → Community plugins once it's listed. 
 
 Words written and deleted come from how a note's word count changes while you edit it. Chinese, Japanese and Korean characters count as one word each, as in Obsidian's own count.
 
-Pocket Watch works entirely offline. It makes no network requests and only writes its own `data.json` in the plugin folder.
+Pocket Watch works entirely offline. It makes no network requests and only writes its own `data.json` in the plugin folder, which your own sync can carry between your devices. Each device also keeps a copy of its own record in Obsidian's local storage, in case sync brings back an older `data.json`.
 
 ## Support
 
