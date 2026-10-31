@@ -4376,3 +4376,485 @@ body.theme-light {
 .pw-stats-loose button {
   margin-left: auto;
 }
+
+/* ---------------------------------------------------------------------------
+   Retro, Vinyl and Terrazzo
+   --------------------------------------------------------------------------- */
+
+.pocket-watch-face-retro {
+  --pw-bezel-a: #fff0c4; --pw-bezel-b: #c99a45; --pw-bezel-c: #6e4c18;
+  --pw-dial-a: #f8ecd0; --pw-dial-b: #ead2a4;
+  --pw-ink: #4a2816; --pw-ink-soft: #b0835a;
+  --pw-hand: #3e2213; --pw-lume: #f8ecd0; --pw-accent: #c9542a;
+  --pw-ring: #d9792b; --pw-ring-track: rgba(74, 40, 22, 0.14);
+  --pw-date-bg: #fff6e2; --pw-date-ink: #4a2816;
+  --pw-grain: rgba(120, 70, 20, 0.6);
+  --pw-numeral-font: "Cooper Black", "Cooper Std", "Bookman Old Style", "Iowan Old Style", Georgia, serif;
+}
+
+.pocket-watch-face-retro .pw-numeral {
+  font-weight: 800;
+}
+
+.pw-retro-band {
+  fill: none;
+}
+
+.pw-retro-band.is-brown { stroke: #6b3820; }
+.pw-retro-band.is-rust { stroke: #b24a24; }
+.pw-retro-band.is-orange { stroke: #e2802f; }
+.pw-retro-band.is-mustard { stroke: #ebb43f; }
+
+.pocket-watch-face-vinyl {
+  --pw-bezel-a: #5b5e64; --pw-bezel-b: #2a2c30; --pw-bezel-c: #111214;
+  --pw-dial-a: #1d1d20; --pw-dial-b: #08080a;
+  --pw-ink: #e9e6df; --pw-ink-soft: #8d8a84;
+  --pw-hand: #f2efe8; --pw-hand-shade: #b9b5ad; --pw-hand-edge: rgba(0, 0, 0, 0.6);
+  --pw-lume: #111113; --pw-accent: #e0553b;
+  --pw-ring: #e0553b; --pw-ring-track: rgba(255, 255, 255, 0.08);
+  --pw-date-bg: #111113; --pw-date-ink: #e9e6df;
+  --pw-subdial: rgba(0, 0, 0, 0.3);
+}
+
+.pw-vinyl-groove {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.06);
+  stroke-width: 0.35;
+}
+
+.pw-vinyl-groove.is-gap {
+  stroke: rgba(0, 0, 0, 0.75);
+  stroke-width: 1.1;
+}
+
+.pw-vinyl-sheen {
+  fill: #ffffff;
+}
+
+.pw-vinyl-paper {
+  fill: #d24a33;
+  stroke: rgba(0, 0, 0, 0.35);
+  stroke-width: 0.5;
+}
+
+.pw-vinyl-rim,
+.pw-vinyl-lines {
+  fill: none;
+  stroke: rgba(255, 236, 214, 0.45);
+  stroke-width: 0.35;
+}
+
+.pw-vinyl-text {
+  fill: #fde9d2;
+  font-family: var(--font-interface);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+/* The label turns, a little slower than a real record, while the movement runs. */
+.pw-motion .pw-mv-spin.is-record {
+  animation: pocket-watch-spin 12s linear infinite;
+}
+
+.pw-movement-gentle .pw-mv-spin.is-record {
+  animation-duration: 40s;
+}
+
+.pocket-watch-face-terrazzo {
+  --pw-bezel-a: #f1ebe0; --pw-bezel-b: #ddd3c3; --pw-bezel-c: #b3a690;
+  --pw-dial-a: #f6f1e8; --pw-dial-b: #e8e0d2;
+  --pw-ink: #2c2a28; --pw-ink-soft: #9b9286;
+  --pw-hand: #2b2927; --pw-lume: #f6f1e8; --pw-accent: #c4643f;
+  --pw-ring: #c4643f; --pw-ring-track: rgba(0, 0, 0, 0.12);
+  --pw-date-bg: #fffcf6; --pw-date-ink: #2c2a28;
+}
+
+.pw-chip.is-terracotta { fill: #cf7650; }
+.pw-chip.is-sage { fill: #93ab8b; }
+.pw-chip.is-ochre { fill: #dfae55; }
+.pw-chip.is-rose { fill: #e3a99a; }
+.pw-chip.is-slate { fill: #6f8197; }
+.pw-chip.is-cream { fill: #fffaf0; stroke: rgba(0, 0, 0, 0.08); stroke-width: 0.3; }
+.pw-chip.is-fleck { fill: #3a3633; }
+.pw-chip.is-grey { fill: #a9a39a; }
+
+.pocket-watch-face-terrazzo .pw-index {
+  stroke: #2c2a28;
+  paint-order: stroke;
+}
+
+/* ---------------------------------------------------------------------------
+   Square digital watches: Tomato, Pixel and Words
+   --------------------------------------------------------------------------- */
+
+.pw-d-tomato,
+.pw-d-pixel,
+.pw-d-words {
+  --pw-corner: 1.25em;
+  box-sizing: border-box;
+  width: 7.4em;
+  height: 7.4em;
+  border-radius: var(--pw-corner);
+  overflow: hidden;
+}
+
+/* Tomato: a ripe red tile with a glossy top, the session round its edge. */
+.pw-d-tomato {
+  --pw-d-bg: radial-gradient(circle at 32% 22%, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0) 42%), radial-gradient(circle at 50% 40%, #ea5a40, #b9301d 78%);
+  --pw-d-ink: #fff4e6;
+  --pw-d-soft: rgba(255, 238, 220, 0.75);
+  --pw-d-accent: #fff4e6;
+  --pw-d-edge: rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15em;
+  font-family: var(--font-interface);
+  box-shadow: inset 0 0 0 1px var(--pw-d-edge), inset 0 -0.35em 0.8em rgba(90, 10, 0, 0.35);
+}
+
+.pw-d-tomato .pw-d-brand {
+  height: 40%;
+  top: 56%;
+  opacity: 0.08;
+}
+
+.pw-t-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.pw-t-track,
+.pw-t-progress {
+  fill: none;
+  stroke-width: 2.6;
+  vector-effect: non-scaling-stroke;
+}
+
+.pw-t-track {
+  stroke: rgba(255, 240, 225, 0.16);
+  stroke-width: 3px;
+}
+
+.pw-t-progress {
+  stroke: rgba(255, 244, 230, 0.75);
+  stroke-width: 3px;
+  stroke-linecap: round;
+  transition: opacity 400ms ease;
+}
+
+.pocket-watch-float[data-ring="focus"] .pw-t-progress {
+  stroke: #fff6ea;
+}
+
+.pocket-watch-float[data-ring="break"] .pw-t-progress {
+  stroke: #b8f0a8;
+}
+
+.pocket-watch-float[data-ring="paused"] .pw-t-progress {
+  stroke: rgba(255, 244, 230, 0.4);
+}
+
+.pocket-watch-float[data-ring="over"] .pw-t-progress {
+  stroke: #ffe28a;
+}
+
+.pocket-watch-float[data-ring="off"] .pw-t-ring {
+  display: none;
+}
+
+.pocket-watch-float[data-ring="goal"]:not([data-state="tracking"], [data-state="outside"]) .pw-t-progress {
+  opacity: 0.4;
+}
+
+.pw-t-head {
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  font-size: 0.68em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--pw-d-soft);
+}
+
+.pw-t-icon {
+  width: 1.25em;
+  height: 1.25em;
+}
+
+.pw-t-fruit {
+  fill: #fff4e6;
+}
+
+.pw-t-leaf {
+  fill: #6fbf5a;
+  stroke: #3f7d32;
+  stroke-width: 0.6;
+  stroke-linejoin: round;
+}
+
+.pw-t-big {
+  font-size: 1.95em;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.pw-t-dots {
+  display: flex;
+  gap: 0.32em;
+  margin-top: 0.15em;
+}
+
+.pw-t-dot {
+  width: 0.42em;
+  height: 0.42em;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(255, 244, 230, 0.6);
+}
+
+.pw-t-dot.is-done {
+  background: #fff4e6;
+  box-shadow: none;
+}
+
+.pw-t-dot.is-now {
+  background: rgba(255, 244, 230, 0.45);
+}
+
+.pw-t-foot {
+  font-size: 0.68em;
+  font-weight: 500;
+  color: var(--pw-d-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Greyscale: the tomato goes quiet too. */
+.pocket-watch-float[data-palette="grey"] .pw-d-tomato {
+  filter: grayscale(0.9) brightness(0.92);
+}
+
+/* Pixel: amber lights on a dark screen behind glass. */
+.pw-d-pixel {
+  --pw-d-bg: radial-gradient(circle at 30% 18%, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 45%), linear-gradient(160deg, #1b1d1c, #0b0c0c);
+  --pw-d-edge: rgba(255, 255, 255, 0.08);
+  --pw-px-on: #ffb44c;
+  padding: 0.55em;
+}
+
+.pw-px-glass {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.pw-px-screen {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 0 0.12em rgba(255, 150, 40, 0.65));
+}
+
+.pw-px {
+  fill: rgba(255, 190, 120, 0.07);
+}
+
+.pw-px.is-on,
+.pw-px.is-sec {
+  fill: var(--pw-px-on);
+}
+
+.pw-px.is-bar {
+  fill: color-mix(in srgb, var(--pw-px-on) 70%, transparent);
+}
+
+.pocket-watch-float[data-ring="focus"] .pw-px.is-bar {
+  fill: var(--pw-focus, #e0694f);
+}
+
+.pocket-watch-float[data-ring="break"] .pw-px.is-bar {
+  fill: var(--pw-break, #5fb49c);
+}
+
+.pocket-watch-float[data-ring="over"] .pw-px.is-bar {
+  fill: var(--pw-alert);
+}
+
+.pocket-watch-float[data-ring="goal"]:not([data-state="tracking"], [data-state="outside"]) .pw-px.is-bar {
+  opacity: 0.4;
+}
+
+.pw-px-ampm {
+  position: absolute;
+  right: 0.1em;
+  top: -0.2em;
+  font-size: 0.42em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--pw-px-on);
+  opacity: 0.7;
+}
+
+/* Words: letters on a dark glass tile, the time in warm light. */
+.pw-d-words {
+  --pw-d-bg: radial-gradient(circle at 30% 18%, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 45%), linear-gradient(160deg, #24262b, #121316);
+  --pw-d-edge: rgba(255, 255, 255, 0.08);
+  --pw-w-on: #f6ead2;
+}
+
+.pw-w-glass {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 0.75em;
+}
+
+.pw-w-grid {
+  display: grid;
+  grid-template-columns: repeat(11, 1fr);
+  grid-template-rows: repeat(11, 1fr);
+  width: 100%;
+  height: 100%;
+  font-family: var(--font-interface);
+  font-size: 0.44em;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.pw-w-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.11);
+  transition: color 600ms ease, text-shadow 600ms ease;
+}
+
+.pw-w-cell.is-on {
+  color: var(--pw-w-on);
+  text-shadow: 0 0 0.5em color-mix(in srgb, var(--pw-w-on) 60%, transparent);
+}
+
+.pocket-watch-float[data-ring="focus"] .pw-d-words {
+  --pw-w-on: color-mix(in srgb, var(--pw-focus, #e0694f) 70%, #fff);
+}
+
+.pocket-watch-float[data-ring="break"] .pw-d-words {
+  --pw-w-on: color-mix(in srgb, var(--pw-break, #5fb49c) 65%, #fff);
+}
+
+.pw-w-corner {
+  position: absolute;
+  width: 0.26em;
+  height: 0.26em;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  transition: background-color 600ms ease;
+}
+
+.pw-w-corner.is-on {
+  background: var(--pw-w-on);
+  box-shadow: 0 0 0.3em var(--pw-w-on);
+}
+
+.pw-w-corner[data-at="tl"] { left: 0.55em; top: 0.55em; }
+.pw-w-corner[data-at="tr"] { right: 0.55em; top: 0.55em; }
+.pw-w-corner[data-at="br"] { right: 0.55em; bottom: 0.55em; }
+.pw-w-corner[data-at="bl"] { left: 0.55em; bottom: 0.55em; }
+
+/* Bezel finishes: a turntable platter's strobe dots, and matte ceramic. */
+.pw-case-strobe {
+  fill: rgba(225, 228, 232, 0.6);
+}
+
+.pw-case-platter .pw-bezel-edge {
+  stroke: rgba(255, 255, 255, 0.18);
+}
+
+.pw-case-fleck {
+  fill: rgba(80, 66, 50, 0.45);
+}
+
+.pw-case-groove {
+  fill: none;
+  stroke: rgba(90, 75, 55, 0.3);
+  stroke-width: 0.5;
+}
+
+.pw-case-ceramic .pw-bezel {
+  stroke: rgba(80, 66, 50, 0.35);
+}
+
+.pw-case-ceramic .pw-bezel-edge {
+  stroke: rgba(255, 255, 255, 0.5);
+  stroke-width: 0.6;
+}
+
+/* ---------------------------------------------------------------------------
+   Mini: small, as in a tab bar, the watches are drawn simpler and bolder.
+   --------------------------------------------------------------------------- */
+
+.pw-index.is-mini {
+  stroke-width: 5.5;
+}
+
+.pw-index.is-mini.is-major {
+  stroke-width: 8;
+}
+
+.pw-d-tomato.is-mini {
+  width: 9.6em;
+  height: 4.8em;
+  --pw-corner: 1em;
+  gap: 0;
+}
+
+.pw-d-tomato.is-mini :is(.pw-t-head, .pw-t-dots, .pw-t-foot, .pw-d-brand) {
+  display: none;
+}
+
+.pw-d-tomato.is-mini .pw-t-big {
+  font-size: 2.85em;
+}
+
+.pw-d-pixel.is-mini {
+  width: 12.4em;
+  height: 5.2em;
+  padding: 0.45em 0.6em;
+  --pw-corner: 1em;
+}
+
+.pw-d-words.is-mini {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  height: 5em;
+  padding: 0 0.9em;
+  --pw-corner: 1em;
+  font-family: var(--font-interface);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.05;
+  color: var(--pw-w-on);
+}
+
+.pw-w-line {
+  font-size: 1.2em;
+  opacity: 0.75;
+}
+
+.pw-w-line.is-hour {
+  font-size: 1.55em;
+  opacity: 1;
+}

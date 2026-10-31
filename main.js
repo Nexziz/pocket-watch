@@ -98,6 +98,18 @@ const ANALOG_FACES = {
     name: 'Deco', shape: 'square', case: 'polished', markers: 'deco', art: 'deco', applied: true,
     hands: 'sword', set: { slotBottom: 'seconds' },
   },
+  retro: {
+    name: 'Retro', case: 'thin', markers: 'quarters', art: 'retro', texture: 'grain',
+    brandWidth: 24, hands: 'baton', set: { slotRight: 'date' },
+  },
+  vinyl: {
+    name: 'Vinyl', case: 'platter', markers: 'pips', art: 'vinyl', brandAt: 'top', brandWidth: 22,
+    hands: 'pencil', set: {},
+  },
+  terrazzo: {
+    name: 'Terrazzo', case: 'ceramic', markers: 'batons', art: 'terrazzo', brandWidth: 24,
+    hands: 'baton', set: {},
+  },
   theme: {
     name: 'Match theme', case: 'thin', markers: 'batons', decor: 'minute-dots',
     hands: 'baton', set: { slotRight: 'date' },
@@ -191,12 +203,69 @@ const DIGITAL_STYLES = {
   hairline: 'Hairline',
   capsule: 'Capsule',
   column: 'Column',
+  tomato: 'Tomato',
+  pixel: 'Pixel',
+  words: 'Words',
 };
 
 // Slim styles that come in a shape of their own and show just the time: Hairline is bare
 // numerals in your theme's colours, Capsule a slim pill that fills with the session, and
 // Column the hours over the minutes in a narrow strip. The layout doesn't apply to them.
-const SHAPED_STYLES = ['hairline', 'capsule', 'column'];
+const SHAPED_STYLES = ['hairline', 'capsule', 'column', 'tomato', 'pixel', 'words'];
+
+// The square ones: Tomato, a Pomodoro timer first; Pixel, the time in lights on a dot-matrix
+// screen; and Words, the time in words.
+const SQUARE_STYLES = ['tomato', 'pixel', 'words'];
+
+// Pixel's digits, three dots wide and five tall, a row at a time.
+const PIXEL_DIGITS = {
+  0: ['111', '101', '101', '101', '111'], 1: ['010', '110', '010', '010', '111'],
+  2: ['111', '001', '111', '100', '111'], 3: ['111', '001', '011', '001', '111'],
+  4: ['101', '101', '111', '001', '001'], 5: ['111', '100', '111', '001', '111'],
+  6: ['111', '100', '111', '101', '111'], 7: ['111', '001', '010', '010', '010'],
+  8: ['111', '101', '111', '101', '111'], 9: ['111', '101', '111', '001', '111'],
+};
+
+// Words' letters, eleven by eleven, and where each word sits: [row, column, length].
+const WORD_GRID = [
+  'ITQISWHALFX',
+  'TENZQUARTER',
+  'TWENTYXFIVE',
+  'MINUTESZTOW',
+  'PASTKONETWO',
+  'THREEVFOURX',
+  'FIVESIXTENB',
+  'SEVENYEIGHT',
+  'NINEJELEVEN',
+  'TWELVEWATCH',
+  'POMOOCLOCKS',
+];
+const WORDS = {
+  it: [0, 0, 2], is: [0, 3, 2], half: [0, 6, 4], ten: [1, 0, 3], quarter: [1, 4, 7], twenty: [2, 0, 6], five: [2, 7, 4],
+  minutes: [3, 0, 7], to: [3, 8, 2], past: [4, 0, 4], oclock: [10, 4, 6],
+  h1: [4, 5, 3], h2: [4, 8, 3], h3: [5, 0, 5], h4: [5, 6, 4], h5: [6, 0, 4], h6: [6, 4, 3], h7: [7, 0, 5],
+  h8: [7, 6, 5], h9: [8, 0, 4], h10: [6, 7, 3], h11: [8, 5, 6], h12: [9, 0, 6],
+};
+
+const HOUR_WORDS = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
+
+// The words for a time, to the five minutes before it: "it is twenty five minutes to three".
+function timeWords(h, m) {
+  const five = Math.floor(m / 5) * 5;
+  const hour = (((five > 30 ? h + 1 : h) + 11) % 12) + 1;
+  const words = ['it', 'is'];
+  const away = five > 30 ? 60 - five : five;
+  if (away === 5) words.push('five', 'minutes');
+  else if (away === 10) words.push('ten', 'minutes');
+  else if (away === 15) words.push('quarter');
+  else if (away === 20) words.push('twenty', 'minutes');
+  else if (away === 25) words.push('twenty', 'five', 'minutes');
+  else if (away === 30) words.push('half');
+  if (five) words.push(five > 30 ? 'to' : 'past');
+  words.push(`h${hour}`);
+  if (!five) words.push('oclock');
+  return words;
+}
 
 const DIGITAL_LAYOUTS = { wide: 'Wide', slim: 'Slim', tall: 'Tall', compact: 'Compact' };
 
@@ -337,6 +406,11 @@ function fmtCompact(ms) {
 
 function fmtNum(n) {
   return n.toLocaleString();
+}
+
+// "1 day", "6 days".
+function plural(n, word) {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
 }
 
 function pad2(n) {
@@ -1269,12 +1343,14 @@ class FloatingWatch {
     const fit = this.trayHeight();
     for (let pass = 0; pass < 2; pass++) {
       const want = fit ? fit / (this.ratio || 1) : s.watchSize;
+      // In a tab bar a watch is small, so it is drawn in a simpler, bolder way.
+      this.mini = fit > 0 && fit < 72;
       // Within a few percent is close enough, so rounding never has it redrawn every second.
       if (!fit || !this.size || Math.abs(want - this.size) > Math.max(1, this.size * 0.03)) this.size = Math.round(want);
       const key = JSON.stringify([
         s.watchType, this.size, s.face, s.caseStyle, s.dialText, s.markers, s.hands, s.seconds, s.complications, s.slotTop, s.slotRight, s.slotBottom, s.slotLeft,
         s.goalRing, s.movement, s.digitalStyle, s.digitalLayout, s.clock, s.digitalSeconds, s.blinkColon,
-        s.digitalDate, s.digitalMoon, s.digitalFocus, s.digitalBar, s.longBreakEvery, dayKey(now),
+        s.digitalDate, s.digitalMoon, s.digitalFocus, s.digitalBar, s.longBreakEvery, dayKey(now), this.mini,
       ]);
       if (key === this.built) break;
       this.build(now);
@@ -1369,6 +1445,7 @@ class FloatingWatch {
       if (d.ampm) setText(d.ampm, h < 12 ? 'AM' : 'PM');
     }
     if (parts.pomo) this.updatePomodoro(now);
+    if (parts.square) this.updateSquare(now, progress);
     if (parts.focusText) setText(parts.focusText, fmtShort(day.ms));
     if (parts.fill) parts.fill.style[parts.fillAxis || 'width'] = `${progress * 100}%`;
   }
@@ -1397,7 +1474,8 @@ class FloatingWatch {
     this.faceDef = face;
     // A square face has a rounded square case and dial; R is then half the dial's width.
     const sq = face.shape === 'square';
-    const R = sq ? 84 : face.case === 'thin' ? 95 : face.case === 'dive' ? 80 : 89.5;
+    // How much of the watch is case: from a thin rim to a broad dive bezel.
+    const R = sq ? 84 : { thin: 95, dive: 80, platter: 87.5, ceramic: 85 }[face.case] || 89.5;
     const k = R / 89.5;
     this.uid = ++drawings;
     const slots = faceSlots(s);
@@ -1415,6 +1493,8 @@ class FloatingWatch {
     const [dotX, dotY] = sq ? [188.5, 11.5] : polar(94, 45);
     this.alertDotEl.style.left = `${((dotX - box[0]) / box[2]) * 100}%`;
     this.alertDotEl.style.top = `${((dotY - box[1]) / box[3]) * 100}%`;
+    const mini = !!this.mini;
+    if (mini) svg.addClass('is-mini');
     if (s.movement !== 'still') svg.addClass('pw-motion');
     if (s.movement === 'gentle') svg.addClass('pw-movement-gentle');
     const add = (parent, tag, attr, cls) => parent.createSvg(tag, { attr, cls });
@@ -1455,11 +1535,16 @@ class FloatingWatch {
     disc(svg, 99, { fill: url('bezel') }, 'pw-bezel');
     disc(svg, 98.3, {}, 'pw-bezel-edge');
     if (face.case === 'dive') this.drawDiveBezel(svg, add);
-    else disc(svg, R + 1.1, { 'stroke-width': 2.2, stroke: url('bezel-rev') }, 'pw-bezel-step');
+    else {
+      if (!sq) this.drawCaseFinish(svg, add, face.case, R);
+      disc(svg, R + 1.1, { 'stroke-width': 2.2, stroke: url('bezel-rev') }, 'pw-bezel-step');
+    }
 
     // The ring on the bezel shows the daily goal, or the countdown during a focus session. On
     // a square case it runs round the square from 12.
-    const [ringR, ringW] = sq ? [91.6, 2.8] : face.case === 'thin' ? [97, 2] : face.case === 'dive' ? [83, 1.8] : [94.6, 2.8];
+    const [ringR, ringW] = sq ? [91.6, 2.8] : {
+      thin: [97, 2], dive: [83, 1.8], platter: [90.3, 1.8], ceramic: [90.4, 2.6],
+    }[face.case] || [94.6, 2.8];
     if (sq) {
       const d = squarePath(ringR, ringR * 0.33);
       add(svg, 'path', { d, 'stroke-width': ringW }, 'pw-ring-track');
@@ -1480,6 +1565,9 @@ class FloatingWatch {
     else if (face.art === 'panda') this.drawPanda(svg, add, R, k);
     else if (face.art === 'koi') this.drawKoi(svg, add, R);
     else if (face.art === 'deco') this.drawDeco(svg, add, R, k);
+    else if (face.art === 'retro') this.drawRetro(svg, add, R, k);
+    else if (face.art === 'vinyl') this.drawVinyl(svg, add, text, R, k);
+    else if (face.art === 'terrazzo') this.drawTerrazzo(svg, add, R);
     if (face.pomodoro) this.drawPomodoro(svg, add, text, R, k);
     if (face.texture) this.drawTexture(svg, add, face.texture, R);
     if (face.decor) this.drawDecor(svg, add, text, face.decor, R, k, used);
@@ -1496,24 +1584,29 @@ class FloatingWatch {
       add(svg, 'path', { d }, 'pw-flange-tick');
     }
     const markers = s.markers === 'face' || !MARKERS[s.markers] ? face.markers : s.markers;
-    this.drawMarkers(svg, add, text, markers, R, k, used, face);
+    // Small, the watch keeps its dial and hands, and bold marks at the hours take the place of
+    // the markers, monogram and complications, which would be too fine to read.
+    if (mini) {
+      this.drawMiniMarkers(svg, add, R, sq);
+    } else {
+      this.drawMarkers(svg, add, text, markers, R, k, used, face);
+      if (s.dialText) this.drawBrand(svg, add, face, markers, R, k, used);
+    }
 
-    if (s.dialText) this.drawBrand(svg, add, face, markers, R, k, used);
-
-    if (face.window) {
+    if (face.window && !mini) {
       const slot = SLOTS.find((x) => x.key === face.window);
       const [cx, cy] = polar(R * 0.415, slot.hour * 30);
       this.drawMovementWindow(svg, add, cx, cy, R * 0.345, face.windowShape);
     }
     let hourDial = null;
-    if (face.regulator) {
+    if (face.regulator && !mini) {
       const slot = SLOTS.find((x) => x.key === face.regulator);
       hourDial = polar(R * 0.45, slot.hour * 30);
       this.drawHourDial(svg, add, text, hourDial[0], hourDial[1], k);
     }
     for (const slot of SLOTS) {
       const type = slots[slot.key];
-      if (face.window === slot.key || face.regulator === slot.key || !type || type === 'none' || !COMPLICATIONS[type]) continue;
+      if (mini || face.window === slot.key || face.regulator === slot.key || !type || type === 'none' || !COMPLICATIONS[type]) continue;
       const [cx, cy] = polar(R * 0.47, slot.hour * 30);
       this.drawComplication(svg, add, text, type, cx, cy, k, now);
     }
@@ -1525,7 +1618,10 @@ class FloatingWatch {
       const body = add(turnEl, 'g', { transform: 'translate(100 100)' }, kind === 'second' ? 'pw-second' : 'pw-hand');
       return [turnEl, body];
     };
-    const style = s.hands !== 'face' && HANDS[s.hands] ? s.hands : face.hands || 'leaf';
+    let style = s.hands !== 'face' && HANDS[s.hands] ? s.hands : face.hands || 'leaf';
+    // Small, the hands are broader, and the finer styles become batons.
+    if (mini && ['breguet', 'pencil', 'arrow'].includes(style)) style = 'baton';
+    const hk = mini ? k * 1.8 : k;
     let body;
     if (hourDial) {
       // On a regulator the hour hand turns on its own small dial, under the minute hand.
@@ -1537,12 +1633,12 @@ class FloatingWatch {
       add(hands, 'circle', { cx, cy, r: 2.2 * k, fill: url('cap') }, 'pw-cap');
     } else {
       [this.parts.hour, body] = hand('hour');
-      this.drawHand(body, add, style, R * 0.52, k, true);
+      this.drawHand(body, add, style, R * (mini ? 0.56 : 0.52), hk, true);
     }
     [this.parts.minute, body] = hand('minute');
     // On a square dial the minute hand reaches further, toward the markers along the edge.
-    this.drawHand(body, add, style, R * (sq ? 0.88 : 0.8), k, false);
-    if (s.seconds !== 'off') {
+    this.drawHand(body, add, style, R * (sq ? 0.88 : mini ? 0.84 : 0.8), hk, false);
+    if (s.seconds !== 'off' && !mini) {
       [this.parts.second, body] = hand('second');
       add(body, 'line', { x1: 0, y1: 18 * k, x2: 0, y2: -R * 0.88 });
       add(body, 'rect', { x: -1.5 * k, y: 9 * k, width: 3 * k, height: 9.5 * k, rx: 1.5 * k });
@@ -1550,7 +1646,7 @@ class FloatingWatch {
       if (s.seconds === 'sweep') sweep(this.parts.second, now);
     }
     // A domed cap over the hands, with a glint.
-    add(svg, 'circle', { cx: 100, cy: 100, r: 4.8 * k, fill: url('cap') }, 'pw-cap');
+    add(svg, 'circle', { cx: 100, cy: 100, r: (mini ? 7 : 4.8) * k, fill: url('cap') }, 'pw-cap');
     add(svg, 'circle', { cx: 100 - 1.4 * k, cy: 100 - 1.5 * k, r: 1.3 * k }, 'pw-cap-shine');
     add(svg, 'circle', { cx: 100, cy: 100, r: 1.5 * k }, s.seconds !== 'off' ? 'pw-cap-dot' : 'pw-cap-pin');
 
@@ -2166,6 +2262,127 @@ class FloatingWatch {
     }
   }
 
+  // Bold marks at the hours for a small watch, longest at 12, 3, 6 and 9.
+  drawMiniMarkers(svg, add, R, sq) {
+    for (let i = 0; i < 12; i++) {
+      const major = i % 3 === 0;
+      const len = major ? 19 : 11;
+      const [x1, y1] = sq ? edgePoint(R, i * 30, 6) : polar(R - 6, i * 30);
+      const [x2, y2] = sq ? edgePoint(R, i * 30, 6 + len) : polar(R - 6 - len, i * 30);
+      add(svg, 'line', { x1, y1, x2, y2 }, major ? ['pw-index', 'is-mini', 'is-major'] : ['pw-index', 'is-mini']);
+    }
+  }
+
+  // The finish of a bezel: a platter is slim dark metal with the strobe dots of a turntable
+  // round it; ceramic is matte and speckled, with a fine groove cut into it.
+  drawCaseFinish(svg, add, kind, R) {
+    if (kind === 'platter') {
+      for (const [r, n, h] of [[93.2, 100, 1.7], [96.3, 90, 2]]) {
+        let d = '';
+        for (let j = 0; j < n; j++) {
+          const a = (j / n) * 2 * Math.PI;
+          const w = 0.62;
+          const [ux, uy] = [Math.sin(a), -Math.cos(a)];
+          const [tx, ty] = [Math.cos(a) * w, Math.sin(a) * w];
+          const [x0, y0] = [100 + ux * (r - h / 2), 100 + uy * (r - h / 2)];
+          const [x1, y1] = [100 + ux * (r + h / 2), 100 + uy * (r + h / 2)];
+          d += `M ${(x0 - tx).toFixed(2)} ${(y0 - ty).toFixed(2)} L ${(x1 - tx).toFixed(2)} ${(y1 - ty).toFixed(2)} L ${(x1 + tx).toFixed(2)} ${(y1 + ty).toFixed(2)} L ${(x0 + tx).toFixed(2)} ${(y0 + ty).toFixed(2)} Z `;
+        }
+        add(svg, 'path', { d }, 'pw-case-strobe');
+      }
+    } else if (kind === 'ceramic') {
+      const rand = rng(67);
+      let d = '';
+      for (let j = 0; j < 220; j++) {
+        const a = rand() * 2 * Math.PI;
+        const r = R + 2.5 + rand() * (97.5 - R - 2.5);
+        d += circlePath(100 + r * Math.sin(a), 100 - r * Math.cos(a), 0.18 + rand() * 0.32);
+      }
+      add(svg, 'path', { d }, 'pw-case-fleck');
+      add(svg, 'circle', { cx: 100, cy: 100, r: 95.4 }, 'pw-case-groove');
+    }
+  }
+
+  // Retro: a warm cream dial from the seventies, with four bands in brown, rust, orange and
+  // mustard sweeping across it in a long curve, as on a stereo or a station wagon.
+  drawRetro(svg, add, R, k) {
+    const g = add(svg, 'g', { 'clip-path': `url(#${this.id('dial-clip')})` }, 'pw-retro');
+    const [cx, cy] = [100 - R * 0.95, 100 + R * 1.62];
+    const w = 8.6 * k;
+    ['brown', 'rust', 'orange', 'mustard'].forEach((tone, i) => {
+      const r = R * 1.9 - i * (w + 1.6 * k);
+      add(g, 'circle', { cx, cy, r, 'stroke-width': w }, ['pw-retro-band', `is-${tone}`]);
+    });
+  }
+
+  // Vinyl: a black record, its grooves catching the light in two soft wedges, and a label
+  // in the middle that turns slowly while the movement runs.
+  drawVinyl(svg, add, text, R, k) {
+    const g = add(svg, 'g', { 'clip-path': `url(#${this.id('dial-clip')})` }, 'pw-vinyl');
+    const r0 = R * 0.36;
+    const rand = rng(41);
+    let fine = '';
+    let deep = '';
+    // A smooth run-out round the label and a smooth lead-in at the edge.
+    for (let r = r0 + 6 * k; r < R - 4 * k; r += 0.85 * k) {
+      // A few wider, darker grooves between the tracks.
+      if (rand() < 0.045) {
+        deep += circlePath(100, 100, r);
+        r += 1.2 * k;
+      } else {
+        fine += circlePath(100, 100, r);
+      }
+    }
+    add(g, 'path', { d: fine }, 'pw-vinyl-groove');
+    add(g, 'path', { d: deep }, ['pw-vinyl-groove', 'is-gap']);
+    // The light falls across it from the top left and shows on the far side too, as two
+    // narrow fans that fade out to either side.
+    for (const a of [302, 122]) {
+      for (let off = -20; off < 20; off += 2) {
+        const f = 1 - Math.abs(off + 1) / 20;
+        add(g, 'path', { d: wedgePath(r0 + 5 * k, R, a + off, a + off + 2.05), opacity: (0.15 * f * f).toFixed(3) }, 'pw-vinyl-sheen');
+      }
+    }
+    const label = add(svg, 'g', {}, ['pw-vinyl-label', 'pw-mv-spin', 'is-record']);
+    add(label, 'circle', { cx: 100, cy: 100, r: r0 }, 'pw-vinyl-paper');
+    add(label, 'circle', { cx: 100, cy: 100, r: r0 - 2.2 * k }, 'pw-vinyl-rim');
+    add(label, 'circle', { cx: 100, cy: 100, r: r0 * 0.42 }, 'pw-vinyl-rim');
+    if (!this.mini) {
+      text(label, 100, 100 - r0 * 0.66, 4.3 * k, 'SIDE A', 'pw-vinyl-text');
+      text(label, 100, 100 + r0 * 0.68, 4.3 * k, '33⅓ RPM', 'pw-vinyl-text');
+    }
+    add(label, 'path', { d: `M ${100 - r0 * 0.8} ${100 - 1.6 * k} H ${100 - r0 * 0.5} M ${100 + r0 * 0.5} ${100 - 1.6 * k} H ${100 + r0 * 0.8} M ${100 - r0 * 0.74} ${100 + 1.6 * k} H ${100 - r0 * 0.5} M ${100 + r0 * 0.5} ${100 + 1.6 * k} H ${100 + r0 * 0.74}` }, 'pw-vinyl-lines');
+  }
+
+  // Terrazzo: chips of marble and stone in terracotta, sage, ochre, rose and slate, set in a
+  // warm white ground with fine dark flecks, and polished.
+  drawTerrazzo(svg, add, R) {
+    const g = add(svg, 'g', { 'clip-path': `url(#${this.id('dial-clip')})` }, 'pw-terrazzo');
+    const rand = rng(53);
+    const chip = (x, y, r, cls) => {
+      const n = 5 + Math.floor(rand() * 3);
+      const turn = rand() * Math.PI * 2;
+      const stretch = 0.6 + rand() * 0.5;
+      let d = '';
+      for (let i = 0; i < n; i++) {
+        const t = turn + (i / n) * Math.PI * 2 + (rand() - 0.5) * 0.7;
+        const rr = r * (0.65 + rand() * 0.45);
+        const px = x + rr * Math.cos(t);
+        const py = y + rr * Math.sin(t) * stretch;
+        d += `${i ? 'L' : 'M'} ${px.toFixed(2)} ${py.toFixed(2)} `;
+      }
+      add(g, 'path', { d: `${d}Z`, transform: `rotate(${(rand() * 180).toFixed(1)} ${x.toFixed(2)} ${y.toFixed(2)})` }, cls);
+    };
+    const tones = ['terracotta', 'sage', 'ochre', 'rose', 'slate', 'terracotta', 'sage', 'cream'];
+    for (let i = 0; i < 96; i++) {
+      const big = rand() < 0.2;
+      chip(100 - R + rand() * 2 * R, 100 - R + rand() * 2 * R, big ? 5 + rand() * 4.5 : 1.6 + rand() * 3.2, ['pw-chip', `is-${tones[i % tones.length]}`]);
+    }
+    for (let i = 0; i < 150; i++) chip(100 - R + rand() * 2 * R, 100 - R + rand() * 2 * R, 0.35 + rand() * 0.7, ['pw-chip', rand() < 0.6 ? 'is-fleck' : 'is-grey']);
+    this.gradient(add, 'radialGradient', 'polish', { cx: '30%', cy: '26%', r: '75%' }, [['0%', 'rgba(255,255,255,0.35)'], ['60%', 'rgba(255,255,255,0.05)'], ['100%', 'rgba(255,255,255,0)']]);
+    add(svg, 'circle', { cx: 100, cy: 100, r: R, fill: `url(#${this.id('polish')})` }, 'pw-stone-polish');
+  }
+
   // A panda's face: round black ears at the top of the dial, the subdials at 9 and 3 set in
   // black patches that slope down and out like a panda's eyes, and a small nose and mouth.
   drawPanda(svg, add, R, k) {
@@ -2232,15 +2449,16 @@ class FloatingWatch {
     add(svg, 'circle', { cx: 100, cy: 100, r: r1 }, 'pw-pomo-edge');
     const g = add(svg, 'g', {}, 'pw-pomo');
     const pomo = { g, r0, r1, focus: add(g, 'path', { d: '' }, ['pw-pomo-wedge', 'is-focus']), break: add(g, 'path', { d: '' }, ['pw-pomo-wedge', 'is-break']) };
+    pomo.dots = [];
+    this.parts.pomo = pomo;
+    if (this.mini) return;
     pomo.readout = text(svg, 100, 100 + 12.5 * k, 10 * k, '', 'pw-pomo-readout');
     pomo.caption = text(svg, 100, 100 + 20.5 * k, 3.9 * k, '', 'pw-pomo-caption');
     const n = clamp(this.plugin.settings.longBreakEvery, 1, 8);
-    pomo.dots = [];
     for (let i = 0; i < n; i++) {
       const x = 100 + (i - (n - 1) / 2) * 4.6 * k;
       pomo.dots.push(add(svg, 'circle', { cx: x, cy: 100 + 26 * k, r: 1.35 * k }, 'pw-pomo-dot'));
     }
-    this.parts.pomo = pomo;
   }
 
   // Moves the Pomodoro dial along: called every second.
@@ -2294,8 +2512,10 @@ class FloatingWatch {
     else setIfChanged(pomo[first === 'focus' ? 'break' : 'focus'], 'd', '');
     setIfChanged(pomo.g, 'data-mode', mode);
     setIfChanged(pomo.g, 'data-now', first);
-    setText(pomo.readout, readout);
-    setText(pomo.caption, caption);
+    if (pomo.readout) {
+      setText(pomo.readout, readout);
+      setText(pomo.caption, caption);
+    }
     const done = x && x.kind === 'long' ? every : p.cycle % every;
     pomo.dots.forEach((dot, i) => {
       setIfChanged(dot, 'class', `pw-pomo-dot${i < done ? ' is-done' : x && x.kind === 'focus' && i === done ? ' is-now' : ''}`);
@@ -3131,10 +3351,16 @@ class FloatingWatch {
     const s = this.plugin.settings;
     const style = DIGITAL_STYLES[s.digitalStyle] ? s.digitalStyle : 'slate';
     const shaped = SHAPED_STYLES.includes(style);
-    const layout = shaped ? style : DIGITAL_LAYOUTS[s.digitalLayout] ? s.digitalLayout : 'wide';
+    // Small, as in a tab bar, a digital watch shows just the time.
+    const layout = shaped ? style : this.mini ? 'compact' : DIGITAL_LAYOUTS[s.digitalLayout] ? s.digitalLayout : 'wide';
     const box = this.faceEl.createDiv({ cls: ['pocket-watch-digital', `pw-d-${style}`, `pw-l-${layout}`] });
+    if (this.mini) box.addClass('is-mini');
     if (s.blinkColon) box.addClass('pw-blink');
     box.style.fontSize = `${(this.size / 120) * 13}px`;
+    if (SQUARE_STYLES.includes(style)) {
+      this.buildSquare(box, style);
+      return;
+    }
     if (shaped) {
       this.buildSlim(box, style);
       return;
@@ -3195,6 +3421,162 @@ class FloatingWatch {
       d.ss = time.createSpan('pw-d-ss');
     }
     if (!this.h24) d.ampm = time.createSpan('pw-d-ampm');
+  }
+
+  // The square styles draw themselves; update() moves them along with updateSquare().
+  buildSquare(box, style) {
+    const s = this.plugin.settings;
+    const sq = (this.parts.square = { style, mini: !!this.mini });
+    if (style === 'pixel' && sq.mini) {
+      // Small, the lights make a single line, the hours and minutes side by side.
+      const svg = box.createSvg('svg', { attr: { viewBox: '0 0 190 70' }, cls: 'pw-px-screen' });
+      sq.cols = 19;
+      sq.cells = [];
+      for (let row = 0; row < 7; row++) {
+        for (let col = 0; col < 19; col++) {
+          sq.cells.push(svg.createSvg('circle', { attr: { cx: col * 10 + 5, cy: row * 10 + 5, r: 4 }, cls: 'pw-px' }));
+        }
+      }
+      for (const cy of [25, 45]) svg.createSvg('circle', { attr: { cx: 95, cy, r: 4 }, cls: ['pw-px', 'is-on', 'pw-d-colon'] });
+      return;
+    }
+    if (style === 'words' && sq.mini) {
+      // Small, just the words that are lit, on two lines.
+      sq.lines = [box.createDiv('pw-w-line'), box.createDiv({ cls: ['pw-w-line', 'is-hour'] })];
+      return;
+    }
+    if (style === 'tomato') {
+      // A ring round the edge for the session, a small tomato with the session's name, the
+      // time left large, a dot for each session until the long break, and the time below.
+      const svg = box.createSvg('svg', { attr: { viewBox: '0 0 100 100', preserveAspectRatio: 'none' }, cls: 'pw-t-ring' });
+      const d = 'M 50 3 H 79 A 18 18 0 0 1 97 21 V 79 A 18 18 0 0 1 79 97 H 21 A 18 18 0 0 1 3 79 V 21 A 18 18 0 0 1 21 3 Z';
+      svg.createSvg('path', { attr: { d }, cls: 'pw-t-track' });
+      sq.ring = svg.createSvg('path', { attr: { d, pathLength: 100, 'stroke-dasharray': '0 100' }, cls: 'pw-t-progress' });
+      if (s.dialText) {
+        const [x0, y0, x1, y1] = MONOGRAM.box;
+        box.createSvg('svg', { attr: { viewBox: `${x0} ${y0} ${x1 - x0} ${y1 - y0}` }, cls: 'pw-d-brand' })
+          .createSvg('path', { attr: { d: MONOGRAM.path } });
+      }
+      const head = box.createDiv('pw-t-head');
+      const icon = head.createSvg('svg', { attr: { viewBox: '0 0 20 20' }, cls: 'pw-t-icon' });
+      icon.createSvg('circle', { attr: { cx: 10, cy: 11.5, r: 7 }, cls: 'pw-t-fruit' });
+      icon.createSvg('path', { attr: { d: 'M 10 5.2 L 7 2.8 L 8.6 5.6 L 5.2 5.4 L 8.4 6.8 L 10 9 L 11.6 6.8 L 14.8 5.4 L 11.4 5.6 L 13 2.8 Z' }, cls: 'pw-t-leaf' });
+      sq.caption = head.createSpan('pw-t-caption');
+      sq.big = box.createDiv('pw-t-big');
+      const dots = box.createDiv('pw-t-dots');
+      sq.dots = [];
+      for (let i = 0; i < clamp(s.longBreakEvery, 1, 8); i++) sq.dots.push(dots.createSpan('pw-t-dot'));
+      sq.foot = box.createDiv('pw-t-foot');
+    } else if (style === 'pixel') {
+      // Fifteen by fifteen lights: the hours over the minutes, a row along the bottom that
+      // fills toward your goal or with a session, and with seconds a light running round the edge.
+      const glass = box.createDiv('pw-px-glass');
+      const svg = glass.createSvg('svg', { attr: { viewBox: '0 0 150 150' }, cls: 'pw-px-screen' });
+      sq.cols = 15;
+      sq.cells = [];
+      for (let row = 0; row < 15; row++) {
+        for (let col = 0; col < 15; col++) {
+          sq.cells.push(svg.createSvg('circle', { attr: { cx: col * 10 + 5, cy: row * 10 + 5, r: 4 }, cls: 'pw-px' }));
+        }
+      }
+      sq.colon = svg.createSvg('circle', { attr: { cx: 75, cy: 65, r: 4 }, cls: ['pw-px', 'is-on', 'pw-d-colon'] });
+      sq.ampm = glass.createDiv('pw-px-ampm');
+    } else {
+      // Eleven by eleven letters that spell out the time, and a light in each corner for the
+      // minutes since the last five.
+      const glass = box.createDiv('pw-w-glass');
+      const grid = glass.createDiv('pw-w-grid');
+      sq.cells = [];
+      for (const line of WORD_GRID) for (const ch of line) sq.cells.push(grid.createSpan({ cls: 'pw-w-cell', text: ch }));
+      sq.corners = ['tl', 'tr', 'br', 'bl'].map((at) => glass.createSpan({ cls: 'pw-w-corner', attr: { 'data-at': at } }));
+    }
+  }
+
+  updateSquare(now, progress) {
+    const p = this.plugin;
+    const s = p.settings;
+    const sq = this.parts.square;
+    const h = now.getHours();
+    const m = now.getMinutes();
+    if (sq.style === 'tomato') {
+      const x = p.session;
+      const every = Math.max(1, s.longBreakEvery);
+      let big;
+      let caption;
+      let foot;
+      const clock = this.h24 ? `${pad2(h)}:${pad2(m)}` : `${h % 12 || 12}:${pad2(m)}`;
+      if (x) {
+        const secs = Math.ceil(p.sessionRemaining() / 1000);
+        big = `${Math.floor(secs / 60)}:${pad2(secs % 60)}`;
+        caption = x.paused ? 'Paused' : x.kind === 'focus' ? 'Focus' : x.kind === 'long' ? 'Long break' : 'Break';
+        foot = clock;
+      } else if (p.alert) {
+        const over = Math.floor((Date.now() - p.alert.endedAt) / 60000);
+        big = over >= 1 ? `+${over}` : '0:00';
+        caption = p.alert.kind === 'focus' ? 'Break time' : 'Focus time';
+        foot = clock;
+      } else {
+        big = clock;
+        caption = `Ready · ${s.focusMinutes} min`;
+        foot = fmtShort(p.getDay(dayKey(now)).ms);
+      }
+      setText(sq.big, big);
+      setText(sq.caption, caption);
+      setText(sq.foot, foot);
+      setIfChanged(sq.ring, 'stroke-dasharray', `${(progress * 100).toFixed(2)} 100`);
+      const done = x && x.kind === 'long' ? every : p.cycle % every;
+      sq.dots.forEach((dot, i) => setIfChanged(dot, 'class', `pw-t-dot${i < done ? ' is-done' : x && x.kind === 'focus' && i === done ? ' is-now' : ''}`));
+    } else if (sq.style === 'pixel') {
+      const on = new Set();
+      const hh = this.h24 ? pad2(h) : String(h % 12 || 12).padStart(2, ' ');
+      const draw = (digits, top, left) => [...digits].forEach((ch, i) => {
+        const rows = PIXEL_DIGITS[ch];
+        if (!rows) return;
+        rows.forEach((bits, r) => [...bits].forEach((bit, c) => {
+          if (bit === '1') on.add((top + r) * sq.cols + left + i * 4 + c);
+        }));
+      });
+      if (sq.mini) {
+        draw(hh, 1, 1);
+        draw(pad2(m), 1, 11);
+      } else {
+        draw(hh, 1, 4);
+        draw(pad2(m), 7, 4);
+      }
+      const bar = new Set();
+      if (s.digitalBar && !sq.mini) {
+        const lit = Math.round(progress * 13);
+        for (let c = 0; c < lit; c++) bar.add(13 * 15 + 1 + c);
+      }
+      // The seconds run round the edge, one light at a time.
+      let sec = -1;
+      if (s.digitalSeconds && !sq.mini) {
+        const edge = [];
+        for (let c = 0; c < 14; c++) edge.push(c);
+        for (let r = 0; r < 14; r++) edge.push(r * 15 + 14);
+        for (let c = 14; c > 0; c--) edge.push(14 * 15 + c);
+        for (let r = 14; r > 0; r--) edge.push(r * 15);
+        sec = edge[Math.floor((now.getSeconds() / 60) * edge.length)];
+      }
+      sq.cells.forEach((cell, i) => setIfChanged(cell, 'class', `pw-px${on.has(i) ? ' is-on' : bar.has(i) ? ' is-bar' : i === sec ? ' is-sec' : ''}`));
+      if (sq.ampm) setText(sq.ampm, this.h24 ? '' : h < 12 ? 'AM' : 'PM');
+    } else if (sq.mini) {
+      // "twenty five to" over "three", or "three" over "o'clock".
+      const words = timeWords(h, m).slice(2).filter((w) => w !== 'minutes');
+      const hour = words.find((w) => w.startsWith('h'));
+      const name = HOUR_WORDS[Number(hour.slice(1))];
+      const rest = words.filter((w) => w !== hour && w !== 'oclock').join(' ');
+      setText(sq.lines[0], rest || name);
+      setText(sq.lines[1], rest ? name : "o'clock");
+    } else {
+      const lit = new Set();
+      for (const word of timeWords(h, m)) {
+        const [row, col, len] = WORDS[word];
+        for (let i = 0; i < len; i++) lit.add(row * 11 + col + i);
+      }
+      sq.cells.forEach((cell, i) => setIfChanged(cell, 'class', `pw-w-cell${lit.has(i) ? ' is-on' : ''}`));
+      sq.corners.forEach((corner, i) => corner.toggleClass('is-on', i < m % 5));
+    }
   }
 
   // --- Placement ----------------------------------------------------------
@@ -4914,10 +5296,10 @@ class StatsView extends ItemView {
     tile('Daily average', fmtShort(now.active ? now.ms / now.active : 0), 'on active days');
     tile('Active days', String(now.active), `of ${r.n}`);
     const streak = this.currentStreak();
-    tile('Streak', `${streak} ${streak === 1 ? 'day' : 'days'}`, `best ${this.longestStreak()} days`);
+    tile('Streak', plural(streak, 'day'), `best ${plural(this.longestStreak(), 'day')}`);
     tile('Words written', fmtCount(now.written), `${fmtCount(now.deleted)} deleted`);
     tile('Focus sessions', String(now.sessions), `${fmtShort(now.focusMs)} of focus`);
-    tile('Goal met', `${r.keys.filter((k) => this.day(k).ms >= p.settings.dailyGoalMinutes * 60000).length} days`, `${fmtShort(p.settings.dailyGoalMinutes * 60000)} a day`);
+    tile('Goal met', plural(r.keys.filter((k) => this.day(k).ms >= p.settings.dailyGoalMinutes * 60000).length, 'day'), `${fmtShort(p.settings.dailyGoalMinutes * 60000)} a day`);
   }
 
   longestStreak() {
@@ -5125,8 +5507,8 @@ class StatsView extends ItemView {
     };
     record('Best day', fmtShort(s.bestMs), date(s.bestKey));
     record('Most words in a day', fmtNum(words), date(wordsKey));
-    record('Longest streak', `${this.longestStreak()} days`);
-    record('All time', fmtShort(s.ms), `${s.activeDays} active days`);
+    record('Longest streak', plural(this.longestStreak(), 'day'));
+    record('All time', fmtShort(s.ms), plural(s.activeDays, 'active day'));
     record('Focus sessions', fmtNum(s.sessions), `${fmtShort(s.focusMs)} of focus`);
     record('Tracking since', first ? date(first) : 'Today');
   }
@@ -5241,7 +5623,23 @@ class PocketWatchSettingTab extends PluginSettingTab {
       .addButton((b) => b.setButtonText('Reset').onClick(() => set({ watchAnchor: null, watchPos: null })));
 
     // Customise the watch you are wearing.
-    if (s.watchType === 'digital' && SHAPED_STYLES.includes(s.digitalStyle)) {
+    if (s.watchType === 'digital' && SQUARE_STYLES.includes(s.digitalStyle)) {
+      const name = DIGITAL_STYLES[s.digitalStyle];
+      const style = s.digitalStyle;
+      const body = group('customise', `Customise ${name}`, {
+        tomato: 'The time left in a session, large, with the session round the edge.',
+        pixel: 'The time in lights, and what else it shows.',
+        words: 'The time in words, to the five minutes before it, with a light in a corner for each minute since.',
+      }[style]);
+      if (style !== 'words') dropdown(new Setting(body).setName('Clock'), CLOCKS, s.clock, (v) => set({ clock: v }, true));
+      if (style === 'tomato') toggle(body, 'Monogram', 'dialText', 'The Philip Pocket monogram, faded into the tile.');
+      if (style === 'pixel') {
+        toggle(body, 'Seconds', 'digitalSeconds', 'A light that runs round the edge once a minute.');
+        toggle(body, 'Blinking dot', 'blinkColon', 'The dot between the hours and the minutes blinks.');
+        toggle(body, 'Bottom row', 'digitalBar', 'Fills up toward your daily goal, and counts down during a focus session.');
+      }
+      if (style === 'words') new Setting(body).setName('Colour').setDesc('The words take on the colour of a focus session or a break while one runs.');
+    } else if (s.watchType === 'digital' && SHAPED_STYLES.includes(s.digitalStyle)) {
       const name = DIGITAL_STYLES[s.digitalStyle];
       const body = group('customise', `Customise ${name}`, 'Clock and seconds.');
       dropdown(new Setting(body).setName('Clock'), CLOCKS, s.clock, (v) => set({ clock: v }, true));
@@ -5287,7 +5685,7 @@ class PocketWatchSettingTab extends PluginSettingTab {
       }
       toggle(body, 'Goal ring', 'goalRing', 'A ring on the bezel that fills up toward your daily goal.');
       dropdown(
-        new Setting(body).setName('Movement').setDesc('How the balance wheel moves in Open heart and in the movement window. Lifelike ticks five times a second.'),
+        new Setting(body).setName('Movement').setDesc('How the balance wheel moves in Open heart and in the movement window, and how Vinyl\'s record turns. Lifelike ticks five times a second.'),
         MOVEMENTS, s.movement, (v) => set({ movement: v }),
       );
     }
@@ -5383,7 +5781,7 @@ class PocketWatchSettingTab extends PluginSettingTab {
     gallery.createDiv({ cls: 'pocket-watch-gallery-label', text: 'Digital' });
     grid = gallery.createDiv({ cls: ['pocket-watch-gallery-grid', 'is-digital'] });
     // The slim ones are drawn larger, so they fill their card like the others.
-    const slimSize = { hairline: 116, capsule: 124, column: 96 };
+    const slimSize = { hairline: 116, capsule: 124, column: 96, tomato: 84, pixel: 84, words: 84 };
     for (const [key, name] of Object.entries(DIGITAL_STYLES)) {
       card(grid, name, s.watchType === 'digital' && s.digitalStyle === key, { watchType: 'digital', digitalStyle: key }, slimSize[key] || 72);
     }

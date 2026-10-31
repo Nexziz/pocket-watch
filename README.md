@@ -6,17 +6,23 @@ A fine timepiece that sits over your notes, with a Pomodoro timer for a steady r
 
 ## A timepiece
 
-- **Twenty-one watches, each its own.** Every face carries the Philip Pocket monogram, the interlaced PP (engraved into Malachite and Meteorite), and comes with its own hands and complications: a date, small seconds, your words today or a goal dial. Two have a moon phase, each in its own window: Porcelain's classic arch with gold moons, and Midnight's round window onto a realistic moon, with its age in days around it. Regulator gives the minutes the centre and turns the hours on a small dial of their own, Malachite is cut from polished green stone, Panda has a panda's face, and Open heart shows its movement through a heart-shaped window. You can also pick your own.
+- **Twenty-four watches, each its own.** Every face carries the Philip Pocket monogram, the interlaced PP (engraved into Malachite and Meteorite), and comes with its own hands and complications: a date, small seconds, your words today or a goal dial. Two have a moon phase, each in its own window: Porcelain's classic arch with gold moons, and Midnight's round window onto a realistic moon, with its age in days around it. Regulator gives the minutes the centre and turns the hours on a small dial of their own, Malachite is cut from polished green stone, Panda has a panda's face, and Open heart shows its movement through a heart-shaped window. You can also pick your own.
+- **Retro, Vinyl and Terrazzo**, each in a case of its own: Retro is a seventies cream dial with bands of brown, rust, orange and mustard in a thin gold bezel; Vinyl is a black record whose red label slowly turns, in a slim dark bezel with a turntable's strobe dots; and Terrazzo is chips of coloured stone in a matte, speckled ceramic bezel.
 - **Two square watches**: Koi, painted by hand, with two koi circling in a green pond past lily pads and a lotus, and Deco, black lacquer in stepped gold lines whose small seconds is a rising sun.
 - **Slim digital watches** that show just the time: Hairline, bare numerals in your theme's colours that fade back until you point at them; Capsule, a slim pill that fills up with your session; and Column, the hours over the minutes in a narrow strip.
+- **Square digital watches**: Tomato, a Pomodoro timer first, with the time left large, the session running round its edge and a dot for each session until the long break; Pixel, the time in amber lights on a dot-matrix screen; and Words, the time spelled out, with a light in a corner for each minute past.
 - **Three painted dials**: Sakura, a cherry branch in gold lacquer with mother-of-pearl blossoms on black, Nocturne, a mountain lake at dusk whose moon is tonight's moon, and Koi, painted by hand.
-- **Snaps where you put it.** Drag it over a pane and it snaps to a corner or edge. Drop it on a pane's tab bar and it tucks in there, sized to fit the bar, analog or digital. Drop it on the ribbon or status bar to snap it to the window, or hold Alt to place it anywhere.
+- **Snaps where you put it.** Drag it over a pane and it snaps to a corner or edge. Drop it on a pane's tab bar and it tucks in there, sized to fit the bar, analog or digital. There most watches take a bolder mini version that's easy to read when small. Drop it on the ribbon or status bar to snap it to the window, or hold Alt to place it anywhere.
 - **Any size**: drag the handle on the watch, or hold Alt and scroll over it.
 - **Click it** for your calendar and stats. Right-click it to start a focus session.
 
-![Twenty-one watches](images/make-it-yours.png)
+![Twenty-four watches](images/make-it-yours.png)
 
-![Three new watches: Pomodoro, Regulator and Malachite](images/new-watches.png)
+![Retro, Vinyl and Terrazzo](images/retro-vinyl-terrazzo.png)
+
+![Three square digital watches: Tomato, Pixel and Words](images/square-digital.png)
+
+![Pomodoro, Regulator and Malachite](images/new-watches.png)
 
 ![Two square watches: Koi and Deco](images/square-watches.png)
 
