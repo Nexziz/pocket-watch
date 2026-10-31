@@ -1,7 +1,7 @@
 {
   "id": "pocket-watch",
   "name": "Pocket Watch",
-  "version": "1.14.0",
+  "version": "1.15.0",
   "minAppVersion": "1.4.0",
   "description": "Time tracking and a Pomodoro timer in a fine watch over your notes: focus sessions, writing stats, projects and a full stats page, on desktop and mobile.",
   "author": "Nexziz",

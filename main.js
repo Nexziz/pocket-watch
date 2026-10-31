@@ -145,6 +145,9 @@ const HANDS = {
 
 const SECONDS = { off: 'Off', tick: 'Ticking', sweep: 'Sweeping' };
 
+// How long the watch waits, in seconds, before it fades back.
+const FADES = { 0: 'Off', 5: 'After 5 seconds', 15: 'After 15 seconds', 60: 'After a minute', 300: 'After 5 minutes' };
+
 const CASES = { crown: 'Crown', bow: 'Pocket watch bow', none: 'Plain' };
 
 const SESSION_COLOURS = {
@@ -290,6 +293,9 @@ const DEFAULT_SETTINGS = {
   timesUp: 'glow',
 
   showWatch: true,
+  // Fade the watch back after this many seconds alone (0 for never), to this much (percent).
+  fadeAfter: 0,
+  fadeTo: 35,
   watchType: 'analog',
   watchSize: 120,
 
@@ -321,6 +327,8 @@ const DEFAULT_SETTINGS = {
   // Where the watch is snapped: { group, spot } for a pane, or { window: true, spot }.
   // A spot is a row (t, m, b) and a column (l, c, r), such as "br" for bottom right.
   watchAnchor: null,
+  // Which placement this device has had: on a phone, version 2 moved the watch into the header.
+  watchPlaced: 0,
   // Where the watch sits when dropped freely (Alt), as fractions of the free space
   // to its left and above it, so it keeps its spot when the window is resized.
   watchPos: null,
@@ -330,6 +338,9 @@ const DEFAULT_SETTINGS = {
   projects: [],
   activeProject: null,
   projectLocked: false,
+
+  // The stats page as you've arranged it: [{ id, wide, hidden }] in order; null as it comes.
+  statsLayout: null,
 };
 
 // Eight project colours, told apart even with colour blindness, in the order new projects
@@ -406,6 +417,19 @@ function fmtCompact(ms) {
 
 function fmtNum(n) {
   return n.toLocaleString();
+}
+
+// The parts of the screen a phone keeps for itself: its status bar at the top and its
+// gesture bar at the bottom. Measured once.
+let insets = null;
+function safeInsets() {
+  if (insets) return insets;
+  const probe = document.body.createDiv();
+  probe.style.cssText = 'position: fixed; visibility: hidden; padding-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px)); padding-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));';
+  const css = getComputedStyle(probe);
+  insets = { top: parseFloat(css.paddingTop) || 0, bottom: parseFloat(css.paddingBottom) || 0 };
+  probe.remove();
+  return insets;
 }
 
 // How long ago: "just now", "5 minutes ago", "yesterday", "12 days ago".
@@ -556,7 +580,7 @@ const DEVICE_ICONS = { computer: 'monitor', laptop: 'laptop', phone: 'smartphone
 
 // Settings that belong to each device rather than to the vault: where the watch sits, its
 // size, and whether it shows.
-const DEVICE_SETTINGS = ['watchAnchor', 'watchPos', 'watchSize', 'showWatch'];
+const DEVICE_SETTINGS = ['watchAnchor', 'watchPos', 'watchSize', 'showWatch', 'watchPlaced'];
 
 // Changes to every device's time, like moving time to a project, are kept this long, for a
 // device that has been away to catch up on.
@@ -1272,6 +1296,12 @@ module.exports = class PocketWatchPlugin extends Plugin {
     // Where the watch sits is this device's own. A new phone starts with a smaller watch.
     const layout = own.layout || Object.assign(pick(DEFAULT_SETTINGS, DEVICE_SETTINGS), Platform.isPhone ? { watchSize: 84 } : {});
     Object.assign(this.settings, layout);
+    // On a phone the watch sits in the bar at the top of the note, between its buttons, out of
+    // the way of your writing. Once; drag it elsewhere and it stays there.
+    if (Platform.isPhone && (this.settings.watchPlaced || 0) < 2) {
+      Object.assign(this.settings, { watchAnchor: { header: true, spot: 'c' }, watchPos: null, watchPlaced: 2 });
+      this.dirty = true;
+    }
     this.sharedJson = JSON.stringify(sharedSettings(this.settings));
     if (this.applyChanges()) this.dirty = true;
     this.mergeOthers();
@@ -1720,6 +1750,17 @@ class FloatingWatch {
     this.badgeEl = this.el.createDiv('pocket-watch-badge');
     this.alertDotEl = this.el.createDiv('pocket-watch-alert-dot');
     this.el.addEventListener('pointerdown', (e) => this.onPointerDown(e));
+    // Pointing at the watch, or touching it, brings it back from fading.
+    this.touchedAt = Date.now();
+    this.el.addEventListener('pointerenter', () => {
+      this.hovering = true;
+      this.wake();
+    });
+    this.el.addEventListener('pointerleave', () => {
+      this.hovering = false;
+      this.touchedAt = Date.now();
+    });
+    this.el.addEventListener('pointerdown', () => this.wake(), true);
     this.el.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       // A long press on a touch screen may already have opened it.
@@ -1782,8 +1823,24 @@ class FloatingWatch {
     }
     this.el.classList.toggle('is-in-tray', !!fit);
     this.update(now);
+    this.fade();
     if (this.dashboard) this.dashboard.refreshLive();
     this.place();
+  }
+
+  // Fades the watch back once it's been left alone for a while. It comes back while you point
+  // at it or touch it, while its shelf is open, and while time is up.
+  fade() {
+    const s = this.plugin.settings;
+    const alone = s.fadeAfter > 0 && !this.hovering && !this.shelfEl && !this.dragging && !this.plugin.alert
+      && Date.now() - (this.touchedAt || 0) > s.fadeAfter * 1000;
+    this.el.classList.toggle('is-faded', alone);
+    this.el.style.setProperty('--pw-fade', String(clamp(s.fadeTo, 5, 95) / 100));
+  }
+
+  wake() {
+    this.touchedAt = Date.now();
+    if (this.el.hasClass('is-faded')) this.fade();
   }
 
   build(now) {
@@ -4031,6 +4088,7 @@ class FloatingWatch {
 
   // The tab group of the note you're working in, for the first time the watch is placed.
   defaultAnchor() {
+    if (Platform.isPhone) return { header: true, spot: 'c' };
     const ws = this.app.workspace;
     const leaf = ws.getMostRecentLeaf(ws.rootSplit);
     if (!leaf || !leaf.parent || !leaf.parent.id) return null;
@@ -4042,12 +4100,80 @@ class FloatingWatch {
     const content = groupEl.querySelector(':scope > .workspace-tab-container') || groupEl;
     const r = content.getBoundingClientRect();
     const header = Array.from(content.querySelectorAll('.view-header')).find((e) => e.offsetParent !== null);
-    return { left: r.left, top: r.top + (header ? header.offsetHeight : 0), right: r.right, bottom: r.bottom, scrollbar: 6 };
+    const top = header ? Math.max(r.top + header.offsetHeight, header.getBoundingClientRect().bottom) : r.top;
+    return { left: r.left, top, right: r.right, bottom: Math.min(r.bottom, this.safeBottom()), scrollbar: 6 };
   }
 
   windowBox() {
     const r = (document.querySelector('.app-container') || document.body).getBoundingClientRect();
-    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, scrollbar: 0 };
+    return { left: r.left, top: Math.max(r.top, safeInsets().top), right: r.right, bottom: Math.min(r.bottom, this.safeBottom()), scrollbar: 0 };
+  }
+
+  // How far down the watch and the shelf can go: above a phone's bar of buttons at the bottom
+  // and its system bar.
+  safeBottom() {
+    const H = window.innerHeight;
+    const bottom = H - safeInsets().bottom;
+    if (!Platform.isMobile) return bottom;
+    if (this.bottomAt && Date.now() - this.bottomAt.t < 500 && this.bottomAt.h === H) return this.bottomAt.y;
+    // Looking up from the bottom of the screen, the note starts where the phone's floating bar
+    // of buttons and its gesture bar end.
+    const mine = (e) => this.el.contains(e) || (this.shelfEl && this.shelfEl.contains(e)) || (this.ghostEl && this.ghostEl.contains(e));
+    let edge = H;
+    let clear = 0;
+    for (let y = H - 2; y > H * 0.6 && clear < 40; y -= 6) {
+      const el = document.elementsFromPoint(window.innerWidth / 2, y).find((e) => !mine(e));
+      if (el && el.closest('.workspace-leaf-content') && !el.closest('.view-header')) clear += 6;
+      else {
+        clear = 0;
+        edge = y;
+      }
+    }
+    const found = Math.min(bottom, edge >= H - 2 ? H : edge - 6);
+    this.bottomAt = { t: Date.now(), h: H, y: found };
+    return found;
+  }
+
+  // On a phone, the bar at the top of the note you're in, with its floating buttons.
+  headerEl() {
+    if (!Platform.isPhone) return null;
+    const visible = (e) => e && e.offsetParent !== null && e.getBoundingClientRect().height > 0;
+    const active = document.querySelector('.workspace-split.mod-root .workspace-leaf.mod-active .view-header');
+    if (visible(active)) return active;
+    return Array.from(document.querySelectorAll('.workspace-split.mod-root .view-header')).find(visible) || null;
+  }
+
+  // The widest free room in that bar, between its buttons and any title, and as tall as its
+  // buttons.
+  headerBox(header) {
+    const r = header.getBoundingClientRect();
+    const parts = [];
+    for (const el of header.querySelectorAll('.clickable-icon, button, .view-header-title, .view-header-breadcrumb, .view-header-title-parent')) {
+      if (el.offsetParent === null) continue;
+      let b = el.getBoundingClientRect();
+      // A title takes as much room as its words, not the whole width it's given.
+      if (!el.matches('.clickable-icon, button')) {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        b = range.getBoundingClientRect();
+      }
+      if (b.width > 0 && b.height > 0) parts.push(b);
+    }
+    // Room round each button, for the rounded island it sits in.
+    const pad = 12;
+    const blocks = parts.map((b) => [b.left - pad, b.right + pad]).sort((a, b) => a[0] - b[0]);
+    let x = r.left + 6;
+    let best = null;
+    for (const [a, b] of blocks) {
+      if (!best || a - x > best.right - best.left) best = { left: x, right: a };
+      x = Math.max(x, b);
+    }
+    if (!best || r.right - 6 - x > best.right - best.left) best = { left: x, right: r.right - 6 };
+    const buttons = parts.filter((b) => b.height < r.height + 1);
+    const tall = buttons.length ? Math.max(...buttons.map((b) => b.height)) : r.height - 8;
+    const mid = buttons.length ? buttons.reduce((sum, b) => sum + b.top + b.height / 2, 0) / buttons.length : r.top + r.height / 2;
+    const h = clamp(tall + 6, 28, 46);
+    return { left: best.left, right: Math.max(best.left, best.right), top: mid - h / 2, bottom: mid + h / 2 };
   }
 
   // A spot in a box: a row (t, m, b) and a column (l, c, r). Bottom spots keep clear of
@@ -4074,6 +4200,21 @@ class FloatingWatch {
   // Over a pane's tab bar, the nearest of its three spots there; over the rest of a pane, the
   // nearest of its eight spots; anywhere else, the nearest spot of the window.
   snapTarget(px, py, left, top) {
+    // On a phone, drop it on the bar at the top of the note to tuck it in there.
+    const header = this.headerEl();
+    if (header && py <= header.getBoundingClientRect().bottom + 16) {
+      const box = this.headerBox(header);
+      const scale = this.headerFit(box) / this.el.offsetHeight;
+      const w = this.el.offsetWidth * scale;
+      const h = this.el.offsetHeight * scale;
+      let best = null;
+      for (const spot of ['l', 'c', 'r']) {
+        const xy = this.trayXY(box, spot, w, h);
+        const d = Math.abs(xy.x + w / 2 - px);
+        if (!best || d < best.d) best = { header: true, spot, xy, d, w, h };
+      }
+      return best;
+    }
     const el = this.groupAt(px, py);
     const id = el && this.groupId(el);
     const bar = id && this.trayEl(el);
@@ -4130,9 +4271,18 @@ class FloatingWatch {
     return (bar.offsetHeight - 2 * TRAY_PAD) * (s.watchType === 'digital' && s.digitalStyle === 'hairline' ? 0.8 : 1);
   }
 
-  // How tall the watch is in the tab bar it sits in; 0 when it isn't in one.
+  headerFit(box) {
+    const s = this.plugin.settings;
+    return (box.bottom - box.top) * (s.watchType === 'digital' && s.digitalStyle === 'hairline' ? 0.8 : 1);
+  }
+
+  // How tall the watch is in the tab bar or header it sits in; 0 when it isn't in one.
   trayHeight() {
     const a = this.plugin.settings.watchAnchor;
+    if (a && a.header) {
+      const header = this.headerEl();
+      return header ? this.headerFit(this.headerBox(header)) : 0;
+    }
     if (!a || !a.tray) return 0;
     const el = this.resolveGroup(a.group);
     const bar = el && this.trayEl(el);
@@ -4156,7 +4306,10 @@ class FloatingWatch {
       }
       const a = s.watchAnchor;
       const spot = a && SPOTS.includes(a.spot) ? a.spot : 'br';
-      if (a && a.tray) {
+      if (a && a.header) {
+        const header = this.headerEl();
+        xy = header ? this.trayXY(this.headerBox(header), a.spot) : this.freeSpot(DEFAULT_WATCH_POS);
+      } else if (a && a.tray) {
         const el = this.resolveGroup(a.group);
         const bar = el && this.trayEl(el);
         if (bar) xy = this.trayXY(this.trayBox(bar), a.spot);
@@ -4191,6 +4344,10 @@ class FloatingWatch {
   // the countdown sits beside it.
   placeGrip() {
     const a = this.plugin.settings.watchAnchor;
+    if (a && a.header) {
+      setIfChanged(this.badgeEl, 'data-side', 'below');
+      return;
+    }
     if (a && a.tray) {
       setIfChanged(this.badgeEl, 'data-side', a.spot === 'l' ? 'right' : 'left');
       return;
@@ -4205,7 +4362,8 @@ class FloatingWatch {
   freeSpot(pos) {
     const w = this.el.offsetWidth;
     const h = this.el.offsetHeight;
-    return { x: pos.fx * Math.max(0, window.innerWidth - w), y: pos.fy * Math.max(0, window.innerHeight - h) };
+    const top = safeInsets().top;
+    return { x: pos.fx * Math.max(0, window.innerWidth - w), y: top + pos.fy * Math.max(0, this.safeBottom() - top - h) };
   }
 
   showGhost(target) {
@@ -4280,7 +4438,8 @@ class FloatingWatch {
       this.removeGhost();
       const s = this.plugin.settings;
       if (target) {
-        s.watchAnchor = target.tray ? { group: target.id, tray: true, spot: target.spot }
+        s.watchAnchor = target.header ? { header: true, spot: target.spot }
+          : target.tray ? { group: target.id, tray: true, spot: target.spot }
           : target.id ? { group: target.id, spot: target.spot } : { window: true, spot: target.spot };
         s.watchPos = null;
       } else {
@@ -4365,12 +4524,25 @@ class FloatingWatch {
     this.shelfEl = null;
     this.dashboard = null;
     this.el.removeClass('is-open');
+    this.touchedAt = Date.now();
   }
 
   // Open toward whichever side of the window has more room, next to the watch.
   placeShelf() {
     const s = this.shelfEl;
     const gap = 8;
+    // On a phone the shelf is a sheet across the screen, under the header and above the bar
+    // of buttons at the bottom.
+    if (Platform.isPhone) {
+      const header = this.headerEl();
+      const top = Math.max(safeInsets().top, header ? header.getBoundingClientRect().bottom : 0) + 6;
+      s.style.left = `${gap}px`;
+      s.style.width = `${Math.min(480, window.innerWidth - 2 * gap)}px`;
+      s.style.top = `${top}px`;
+      s.style.maxHeight = `${Math.max(200, this.safeBottom() - top - gap)}px`;
+      s.setAttr('data-side', 'below');
+      return;
+    }
     const sw = s.offsetWidth;
     const sh = s.offsetHeight;
     const W = window.innerWidth;
@@ -5160,6 +5332,21 @@ function addSlice(into, from) {
   for (const [path, ms] of Object.entries(from.files || {})) into.files[path] = (into.files[path] || 0) + ms;
 }
 
+// The cards of the stats page in their usual order, and whether each spans the page.
+const STATS_CARDS = [
+  { id: 'year', name: 'The past year', wide: true },
+  { id: 'summary', name: 'Your time', wide: true },
+  { id: 'projects', name: 'Projects', wide: true },
+  { id: 'devices', name: 'Devices', wide: true },
+  { id: 'daily', name: 'Every day', wide: false },
+  { id: 'hours', name: 'When you work', wide: false },
+  { id: 'week', name: 'Your week', wide: false },
+  { id: 'writing', name: 'Writing', wide: false },
+  { id: 'where', name: 'Where the time went', wide: false },
+  { id: 'records', name: 'Records', wide: false },
+  { id: 'table', name: 'Day by day', wide: true },
+];
+
 const STAT_RANGES = [['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['365', 'Year'], ['all', 'All time']];
 
 // Steps for an axis of time, the first that needs no more than four of them is used.
@@ -5268,7 +5455,7 @@ class StatsView extends ItemView {
     this.render();
     // Keep up with the day, but never redraw under the mouse.
     this.registerInterval(window.setInterval(() => {
-      if (!this.contentEl.matches(':hover')) this.render();
+      if (!this.contentEl.matches(':hover') && !this.editing) this.render();
     }, 60000));
   }
 
@@ -5278,6 +5465,7 @@ class StatsView extends ItemView {
   }
 
   onResize() {
+    if (this.dragging) return;
     window.clearTimeout(this.resizeTimer);
     this.resizeTimer = window.setTimeout(() => this.render(), 150);
   }
@@ -5512,25 +5700,167 @@ class StatsView extends ItemView {
     const project = one && this.plugin.settings.projects.find((x) => x.id === one);
     root.style.setProperty('--pw-s-bar', one === NO_PROJECT ? 'var(--pw-p-none)' : project ? `var(--pw-p${project.color})` : 'var(--interactive-accent)');
     const page = root.createDiv('pw-stats-page');
+    page.toggleClass('is-editing', !!this.editing);
     this.renderHeader(page);
     this.renderRange(page, r);
-    this.renderYear(page);
-    this.renderHero(page, r);
-    this.renderProjects(page, r);
-    this.renderDevices(page, r);
-    let row = page.createDiv('pw-stats-grid');
-    this.renderDaily(row, r);
-    this.renderHours(row, r);
-    row = page.createDiv('pw-stats-grid');
-    this.renderWeekdays(row, r);
-    this.renderWriting(row, r);
-    row = page.createDiv('pw-stats-grid');
-    this.renderWhere(row, r);
-    this.renderRecords(row);
-    this.renderTable(page, r);
+    if (this.editing) this.renderEditBar(page);
+    // The cards, in the order you've put them, each wide or narrow.
+    const board = page.createDiv('pw-stats-board');
+    const draw = {
+      year: (el) => this.renderYear(el),
+      summary: (el) => this.renderHero(el, r),
+      projects: (el) => this.renderProjects(el, r),
+      devices: (el) => this.renderDevices(el, r),
+      daily: (el) => this.renderDaily(el, r),
+      hours: (el) => this.renderHours(el, r),
+      week: (el) => this.renderWeekdays(el, r),
+      writing: (el) => this.renderWriting(el, r),
+      where: (el) => this.renderWhere(el, r),
+      records: (el) => this.renderRecords(el),
+      table: (el) => this.renderTable(el, r),
+    };
+    for (const item of this.layout()) {
+      if (item.hidden) continue;
+      const cell = board.createDiv({ cls: ['pw-stats-cell', item.wide ? 'is-wide' : 'is-narrow'], attr: { 'data-card': item.id } });
+      draw[item.id](cell);
+      if (this.editing) this.cardTools(cell, item);
+    }
+    // In a single column, wide and narrow are the same.
+    board.toggleClass('is-single', getComputedStyle(board).gridTemplateColumns.split(' ').length < 2);
     root.scrollTop = scroll;
     if (this.reveal && this.dayEl) this.dayEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     this.reveal = false;
+  }
+
+  // --- Arranging the page -------------------------------------------------
+
+  // The cards as you've arranged them, [{ id, wide, hidden }], with any new ones in their usual
+  // place.
+  layout() {
+    const saved = Array.isArray(this.plugin.settings.statsLayout) ? this.plugin.settings.statsLayout : [];
+    const list = [];
+    for (const x of saved) {
+      const card = STATS_CARDS.find((c) => c.id === x.id);
+      if (card && !list.some((y) => y.id === card.id)) list.push({ id: card.id, wide: typeof x.wide === 'boolean' ? x.wide : card.wide, hidden: !!x.hidden });
+    }
+    STATS_CARDS.forEach((card, i) => {
+      if (!list.some((y) => y.id === card.id)) list.splice(Math.min(i, list.length), 0, { id: card.id, wide: card.wide, hidden: false });
+    });
+    return list;
+  }
+
+  async saveLayout(list) {
+    this.plugin.settings.statsLayout = list ? list.map((x) => ({ id: x.id, wide: x.wide, hidden: x.hidden })) : null;
+    await this.plugin.saveSettings();
+    this.render();
+  }
+
+  changeCard(id, patch) {
+    const list = this.layout();
+    Object.assign(list.find((x) => x.id === id), patch);
+    this.saveLayout(list);
+  }
+
+  // While arranging: what to do, the hidden cards to bring back, and Done.
+  renderEditBar(page) {
+    const bar = page.createDiv('pw-stats-editbar');
+    const text = bar.createDiv('pw-stats-editbar-text');
+    text.createDiv({ cls: 'pw-stats-editbar-title', text: 'Arrange your page' });
+    text.createDiv({ cls: 'pw-stats-card-note', text: 'Drag a card by its handle to move it. Hide the ones you don\'t need, and make the others wide or narrow.' });
+    const hidden = this.layout().filter((x) => x.hidden);
+    if (hidden.length) {
+      const tray = bar.createDiv('pw-stats-hidden');
+      tray.createSpan({ cls: 'pw-stats-eyebrow', text: 'Hidden' });
+      for (const x of hidden) {
+        const name = STATS_CARDS.find((c) => c.id === x.id).name;
+        const b = tray.createEl('button', { cls: 'pw-stats-chip', attr: { 'aria-label': `Show ${name} again` } });
+        setIcon(b.createSpan('pw-stats-chip-icon'), 'plus');
+        b.createSpan({ text: name });
+        b.addEventListener('click', () => this.changeCard(x.id, { hidden: false }));
+      }
+    }
+    const actions = bar.createDiv('pw-stats-editbar-actions');
+    if (this.plugin.settings.statsLayout) {
+      actions.createEl('button', { text: 'Reset' }).addEventListener('click', () => {
+        if (window.confirm('Put every card back where it was at first?')) this.saveLayout(null);
+      });
+    }
+    actions.createEl('button', { cls: 'mod-cta', text: 'Done' }).addEventListener('click', () => {
+      this.editing = false;
+      this.render();
+    });
+  }
+
+  // A card's handle, and its buttons to make it wide or narrow and to hide it.
+  cardTools(cell, item) {
+    const name = STATS_CARDS.find((c) => c.id === item.id).name;
+    const tools = cell.createDiv('pw-stats-cell-tools');
+    const grip = tools.createEl('button', { cls: ['clickable-icon', 'pw-stats-grip'], attr: { 'aria-label': `Drag to move ${name}` } });
+    setIcon(grip, 'grip-vertical');
+    grip.addEventListener('pointerdown', (e) => this.dragCard(e, cell));
+    const size = tools.createEl('button', { cls: ['clickable-icon', 'pw-stats-size'], attr: { 'aria-label': item.wide ? `Make ${name} narrow` : `Make ${name} wide` } });
+    setIcon(size, item.wide ? 'minimize-2' : 'maximize-2');
+    size.addEventListener('click', () => this.changeCard(item.id, { wide: !item.wide }));
+    const hide = tools.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': `Hide ${name}` } });
+    setIcon(hide, 'eye-off');
+    hide.addEventListener('click', () => this.changeCard(item.id, { hidden: true }));
+  }
+
+  // Drag a card by its handle: the card it passes over makes way, and the new order is kept
+  // when you let go. Near the top or bottom of the page, the page scrolls.
+  dragCard(e, cell) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const board = cell.parentElement;
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    this.dragging = true;
+    cell.addClass('is-moving');
+    let x = e.clientX;
+    let y = e.clientY;
+    let passed = null;
+    const follow = () => {
+      const over = document.elementsFromPoint(x, y).map((el) => el.closest('.pw-stats-cell')).find((el) => el && el !== cell && el.parentElement === board);
+      if (!over) {
+        passed = null;
+        return;
+      }
+      if (over === passed) return;
+      const cards = Array.from(board.children);
+      board.insertBefore(cell, cards.indexOf(cell) < cards.indexOf(over) ? over.nextSibling : over);
+      passed = over;
+    };
+    const scroller = this.contentEl;
+    const timer = window.setInterval(() => {
+      const r = scroller.getBoundingClientRect();
+      const dy = y < r.top + 56 ? -14 : y > r.bottom - 56 ? 14 : 0;
+      if (!dy) return;
+      scroller.scrollTop += dy;
+      follow();
+    }, 16);
+    const move = (ev) => {
+      x = ev.clientX;
+      y = ev.clientY;
+      follow();
+    };
+    const up = () => {
+      window.clearInterval(timer);
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', up);
+      handle.removeEventListener('pointercancel', up);
+      this.dragging = false;
+      cell.removeClass('is-moving');
+      // The new order of the cards on the page, with the hidden ones where they were.
+      const order = Array.from(board.children).map((el) => el.getAttribute('data-card'));
+      const list = this.layout();
+      const byId = Object.fromEntries(list.map((x) => [x.id, x]));
+      let i = 0;
+      const next = list.map((x) => (x.hidden ? x : byId[order[i++]]));
+      if (next.some((x, j) => x.id !== list[j].id)) this.saveLayout(next);
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
+    handle.addEventListener('pointercancel', up);
   }
 
   select(key) {
@@ -5674,6 +6004,16 @@ class StatsView extends ItemView {
       if (this.range === key) b.addClass('is-active');
       b.addEventListener('click', () => {
         this.range = key;
+        this.render();
+      });
+    }
+    // Arrange the page: move cards, hide them, make them wide or narrow.
+    if (!this.editing) {
+      const edit = bar.createEl('button', { cls: 'pw-stats-edit', attr: { 'aria-label': 'Move the cards around, hide them, or bring them back' } });
+      setIcon(edit.createSpan('pw-stats-edit-icon'), 'layout-dashboard');
+      edit.createSpan({ text: 'Edit layout' });
+      edit.addEventListener('click', () => {
+        this.editing = true;
         this.render();
       });
     }
@@ -6177,8 +6517,13 @@ class PocketWatchSettingTab extends PluginSettingTab {
         .onChange((v) => set({ watchSize: v })));
     new Setting(el)
       .setName('Position')
-      .setDesc(Platform.isMobile ? 'Drag the watch with your finger and it snaps to a corner or edge.' : 'Drag the watch onto a pane and it snaps to a corner or edge. Drop it on a pane\'s tab bar to tuck it in there, sized to fit. Drop it on the ribbon or status bar to snap it to the window, or hold Alt to place it freely.')
+      .setDesc(Platform.isMobile ? 'Drag the watch onto the bar at the top of the note to tuck it in between its buttons, or to a corner or edge.' : 'Drag the watch onto a pane and it snaps to a corner or edge. Drop it on a pane\'s tab bar to tuck it in there, sized to fit. Drop it on the ribbon or status bar to snap it to the window, or hold Alt to place it freely.')
       .addButton((b) => b.setButtonText('Reset').onClick(() => set({ watchAnchor: null, watchPos: null })));
+    dropdown(
+      new Setting(el).setName('Fade when left alone').setDesc('The watch fades back after a while, and comes back when you point at it or touch it, while its shelf is open, and when time is up.'),
+      FADES, String(s.fadeAfter), (v) => set({ fadeAfter: Number(v) }, true),
+    );
+    if (s.fadeAfter > 0) slider(el, 'How much shows when faded', 'fadeTo', [10, 90, 5]);
 
     // Customise the watch you are wearing.
     if (s.watchType === 'digital' && SQUARE_STYLES.includes(s.digitalStyle)) {

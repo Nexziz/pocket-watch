@@ -18,14 +18,14 @@
 
 - ⏱️ **Time tracking** that just runs: your time in Obsidian, per day, per note and per project, pausing by itself when you're idle.
 - 🍅 **Pomodoro timer** built into the watch: focus sessions, short and long breaks, a soft chime, and a face that paints your session on the dial.
-- 📊 **A full stats page**: a year of days at a glance, trends, your goal, the hours you work, words written, records, and where your time went.
+- 📊 **A full stats page** you arrange yourself: a year of days at a glance, trends, your goal, the hours you work, words written, records, and where your time went.
 - 🗂️ **Projects** in their own colours, so you can see what your time went toward, and move it if it landed on the wrong one.
 - ⌚ **24 analog watches and 12 digital ones**, from porcelain and malachite to a spinning vinyl record and a word clock.
 - 📱 **Desktop, phone and tablet**, with each device's time kept apart and added up, so sync never overwrites it.
 
 ## The watches
 
-Every watch has its own dial, hands, complications and case: a moon phase, small seconds, today's time or a goal dial. Drag one onto a corner of a pane and it snaps into place. Drop it on a tab bar and it tucks in there, in a bolder mini version that stays readable when it's small.
+Every watch has its own dial, hands, complications and case: a moon phase, small seconds, today's time or a goal dial. Drag one onto a corner of a pane and it snaps into place. Drop it on a tab bar and it tucks in there, in a bolder mini version that stays readable when it's small. If you'd rather it stayed out of the way, let it fade back when you leave it alone; it comes back when you point at it, and when time is up.
 
 ![Twenty-four watches and twelve digital styles](images/make-it-yours.png)
 
@@ -63,12 +63,15 @@ Every watch has its own dial, hands, complications and case: a moon phase, small
 - **Idle limit**: the timer stops after a while with no typing, clicking or scrolling. Reading counts.
 - **Track outside Obsidian** with one click, while you research in a browser or a PDF reader.
 - **Projects** each have a colour. Switch from the shelf or the command palette, lock the one you're on, show one or several on the stats page, and move time between projects with an undo.
+- **Arrange the page**: press *Edit layout*, then drag the cards where you want them, make them wide or narrow, and hide the ones you don't need. Bring them back whenever you like.
 
 ![Your stats, with projects and devices](images/stats.png)
 
 ## On every device
 
-Pocket Watch runs on desktop, phones and tablets. On a phone it counts while Obsidian is on screen. Tap the watch for your stats, and press and hold it for the menu.
+Pocket Watch runs on desktop, phones and tablets. On a phone it counts while Obsidian is on screen, and the watch sits in the bar at the top of the note, between its buttons, out of the way of your writing. Tap it for your stats, and press and hold it for the menu.
+
+![On a phone: in the header, as Tomato, and the shelf](images/phone.png)
 
 With your vault synced, each device keeps its own record of your time, so your computer and phone never overwrite each other, and the stats page adds them all up. The **Devices** card shows where your time comes from, with the words written on each, and you can rename a device or change its kind.
 
@@ -81,7 +84,7 @@ If you use it on more than one device, update every device to 1.14 or later.
 <details>
 <summary><b>Settings</b></summary>
 
-- **Watch**: every watch in a gallery to pick from, its size and its position.
+- **Watch**: every watch in a gallery to pick from, its size, its position, and whether it fades back when left alone.
 - **Customise**: the case, monogram, hour markers, hands, seconds hand, complications, goal ring and movement, or for a digital watch its layout, clock and what it shows.
 - **Focus sessions**: lengths, long breaks, starting automatically, colour or greyscale, how time being up shows, and the chime.
 - **Tracking**: daily goal, idle limit, and your data.
