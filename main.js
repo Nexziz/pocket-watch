@@ -794,6 +794,7 @@ module.exports = class PocketWatchPlugin extends Plugin {
     this.addCommand({ id: 'new-project', name: 'New project', callback: () => new ProjectModal(this.app, this).open() });
     this.addCommand({ id: 'lock-project', name: 'Lock or unlock the project you are tracking', callback: () => this.toggleProjectLock() });
     this.addCommand({ id: 'move-time', name: 'Move time to a project', callback: () => new MoveTimeModal(this.app, this, {}).open() });
+    this.addCommand({ id: 'make-report', name: 'Make a PDF report of your time', callback: () => new ReportModal(this.app, this).open() });
     this.addCommand({ id: 'toggle-watch', name: 'Show or hide the watch', callback: () => this.updateWatch({ showWatch: !this.settings.showWatch }) });
     this.addCommand({ id: 'toggle-pause', name: 'Pause or resume the timer', callback: () => this.togglePause() });
     this.addCommand({ id: 'toggle-outside', name: 'Track time outside Obsidian too, or stop', callback: () => this.toggleOutside() });
@@ -6007,9 +6008,17 @@ class StatsView extends ItemView {
         this.render();
       });
     }
+    // A PDF of your time, for a project or all of it; and arranging the page.
+    const actions = this.editing ? null : bar.createDiv('pw-stats-actions');
+    if (!this.editing) {
+      const report = actions.createEl('button', { cls: 'pw-stats-edit', attr: { 'aria-label': 'Make a one-page PDF report of your time, to print or attach' } });
+      setIcon(report.createSpan('pw-stats-edit-icon'), 'file-text');
+      report.createSpan({ text: 'PDF report' });
+      report.addEventListener('click', () => new ReportModal(this.app, this.plugin, { ids: this.shown ? [...this.shown] : undefined }).open());
+    }
     // Arrange the page: move cards, hide them, make them wide or narrow.
     if (!this.editing) {
-      const edit = bar.createEl('button', { cls: 'pw-stats-edit', attr: { 'aria-label': 'Move the cards around, hide them, or bring them back' } });
+      const edit = actions.createEl('button', { cls: 'pw-stats-edit', attr: { 'aria-label': 'Move the cards around, hide them, or bring them back' } });
       setIcon(edit.createSpan('pw-stats-edit-icon'), 'layout-dashboard');
       edit.createSpan({ text: 'Edit layout' });
       edit.addEventListener('click', () => {
@@ -6439,6 +6448,1230 @@ class StatsView extends ItemView {
       const top = this.topFiles([key], 1)[0];
       tr.createEl('td', { text: top ? noteName(top[0]) : '' });
       tr.addEventListener('click', () => this.select(key));
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Reports: a page of your work, as a PDF
+// ---------------------------------------------------------------------------
+
+// The widths of Helvetica and Helvetica Bold, which every PDF reader has, for the characters
+// from space to tilde, in thousandths of the font size.
+const HELVETICA = [
+  278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556,
+  556, 556, 278, 278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778,
+  667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556, 333, 556, 556, 500, 556, 556, 278, 556,
+  556, 222, 222, 500, 222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
+];
+const HELVETICA_BOLD = [
+  278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556,
+  556, 556, 333, 333, 584, 584, 584, 611, 975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778,
+  667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556, 333, 556, 611, 556, 611, 556, 333, 611,
+  611, 278, 278, 556, 278, 889, 611, 611, 611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584,
+];
+
+// The characters of the PDF fonts' encoding (WinAnsi) beyond Latin-1, by their Unicode.
+const WIN_ANSI = {
+  0x20ac: 0x80, 0x201a: 0x82, 0x0192: 0x83, 0x201e: 0x84, 0x2026: 0x85, 0x2020: 0x86, 0x2021: 0x87, 0x02c6: 0x88,
+  0x2030: 0x89, 0x0160: 0x8a, 0x2039: 0x8b, 0x0152: 0x8c, 0x017d: 0x8e, 0x2018: 0x91, 0x2019: 0x92, 0x201c: 0x93,
+  0x201d: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97, 0x02dc: 0x98, 0x2122: 0x99, 0x0161: 0x9a, 0x203a: 0x9b,
+  0x0153: 0x9c, 0x017e: 0x9e, 0x0178: 0x9f,
+};
+const FROM_WIN_ANSI = Object.fromEntries(Object.entries(WIN_ANSI).map(([u, b]) => [b, Number(u)]));
+
+// Widths of the other characters that aren't a letter with an accent, [regular, bold].
+const WIDE_CHARS = {
+  0x80: [556, 556], 0x85: [1000, 1000], 0x91: [222, 278], 0x92: [222, 278], 0x93: [333, 500], 0x94: [333, 500],
+  0x95: [350, 350], 0x96: [556, 556], 0x97: [1000, 1000], 0x99: [1000, 1000], 0xa0: [278, 278], 0xa9: [737, 737],
+  0xb0: [400, 400], 0xb7: [278, 278], 0xc6: [1000, 1000], 0xd7: [584, 584], 0xd8: [778, 778], 0xdf: [611, 611],
+  0xe6: [889, 889], 0xf8: [611, 611],
+};
+
+// A string in the fonts' encoding. Characters they don't have, like emoji, are left out.
+function pdfChars(str) {
+  let out = '';
+  for (const ch of String(str).normalize('NFC')) {
+    const c = ch.codePointAt(0);
+    if ((c >= 32 && c <= 126) || (c >= 160 && c <= 255)) out += ch;
+    else if (WIN_ANSI[c]) out += String.fromCharCode(WIN_ANSI[c]);
+    else if (c === 0x202f || c === 0x2009 || c === 0x2007) out += ' ';
+    else if (c === 0x2212) out += '-';
+  }
+  return out.replace(/\s+/g, ' ');
+}
+
+function charWidth(code, bold) {
+  if (code >= 32 && code <= 126) return (bold ? HELVETICA_BOLD : HELVETICA)[code - 32];
+  if (WIDE_CHARS[code]) return WIDE_CHARS[code][bold ? 1 : 0];
+  // A letter with an accent is as wide as the letter.
+  const base = String.fromCharCode(code).normalize('NFD').charCodeAt(0);
+  return base >= 32 && base <= 126 ? charWidth(base, bold) : 556;
+}
+
+function textWidth(str, size, bold, track = 0) {
+  let w = 0;
+  for (let i = 0; i < str.length; i++) w += charWidth(str.charCodeAt(i), bold);
+  return (w * size) / 1000 + track * Math.max(0, str.length - 1);
+}
+
+// Points on a circle: angles go clockwise from 12 o'clock, in degrees.
+function onCircle(cx, cy, r, a) {
+  const t = (a * Math.PI) / 180;
+  return [cx + r * Math.sin(t), cy - r * Math.cos(t)];
+}
+
+// Adds an arc to a path, as cubic curves of at most a quarter turn.
+function arcTo(d, cx, cy, r, a0, a1) {
+  const steps = Math.max(1, Math.ceil(Math.abs(a1 - a0) / 90));
+  for (let i = 0; i < steps; i++) {
+    const s = ((a0 + ((a1 - a0) * i) / steps) * Math.PI) / 180;
+    const e = ((a0 + ((a1 - a0) * (i + 1)) / steps) * Math.PI) / 180;
+    const k = (4 / 3) * Math.tan((e - s) / 4) * r;
+    d.push(['C',
+      cx + r * Math.sin(s) + k * Math.cos(s), cy - r * Math.cos(s) + k * Math.sin(s),
+      cx + r * Math.sin(e) - k * Math.cos(e), cy - r * Math.cos(e) - k * Math.sin(e),
+      cx + r * Math.sin(e), cy - r * Math.cos(e)]);
+  }
+  return d;
+}
+
+function circleD(cx, cy, r) {
+  return arcTo([['M', cx, cy - r]], cx, cy, r, 0, 360).concat([['Z']]);
+}
+
+function wedgeD(cx, cy, r0, r1, a0, a1) {
+  const d = [['M', ...onCircle(cx, cy, r1, a0)]];
+  arcTo(d, cx, cy, r1, a0, a1);
+  d.push(['L', ...onCircle(cx, cy, r0, a1)]);
+  arcTo(d, cx, cy, r0, a1, a0);
+  d.push(['Z']);
+  return d;
+}
+
+function roundRectD(x, y, w, h, r) {
+  const k = r * 0.4477;
+  return [['M', x + r, y], ['L', x + w - r, y], ['C', x + w - k, y, x + w, y + k, x + w, y + r], ['L', x + w, y + h - r],
+    ['C', x + w, y + h - k, x + w - k, y + h, x + w - r, y + h], ['L', x + r, y + h], ['C', x + k, y + h, x, y + h - k, x, y + h - r],
+    ['L', x, y + r], ['C', x, y + k, x + k, y, x + r, y], ['Z']];
+}
+
+// A bar from a baseline at y0 up to y1, rounded only at its top.
+function barD(x, y0, w, y1, r) {
+  r = Math.min(r, w / 2, Math.max(0, y0 - y1));
+  const k = r * 0.4477;
+  return [['M', x, y0], ['L', x, y1 + r], ['C', x, y1 + k, x + k, y1, x + r, y1], ['L', x + w - r, y1],
+    ['C', x + w - k, y1, x + w, y1 + k, x + w, y1 + r], ['L', x + w, y0], ['Z']];
+}
+
+// One page of a report: shapes and text in points, from the top left, which become both the
+// preview and the PDF.
+class ReportPage {
+  constructor(w, h) {
+    this.w = w;
+    this.h = h;
+    this.ops = [];
+  }
+
+  path(d, style) {
+    this.ops.push(Object.assign({ t: 'path', d }, style));
+  }
+
+  rect(x, y, w, h, fill, r = 0) {
+    if (w <= 0 || h <= 0) return;
+    const d = r > 0 ? roundRectD(x, y, w, h, Math.min(r, w / 2, h / 2)) : [['M', x, y], ['L', x + w, y], ['L', x + w, y + h], ['L', x, y + h], ['Z']];
+    this.path(d, { fill });
+  }
+
+  line(x1, y1, x2, y2, stroke, width = 0.5, extra) {
+    this.path([['M', x1, y1], ['L', x2, y2]], Object.assign({ stroke, width }, extra));
+  }
+
+  circle(cx, cy, r, style) {
+    this.path(circleD(cx, cy, r), style);
+  }
+
+  // Text on its baseline, to the left, centre or right of x, cut short with an ellipsis to fit
+  // max. Returns how wide it is.
+  text(x, y, str, o = {}) {
+    const size = o.size || 8;
+    const bold = !!o.bold;
+    const track = o.track || 0;
+    let s = pdfChars(o.upper ? String(str).toUpperCase() : str);
+    if (o.max && textWidth(s, size, bold, track) > o.max) {
+      while (s.length && textWidth(`${s}\x85`, size, bold, track) > o.max) s = s.slice(0, -1);
+      s = `${s.replace(/\s+$/, '')}\x85`;
+    }
+    const w = textWidth(s, size, bold, track);
+    const left = o.align === 'right' ? x - w : o.align === 'center' ? x - w / 2 : x;
+    if (s) this.ops.push({ t: 'text', x: left, y, s, size, bold, track, color: o.color || '#1c2230' });
+    return w;
+  }
+}
+
+// The page drawn in SVG, for the preview.
+function drawReportSvg(parent, pg) {
+  const svg = parent.createSvg('svg', { attr: { viewBox: `0 0 ${pg.w} ${pg.h}` }, cls: 'pw-report-page' });
+  svg.createSvg('rect', { attr: { width: pg.w, height: pg.h, fill: '#ffffff' } });
+  const r2 = (v) => Math.round(v * 100) / 100;
+  for (const op of pg.ops) {
+    if (op.t === 'path') {
+      const d = op.d.map(([c, ...v]) => `${c}${v.map(r2).join(' ')}`).join('');
+      const attr = { d, fill: op.fill || 'none' };
+      if (op.stroke) Object.assign(attr, { stroke: op.stroke, 'stroke-width': op.width, 'stroke-linecap': op.cap || 'butt', 'stroke-linejoin': 'round' });
+      if (op.dash) attr['stroke-dasharray'] = op.dash.join(' ');
+      svg.createSvg('path', { attr });
+    } else {
+      const text = Array.from(op.s, (ch) => String.fromCodePoint(FROM_WIN_ANSI[ch.charCodeAt(0)] || ch.charCodeAt(0))).join('');
+      const t = svg.createSvg('text', {
+        attr: { x: r2(op.x), y: r2(op.y), 'font-size': op.size, 'font-weight': op.bold ? 700 : 400, fill: op.color, 'letter-spacing': op.track || 0 },
+        cls: 'pw-report-text',
+      });
+      t.textContent = text;
+    }
+  }
+  return svg;
+}
+
+// A string for a PDF content stream: brackets and backslashes escaped, and anything outside
+// plain ASCII written in octal, so the whole file stays ASCII.
+function pdfEscape(s) {
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c === 40 || c === 41 || c === 92) out += `\\${s[i]}`;
+    else if (c < 32 || c > 126) out += `\\${c.toString(8).padStart(3, '0')}`;
+    else out += s[i];
+  }
+  return out;
+}
+
+function pdfContent(pg) {
+  const n = (v) => String(Math.round(v * 100) / 100);
+  const rgb = (hex) => {
+    const v = parseInt(hex.slice(1), 16);
+    return `${n(((v >> 16) & 255) / 255)} ${n(((v >> 8) & 255) / 255)} ${n((v & 255) / 255)}`;
+  };
+  // Turn the page so it can be drawn from the top left, as on screen.
+  const out = [`1 0 0 -1 0 ${n(pg.h)} cm`, '1 j'];
+  for (const op of pg.ops) {
+    if (op.t === 'path') {
+      if (op.fill) out.push(`${rgb(op.fill)} rg`);
+      if (op.stroke) out.push(`${rgb(op.stroke)} RG ${n(op.width || 0.5)} w ${op.cap === 'round' ? 1 : 0} J [${(op.dash || []).map(n).join(' ')}] 0 d`);
+      out.push(op.d.map(([c, ...v]) => (c === 'Z' ? 'h' : `${v.map(n).join(' ')} ${{ M: 'm', L: 'l', C: 'c' }[c]}`)).join(' '));
+      out.push(op.fill && op.stroke ? 'B' : op.fill ? 'f' : 'S');
+    } else {
+      // Text is turned back the right way up.
+      out.push(`BT /${op.bold ? 'F2' : 'F1'} ${n(op.size)} Tf ${n(op.track)} Tc ${rgb(op.color)} rg 1 0 0 -1 ${n(op.x)} ${n(op.y)} Tm (${pdfEscape(op.s)}) Tj ET`);
+    }
+  }
+  return out.join('\n');
+}
+
+// The pages as a PDF file.
+function makePdf(pages, title) {
+  const objs = [null, null];
+  const add = (s) => objs.push(s);
+  const regular = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+  const bold = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+  const kids = [];
+  for (const pg of pages) {
+    const stream = pdfContent(pg);
+    const content = add(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+    kids.push(add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pg.w} ${pg.h}] /Resources << /Font << /F1 ${regular} 0 R /F2 ${bold} 0 R >> >> /Contents ${content} 0 R >>`));
+  }
+  objs[0] = '<< /Type /Catalog /Pages 2 0 R >>';
+  objs[1] = `<< /Type /Pages /Kids [${kids.map((k) => `${k} 0 R`).join(' ')}] /Count ${kids.length} >>`;
+  const t = new Date();
+  const stamp = `${t.getFullYear()}${pad2(t.getMonth() + 1)}${pad2(t.getDate())}${pad2(t.getHours())}${pad2(t.getMinutes())}${pad2(t.getSeconds())}`;
+  const info = add(`<< /Title (${pdfEscape(pdfChars(title))}) /Creator (Pocket Watch for Obsidian) /Producer (Pocket Watch) /CreationDate (D:${stamp}) >>`);
+  let out = '%PDF-1.4\n%âãÏÓ\n';
+  const offsets = [];
+  objs.forEach((o, i) => {
+    offsets.push(out.length);
+    out += `${i + 1} 0 obj\n${o}\nendobj\n`;
+  });
+  const xref = out.length;
+  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('')}`;
+  out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R /Info ${info} 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  const bytes = new Uint8Array(out.length);
+  for (let i = 0; i < out.length; i++) bytes[i] = out.charCodeAt(i) & 255;
+  return bytes;
+}
+
+// What a report covers: a project, time without one, or all your time.
+const REPORT_ALL = '_all';
+
+// Print colours for the projects' eight colours (as in a light theme), for time without a
+// project, and for all your time or several projects together.
+const REPORT_COLOURS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
+const REPORT_NONE = '#8b8a84';
+const REPORT_INK = '#34405a';
+
+const REPORT_LEVELS = { essentials: 'Essentials', balanced: 'Balanced', everything: 'Everything' };
+const REPORT_LEVEL_NOTES = {
+  essentials: 'The big numbers, every day of the work, and your weeks. Plenty of room to breathe.',
+  balanced: 'Adds your words as they added up, the hours and days you work, and three highlights.',
+  everything: 'Adds the notes your time went to, your records and some fun facts. A full page.',
+};
+const PAPERS = { a4: { name: 'A4', size: [595.28, 841.89] }, letter: { name: 'US Letter', size: [612, 792] } };
+
+function mixHex(a, b, t) {
+  const pa = parseInt(a.slice(1), 16);
+  const pb = parseInt(b.slice(1), 16);
+  const c = [16, 8, 0].map((s) => Math.round(((pa >> s) & 255) * (1 - t) + ((pb >> s) & 255) * t));
+  return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+// A report's colours, from the colour of its project: tints of it on white paper, and a
+// deeper shade of it for text.
+function reportTheme(color) {
+  return {
+    accent: color, deep: mixHex(color, '#101420', 0.3), tint: (t) => mixHex('#ffffff', color, t),
+    panel: mixHex('#ffffff', color, 0.045), ink: '#1c2230', muted: '#5f6877', faint: '#9aa1ac', line: '#e3e6ea', empty: '#edeff2',
+  };
+}
+
+// "A", "A and B", "A, B and C".
+function andList(names) {
+  return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+function reportNum(n) {
+  return Math.round(n).toLocaleString('en-GB');
+}
+
+function reportDate(key, style = 'long') {
+  const o = style === 'long' ? { day: 'numeric', month: 'long', year: 'numeric' } : style === 'month' ? { month: 'long', year: 'numeric' } : { day: 'numeric', month: 'short' };
+  return keyToDate(key).toLocaleDateString('en-GB', o);
+}
+
+function reportSlice(d, id) {
+  return id === REPORT_ALL ? d : projectSlice(d, id);
+}
+
+function reportInfo(p, id) {
+  if (id === REPORT_ALL) return { id, name: 'All my time', color: REPORT_INK };
+  if (id === NO_PROJECT) return { id, name: 'No project', color: REPORT_NONE };
+  const x = p.settings.projects.find((y) => y.id === id);
+  return { id, name: x ? x.name : 'A project', color: REPORT_COLOURS[((x ? x.color : 1) - 1 + 8) % 8] };
+}
+
+// The first and last day with time for these, or null when there's none.
+function reportSpan(p, ids) {
+  const keys = Object.keys(p.days).sort().filter((k) => ids.some((id) => reportSlice(p.getDay(k), id).ms >= ACTIVE_DAY_MS));
+  return keys.length ? [keys[0], keys[keys.length - 1]] : null;
+}
+
+// Everything a page shows, for the projects on it, from one day to another.
+function reportData(p, ids, from, to) {
+  const keys = [];
+  for (let d = keyToDate(from); dayKey(d) <= to && keys.length < 3700; d.setDate(d.getDate() + 1)) keys.push(dayKey(d));
+  const series = ids.map((id) => {
+    const info = reportInfo(p, id);
+    info.days = keys.map((k) => {
+      const x = reportSlice(p.getDay(k), id);
+      return { ms: x.ms || 0, written: x.written || 0, deleted: x.deleted || 0, sessions: x.sessions || 0, focusMs: x.focusMs || 0, hours: x.hours || null, files: x.files || {} };
+    });
+    for (const k of SLICE_NUMBERS) info[k] = info.days.reduce((sum, d) => sum + d[k], 0);
+    info.hours = new Array(24).fill(0);
+    for (const d of info.days) if (d.hours) d.hours.forEach((ms, h) => (info.hours[h] += ms));
+    return info;
+  });
+  const days = keys.map((key, i) => {
+    const parts = series.map((x) => x.days[i]);
+    const day = { key, parts };
+    for (const k of SLICE_NUMBERS) day[k] = parts.reduce((sum, d) => sum + d[k], 0);
+    return day;
+  });
+  const r = { keys, series, days, from, to };
+  for (const k of SLICE_NUMBERS) r[k] = series.reduce((sum, x) => sum + x[k], 0);
+  r.net = r.written - r.deleted;
+  const worked = days.filter((d) => d.ms >= ACTIVE_DAY_MS);
+  r.worked = worked.length;
+  r.first = worked.length ? worked[0].key : from;
+  r.last = worked.length ? worked[worked.length - 1].key : to;
+  r.average = r.worked ? r.ms / r.worked : 0;
+  r.best = days.reduce((a, d) => (d.ms > a.ms ? d : a), { ms: 0, key: from });
+  r.wordiest = days.reduce((a, d) => (d.written > a.written ? d : a), { written: 0, key: from });
+  let run = 0;
+  r.streak = 0;
+  r.streakEnd = from;
+  for (const d of days) {
+    run = d.ms >= ACTIVE_DAY_MS ? run + 1 : 0;
+    if (run > r.streak) {
+      r.streak = run;
+      r.streakEnd = d.key;
+    }
+  }
+  r.hours = new Array(24).fill(0);
+  for (const x of series) x.hours.forEach((ms, h) => (r.hours[h] += ms));
+  r.hoursMs = r.hours.reduce((a, b) => a + b, 0);
+  r.peakHour = r.hours.indexOf(Math.max(...r.hours));
+  // The average for each day of the week, Monday first or Sunday first as you like.
+  const order = p.settings.weekStartsMonday ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6];
+  r.week = order.map((dow) => {
+    const these = days.filter((d) => keyToDate(d.key).getDay() === dow);
+    const n = Math.max(1, these.length);
+    return { dow, parts: series.map((_, i) => these.reduce((sum, d) => sum + d.parts[i].ms, 0) / n) };
+  });
+  // Night, morning, afternoon and evening, from the hours.
+  r.dayparts = [[0, 'Night', '0 to 6'], [6, 'Morning', '6 to 12'], [12, 'Afternoon', '12 to 18'], [18, 'Evening', '18 to 24']]
+    .map(([h, name, span]) => ({ name, span, ms: r.hours.slice(h, h + 6).reduce((a, b) => a + b, 0) }));
+  // The notes and folders the time went to, and which project had most of each note.
+  const notes = {};
+  series.forEach((x, i) => {
+    for (const d of x.days) {
+      for (const [path, ms] of Object.entries(d.files)) {
+        const n = notes[path] || (notes[path] = { path, ms: 0, by: series.map(() => 0) });
+        n.ms += ms;
+        n.by[i] += ms;
+      }
+    }
+  });
+  r.notes = Object.values(notes).filter((n) => n.ms >= 60000).sort((a, b) => b.ms - a.ms);
+  const months = {};
+  for (const d of days) months[d.key.slice(0, 7)] = (months[d.key.slice(0, 7)] || 0) + d.ms;
+  const top = Object.entries(months).sort((a, b) => b[1] - a[1])[0];
+  r.busiestMonth = top && top[1] > 0 ? { key: `${top[0]}-01`, ms: top[1] } : null;
+  return r;
+}
+
+// A page of time, in days or weeks, each with its projects' share.
+function reportPeriods(p, r) {
+  if (r.days.length <= 35) {
+    return { weekly: false, list: r.days.map((d) => ({ key: d.key, parts: d.parts.map((x) => x.ms) })) };
+  }
+  const list = [];
+  const startsMonday = p.settings.weekStartsMonday;
+  for (const d of r.days) {
+    const date = keyToDate(d.key);
+    const back = (date.getDay() - (startsMonday ? 1 : 0) + 7) % 7;
+    const start = dayKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() - back));
+    if (!list.length || list[list.length - 1].key !== start) list.push({ key: start, parts: r.series.map(() => 0) });
+    d.parts.forEach((x, i) => (list[list.length - 1].parts[i] += x.ms));
+  }
+  return { weekly: true, list };
+}
+
+// What kind of worker the hours say you are.
+function reportPersona(r) {
+  const top = r.dayparts.reduce((a, b) => (b.ms > a.ms ? b : a));
+  const share = r.hoursMs ? Math.round((top.ms / r.hoursMs) * 100) : 0;
+  const name = { Night: 'A night owl', Morning: 'An early bird', Afternoon: 'An afternoon person', Evening: 'An evening writer' }[top.name];
+  return { name, part: top.name, share };
+}
+
+// --- Drawing the page ----------------------------------------------------
+
+function reportPanel(pg, box, th) {
+  pg.rect(box.x, box.y, box.w, box.h, th.panel, 7);
+}
+
+// A section's name, small and spaced out, with a short line in the project's colour.
+function reportHeading(pg, x, y, text, th, right) {
+  pg.rect(x, y - 6.2, 2.4, 7.2, th.accent, 1.2);
+  pg.text(x + 7, y, text, { size: 6.8, bold: true, track: 0.9, upper: true, color: th.muted });
+  if (right) pg.text(right.x, y, right.text, { size: 6.8, color: th.faint, align: 'right' });
+}
+
+function drawMonogram(pg, x, y, width, color) {
+  const [x0, y0, x1] = MONOGRAM.box;
+  const k = width / (x1 - x0);
+  const tokens = MONOGRAM.path.match(/[MLQCZ]|-?\d*\.?\d+(?:e-?\d+)?/gi);
+  const d = [];
+  let i = 0;
+  let cmd = '';
+  let px = 0;
+  let py = 0;
+  const num = () => Number(tokens[i++]);
+  const at = (vx, vy) => [x + (vx - x0) * k, y + (vy - y0) * k];
+  while (i < tokens.length) {
+    if (/[A-Z]/i.test(tokens[i])) cmd = tokens[i++].toUpperCase();
+    if (cmd === 'Z') {
+      d.push(['Z']);
+      continue;
+    }
+    if (cmd === 'M' || cmd === 'L') {
+      px = num();
+      py = num();
+      d.push([cmd, ...at(px, py)]);
+    } else if (cmd === 'Q') {
+      // A quadratic curve, as the cubic one a PDF draws.
+      const qx = num();
+      const qy = num();
+      const ex = num();
+      const ey = num();
+      d.push(['C', ...at(px + (2 / 3) * (qx - px), py + (2 / 3) * (qy - py)), ...at(ex + (2 / 3) * (qx - ex), ey + (2 / 3) * (qy - ey)), ...at(ex, ey)]);
+      px = ex;
+      py = ey;
+    } else if (cmd === 'C') {
+      const c = [num(), num(), num(), num(), num(), num()];
+      d.push(['C', ...at(c[0], c[1]), ...at(c[2], c[3]), ...at(c[4], c[5])]);
+      px = c[4];
+      py = c[5];
+    } else i++;
+  }
+  pg.path(d, { fill: color });
+}
+
+function drawReportHead(pg, th, r, o) {
+  const M = o.margin;
+  pg.rect(0, 0, pg.w, 116, th.tint(0.085));
+  pg.rect(0, 0, pg.w, 4, th.accent);
+  drawMonogram(pg, pg.w - M - 54, 28, 54, th.accent);
+  pg.text(pg.w - M - 27, 82, 'Pocket Watch', { size: 6.5, bold: true, track: 0.6, color: th.deep, align: 'center' });
+  pg.text(M, 33, 'Time report', { size: 7, bold: true, track: 1.6, upper: true, color: th.deep });
+  const maxW = pg.w - 2 * M - 80;
+  let size = 27;
+  while (size > 15 && textWidth(pdfChars(o.title), size, true) > maxW) size -= 1;
+  pg.text(M, 33 + 8 + size * 0.8, o.title, { size, bold: true, color: th.ink, max: maxW });
+  const span = r.keys.length;
+  const sub = `${reportDate(r.from)} to ${reportDate(r.to)}  ·  ${reportNum(span)} ${span === 1 ? 'day' : 'days'}`;
+  pg.text(M, 33 + 8 + size * 0.8 + 17, sub, { size: 9, color: th.muted, max: maxW });
+  if (o.note) pg.text(M, 33 + 8 + size * 0.8 + 31, o.note, { size: 8.5, bold: true, color: th.deep, max: maxW });
+}
+
+function drawReportFoot(pg, th, o) {
+  const M = o.margin;
+  const y = pg.h - 22;
+  pg.line(M, y - 11, pg.w - M, y - 11, th.line, 0.6);
+  pg.text(M, y, 'Made with Pocket Watch for Obsidian', { size: 6.5, color: th.faint });
+  const made = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  pg.text(pg.w - M, y, `Made ${made}${o.pages > 1 ? `  ·  Page ${o.page + 1} of ${o.pages}` : ''}`, { size: 6.5, color: th.faint, align: 'right' });
+}
+
+// The time spent, large, and the numbers beside it.
+function drawReportHero(pg, box, th, r, level) {
+  const big = level === 'essentials' ? 46 : level === 'balanced' ? 41 : 37;
+  pg.text(box.x, box.y + 8, 'Time spent', { size: 6.8, bold: true, track: 0.9, upper: true, color: th.muted });
+  const base = box.y + 12 + big * 0.78;
+  const hours = Math.floor(r.ms / 3600000);
+  const mins = Math.floor(r.ms / 60000) % 60;
+  // Hours and minutes large, their units smaller, as on a watch.
+  let x = box.x;
+  x += pg.text(x, base, reportNum(hours), { size: big, bold: true, color: th.deep });
+  x += pg.text(x + 2, base, 'h', { size: big * 0.45, bold: true, color: th.deep }) + 8;
+  x += pg.text(x, base, pad2(mins), { size: big, bold: true, color: th.deep });
+  pg.text(x + 2, base, 'm', { size: big * 0.45, bold: true, color: th.deep });
+  const lines = [`on ${reportNum(r.worked)} ${r.worked === 1 ? 'day' : 'days'}, ${fmtShort(r.average)} on a typical one`];
+  if (r.series.length > 1) lines.push(andList(r.series.map((x) => x.name)));
+  lines.forEach((t, i) => pg.text(box.x, base + 15 + i * 12, t, { size: 8.5, color: th.muted, max: box.w * 0.4 }));
+
+  const tiles = [
+    ['Words written', reportNum(r.written), r.deleted ? `${reportNum(r.deleted)} deleted` : 'none deleted'],
+    ['Days worked', reportNum(r.worked), `of ${reportNum(r.keys.length)}`],
+    ['Longest streak', `${r.streak} ${r.streak === 1 ? 'day' : 'days'}`, r.streak ? `to ${reportDate(r.streakEnd, 'short')}` : ''],
+    ['Best day', fmtShort(r.best.ms), r.best.ms ? reportDate(r.best.key, 'short') : ''],
+    ['Focus sessions', reportNum(r.sessions), `${fmtShort(r.focusMs)} of focus`],
+    ['Words an hour', r.ms >= 600000 ? reportNum(r.written / (r.ms / 3600000)) : '-', 'while working'],
+  ].slice(0, level === 'essentials' ? 4 : 6);
+  const cols = level === 'essentials' ? 2 : 3;
+  const x0 = box.x + box.w * 0.44;
+  const cw = (box.x + box.w - x0) / cols;
+  const rows = Math.ceil(tiles.length / cols);
+  const rh = box.h / rows;
+  tiles.forEach(([label, value, sub], i) => {
+    const cx = x0 + (i % cols) * cw + 10;
+    const cy = box.y + Math.floor(i / cols) * rh;
+    pg.line(cx - 10, cy + 2, cx - 10, cy + rh - 6, th.line, 0.7);
+    pg.text(cx, cy + 9, label, { size: 6.2, bold: true, track: 0.7, upper: true, color: th.muted, max: cw - 14 });
+    const vs = Math.min(18, rh * 0.36);
+    pg.text(cx, cy + 12 + vs * 0.85, value, { size: vs, bold: true, color: th.ink, max: cw - 14 });
+    if (sub) pg.text(cx, cy + 12 + vs * 0.85 + 10.5, sub, { size: 7, color: th.faint, max: cw - 14 });
+  });
+}
+
+// Every day of the work, a square for each, darker for the days with more time.
+function drawReportCalendar(pg, box, th, r) {
+  reportPanel(pg, box, th);
+  const pad = 12;
+  const x = box.x + pad;
+  const y = box.y + pad + 6;
+  reportHeading(pg, x, y, 'Every day of the work', th);
+  // How much is a lot: a quarter of the days you worked had more than the top step.
+  const sorted = r.days.filter((d) => d.ms >= ACTIVE_DAY_MS).map((d) => d.ms).sort((a, b) => a - b);
+  const q = (f) => sorted[Math.min(sorted.length - 1, Math.floor(f * sorted.length))] || 0;
+  const steps = [q(0.25), q(0.5), q(0.75)];
+  const level = (ms) => (ms < ACTIVE_DAY_MS ? 0 : ms <= steps[0] ? 1 : ms <= steps[1] ? 2 : ms <= steps[2] ? 3 : 4);
+  const shades = [0, 0.3, 0.52, 0.76, 1];
+  const colour = (d) => {
+    const l = level(d.ms);
+    if (!l) return th.empty;
+    let top = 0;
+    d.parts.forEach((x, i) => {
+      if (x.ms > d.parts[top].ms) top = i;
+    });
+    const c = r.series.length > 1 ? r.series[top].color : th.accent;
+    return mixHex('#ffffff', c, shades[l]);
+  };
+  // The legend.
+  const lx = box.x + box.w - pad;
+  let at = lx - pg.text(lx, y, 'More', { size: 6.3, color: th.faint, align: 'right' }) - 4;
+  for (let l = 4; l >= 0; l--) {
+    at -= 7.5;
+    pg.rect(at, y - 6, 6.2, 6.2, l ? mixHex('#ffffff', th.accent, shades[l]) : th.empty, 1.4);
+  }
+  pg.text(at - 4, y, 'Less', { size: 6.3, color: th.faint, align: 'right' });
+
+  const startsMonday = pg.weekStartsMonday;
+  const first = keyToDate(r.keys[0]);
+  const back = (first.getDay() - (startsMonday ? 1 : 0) + 7) % 7;
+  const start = new Date(first.getFullYear(), first.getMonth(), first.getDate() - back);
+  const weeks = Math.ceil((back + r.keys.length) / 7);
+  if (weeks <= 6) {
+    drawReportMonth(pg, box, th, r, { colour, start, weeks, top: y + 10, pad });
+    return;
+  }
+  const labelW = 14;
+  const top = y + 18;
+  const cell = Math.max(2, Math.min((box.w - 2 * pad - labelW) / weeks, (box.y + box.h - pad - 12 - top) / 7, 13));
+  const size = cell * 0.82;
+  const gx = x + labelW;
+  const names = startsMonday ? ['M', '', 'W', '', 'F', '', ''] : ['', 'M', '', 'W', '', 'F', ''];
+  names.forEach((n, i) => n && pg.text(x, top + i * cell + size * 0.8, n, { size: Math.min(6, size), color: th.faint }));
+  const byKey = new Map(r.days.map((d) => [d.key, d]));
+  let lastEnd = -100;
+  for (let w = 0; w < weeks; w++) {
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + w * 7 + i);
+      const key = dayKey(date);
+      const d = byKey.get(key);
+      if (!d) continue;
+      pg.rect(gx + w * cell, top + i * cell, size, size, colour(d), Math.min(1.8, size * 0.24));
+      // A month's name over the week its first day falls in.
+      if (date.getDate() === 1 || (w === 0 && i === back)) {
+        const label = date.getMonth() === 0 || w === 0 ? date.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : date.toLocaleDateString('en-GB', { month: 'short' });
+        const lxw = gx + w * cell;
+        if (lxw > lastEnd + 5) lastEnd = lxw + pg.text(lxw, top - 4, label, { size: 6.3, color: th.muted });
+      }
+    }
+  }
+  const caption = `${reportNum(r.worked)} days worked  ·  longest streak ${r.streak} ${r.streak === 1 ? 'day' : 'days'}  ·  ${fmtShort(r.average)} on a typical day`;
+  pg.text(x, Math.min(box.y + box.h - pad + 2, top + 7 * cell + 11), caption, { size: 6.8, color: th.muted });
+  // With room to spare beside the days, the months: a column for each.
+  const months = [];
+  for (const d of r.days) {
+    const key = d.key.slice(0, 7);
+    if (!months.length || months[months.length - 1].key !== key) months.push({ key, ms: 0 });
+    months[months.length - 1].ms += d.ms;
+  }
+  const mx = Math.max(gx + weeks * cell + 24, lastEnd + 14);
+  if (months.length < 3 || box.x + box.w - pad - mx < 90 || (box.x + box.w - pad - mx) / months.length < 7) return;
+  const band = Math.min(18, (box.x + box.w - pad - mx) / months.length);
+  const mw = band * 0.7;
+  const mTop = top;
+  const mBottom = top + 7 * cell - 2;
+  const most = Math.max(1, ...months.map((m) => m.ms));
+  pg.text(mx, top - 4, 'By month', { size: 6.3, color: th.muted });
+  months.forEach((m, i) => {
+    const bx = mx + i * band + (band - mw) / 2;
+    const h = (mBottom - mTop - 9) * (m.ms / most);
+    pg.rect(bx, mBottom - 9 - (mBottom - mTop - 9), mw, mBottom - mTop - 9, th.empty, 1.5);
+    if (m.ms) pg.path(barD(bx, mBottom - 9, mw, mBottom - 9 - h, 1.5), { fill: m.ms === most ? th.deep : th.tint(0.6) });
+    pg.text(bx + mw / 2, mBottom + 0.5, keyToDate(`${m.key}-01`).toLocaleDateString('en-GB', { month: 'narrow' }), { size: 5.6, color: m.ms === most ? th.deep : th.faint, bold: m.ms === most, align: 'center' });
+  });
+}
+
+// A few weeks, as a calendar: a row for each week, with each day's date and its time.
+function drawReportMonth(pg, box, th, r, o) {
+  const x = box.x + o.pad;
+  const w = box.w - 2 * o.pad;
+  const colW = w / 7;
+  const top = o.top + 10;
+  const rowH = Math.min(30, (box.y + box.h - o.pad - 14 - top) / o.weeks);
+  const ref = o.start;
+  for (let i = 0; i < 7; i++) {
+    const name = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate() + i).toLocaleDateString('en-GB', { weekday: 'short' });
+    pg.text(x + i * colW + 3, top - 3, name, { size: 6.3, color: th.muted });
+  }
+  const byKey = new Map(r.days.map((d) => [d.key, d]));
+  for (let wk = 0; wk < o.weeks; wk++) {
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate() + wk * 7 + i);
+      const d = byKey.get(dayKey(date));
+      if (!d) continue;
+      const cx = x + i * colW;
+      const cy = top + wk * rowH;
+      const fill = o.colour(d);
+      pg.rect(cx + 1, cy + 1, colW - 2, rowH - 2, fill, 3);
+      const dark = fill !== th.empty && parseInt(fill.slice(1, 3), 16) * 0.3 + parseInt(fill.slice(3, 5), 16) * 0.59 + parseInt(fill.slice(5, 7), 16) * 0.11 < 150;
+      const label = date.getDate() === 1 || (wk === 0 && i === (r.days[0] && keyToDate(r.days[0].key).getDay() - (pg.weekStartsMonday ? 1 : 0) + 7) % 7)
+        ? date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : String(date.getDate());
+      pg.text(cx + 5, cy + 9, label, { size: 6.2, color: dark ? '#ffffff' : th.muted });
+      if (d.ms >= ACTIVE_DAY_MS && rowH > 16) pg.text(cx + colW - 5, cy + rowH - 5, fmtShort(d.ms), { size: 7, bold: true, color: dark ? '#ffffff' : th.ink, align: 'right' });
+    }
+  }
+  const caption = `${reportNum(r.worked)} days worked  ·  longest streak ${r.streak} ${r.streak === 1 ? 'day' : 'days'}  ·  ${fmtShort(r.average)} on a typical day`;
+  pg.text(x, top + o.weeks * rowH + 11, caption, { size: 6.8, color: th.muted });
+}
+
+// Time each week (or day), stacked by project, with the average marked.
+function drawReportBars(pg, box, th, r, p) {
+  reportPanel(pg, box, th);
+  const pad = 12;
+  const { weekly, list } = reportPeriods(p, r);
+  const totals = list.map((x) => x.parts.reduce((a, b) => a + b, 0));
+  const busy = totals.filter((t) => t > 0);
+  const avg = busy.length ? busy.reduce((a, b) => a + b, 0) / busy.length : 0;
+  reportHeading(pg, box.x + pad, box.y + pad + 6, weekly ? 'Time each week' : 'Time each day', th, { x: box.x + box.w - pad, text: `${fmtShort(avg)} in a typical ${weekly ? 'week' : 'day'} you worked` });
+  const x0 = box.x + pad + 24;
+  const x1 = box.x + box.w - pad;
+  const y0 = box.y + box.h - pad - 10;
+  const y1 = box.y + pad + 20;
+  const max = Math.max(...totals, 30 * 60000);
+  const ticks = axisTicks(max, true);
+  const topV = ticks[ticks.length - 1];
+  const yy = (v) => y0 - (y0 - y1) * (v / topV);
+  for (const t of ticks) {
+    pg.line(x0, yy(t), x1, yy(t), t ? th.line : mixHex(th.line, '#000000', 0.15), t ? 0.5 : 0.7);
+    pg.text(x0 - 5, yy(t) + 2.2, t ? fmtCompact(t) : '0', { size: 6, color: th.faint, align: 'right' });
+  }
+  const band = (x1 - x0) / list.length;
+  const bw = Math.max(0.8, Math.min(16, band * 0.72));
+  list.forEach((period, i) => {
+    let base = 0;
+    const parts = period.parts.map((v, j) => [v, j]).filter(([v]) => v > 0);
+    parts.forEach(([v, j], k) => {
+      const ya = yy(base);
+      const yb = yy(base + v);
+      base += v;
+      const colour = r.series.length > 1 ? r.series[j].color : th.accent;
+      if (ya - yb < 0.3) return;
+      const bx = x0 + i * band + (band - bw) / 2;
+      if (k === parts.length - 1) pg.path(barD(bx, ya, bw, yb, Math.min(1.6, bw / 2)), { fill: colour });
+      else pg.rect(bx, yb, bw, ya - yb - (k ? 0 : 0), colour);
+    });
+  });
+  if (avg) pg.line(x0, yy(avg), x1, yy(avg), th.deep, 0.6, { dash: [2, 2] });
+  // Months along the bottom, or every few days.
+  let last = -100;
+  list.forEach((period, i) => {
+    const date = keyToDate(period.key);
+    const label = weekly
+      ? (i === 0 || date.getDate() <= 7 ? date.toLocaleDateString('en-GB', { month: 'short' }) : '')
+      : (i === 0 || i % Math.ceil(list.length / 8) === 0 ? reportDate(period.key, 'short') : '');
+    const lx = x0 + i * band;
+    if (label && lx - last > textWidth(pdfChars(label), 6, false) + 5) {
+      pg.text(lx, y0 + 9, label, { size: 6, color: th.faint });
+      last = lx;
+    }
+  });
+}
+
+// The words written, as they added up over the work.
+function drawReportWords(pg, box, th, r) {
+  reportPanel(pg, box, th);
+  const pad = 12;
+  reportHeading(pg, box.x + pad, box.y + pad + 6, 'Words, adding up', th);
+  if (!r.written) {
+    pg.text(box.x + pad, box.y + box.h / 2, 'No words were counted on these days.', { size: 7.5, color: th.faint });
+    return;
+  }
+  pg.text(box.x + box.w - pad, box.y + pad + 7, reportNum(r.written), { size: 11, bold: true, color: th.deep, align: 'right' });
+  const x0 = box.x + pad + 24;
+  const x1 = box.x + box.w - pad;
+  const y0 = box.y + box.h - pad - 10;
+  const y1 = box.y + pad + 22;
+  const runs = r.series.map((x) => {
+    let sum = 0;
+    return x.days.map((d) => (sum += d.written));
+  });
+  const max = Math.max(10, ...runs.map((run) => run[run.length - 1] || 0));
+  const ticks = axisTicks(max, false);
+  const topV = ticks[ticks.length - 1];
+  const yy = (v) => y0 - (y0 - y1) * (v / topV);
+  const xx = (i) => x0 + (x1 - x0) * (r.days.length > 1 ? i / (r.days.length - 1) : 0);
+  for (const t of ticks) {
+    pg.line(x0, yy(t), x1, yy(t), th.line, 0.5);
+    pg.text(x0 - 5, yy(t) + 2.2, fmtCount(t), { size: 6, color: th.faint, align: 'right' });
+  }
+  runs.forEach((run, j) => {
+    const colour = r.series.length > 1 ? r.series[j].color : th.accent;
+    // At most one point for each point's width of the chart.
+    const every = Math.max(1, Math.floor(run.length / ((x1 - x0) / 1.5)));
+    const pts = [];
+    for (let i = 0; i < run.length; i += every) pts.push([xx(i), yy(run[i])]);
+    pts.push([xx(run.length - 1), yy(run[run.length - 1])]);
+    if (r.series.length === 1) pg.path([['M', x0, y0], ...pts.map((pt) => ['L', ...pt]), ['L', x1, y0], ['Z']], { fill: th.tint(0.16) });
+    pg.path([['M', ...pts[0]], ...pts.slice(1).map((pt) => ['L', ...pt])], { stroke: colour, width: 1.3, cap: 'round' });
+    const end = pts[pts.length - 1];
+    pg.circle(end[0], end[1], 2, { fill: colour });
+  });
+  pg.text(x0, y0 + 9, reportDate(r.from, 'short'), { size: 6, color: th.faint });
+  pg.text(x1, y0 + 9, reportDate(r.to, 'short'), { size: 6, color: th.faint, align: 'right' });
+}
+
+// The hours of the day you worked, round a 24-hour dial: midnight at the top.
+function drawReportDial(pg, box, th, r) {
+  reportPanel(pg, box, th);
+  const pad = 12;
+  reportHeading(pg, box.x + pad, box.y + pad + 6, 'When you worked', th);
+  // Room for the dial between the heading and the caption, with its hours round the outside.
+  const top = box.y + pad + 14;
+  const room = box.y + box.h - pad - 12 - top;
+  const r1 = Math.max(10, Math.min((box.w - 2 * pad) / 2, room / 2) - 12);
+  const cx = box.x + box.w / 2;
+  const cy = top + room / 2;
+  const r0 = r1 * 0.24;
+  pg.circle(cx, cy, r1, { stroke: th.line, width: 0.6 });
+  pg.circle(cx, cy, (r0 + r1) / 2, { stroke: th.line, width: 0.4, dash: [1, 1.6] });
+  for (let h = 0; h < 24; h++) {
+    const [ax, ay] = onCircle(cx, cy, r1 + 1.5, h * 15);
+    const [bx, by] = onCircle(cx, cy, r1 + (h % 6 ? 3 : 5), h * 15);
+    pg.line(ax, ay, bx, by, th.faint, 0.5);
+  }
+  const max = Math.max(1, ...r.hours);
+  for (let h = 0; h < 24; h++) {
+    let from = r0 + 1;
+    r.series.forEach((x, j) => {
+      const v = x.hours[h];
+      if (!v) return;
+      const to = from + (r1 - r0 - 1) * (v / max);
+      pg.path(wedgeD(cx, cy, from, to, h * 15 + 1.2, h * 15 + 13.8), { fill: r.series.length > 1 ? x.color : h === r.peakHour ? th.deep : th.accent });
+      from = to;
+    });
+  }
+  for (const h of [0, 6, 12, 18]) {
+    const [lx, ly] = onCircle(cx, cy, r1 + 10, h * 15);
+    pg.text(lx, ly + 2, pad2(h), { size: 5.8, color: th.faint, align: 'center' });
+  }
+  const caption = r.hoursMs ? `Busiest from ${pad2(r.peakHour)}:00 to ${pad2((r.peakHour + 1) % 24)}:00` : r.ms ? 'Hours are noted from version 1.10' : 'No time on these days';
+  pg.text(cx, box.y + box.h - pad + 1, caption, { size: 6.8, color: th.muted, align: 'center' });
+}
+
+// Your average day of the week.
+function drawReportWeek(pg, box, th, r) {
+  reportPanel(pg, box, th);
+  const pad = 12;
+  reportHeading(pg, box.x + pad, box.y + pad + 6, 'Your week', th);
+  const totals = r.week.map((d) => d.parts.reduce((a, b) => a + b, 0));
+  const max = Math.max(1, ...totals);
+  const peak = totals.some((t) => t > 0) ? totals.indexOf(Math.max(...totals)) : -1;
+  const x0 = box.x + pad;
+  const x1 = box.x + box.w - pad;
+  const y0 = box.y + box.h - pad - 22;
+  const y1 = box.y + pad + 30;
+  const band = (x1 - x0) / 7;
+  const bw = Math.min(18, band * 0.6);
+  const ref = daysAgo(0);
+  r.week.forEach((d, i) => {
+    const bx = x0 + i * band + (band - bw) / 2;
+    let base = 0;
+    const parts = d.parts.map((v, j) => [v, j]).filter(([v]) => v > 0);
+    parts.forEach(([v, j], k) => {
+      const ya = y0 - (y0 - y1) * (base / max);
+      const yb = y0 - (y0 - y1) * ((base + v) / max);
+      base += v;
+      const colour = r.series.length > 1 ? r.series[j].color : i === peak ? th.deep : th.tint(0.55);
+      if (k === parts.length - 1) pg.path(barD(bx, ya, bw, yb, 2), { fill: colour });
+      else pg.rect(bx, yb, bw, ya - yb, colour);
+    });
+    if (totals[i]) pg.text(bx + bw / 2, y0 - (y0 - y1) * (totals[i] / max) - 4, fmtCompact(totals[i]), { size: 5.8, color: i === peak ? th.deep : th.faint, bold: i === peak, align: 'center' });
+    const name = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate() - ref.getDay() + d.dow).toLocaleDateString('en-GB', { weekday: 'short' });
+    pg.text(bx + bw / 2, y0 + 9, name, { size: 6.3, color: i === peak ? th.ink : th.faint, bold: i === peak, align: 'center' });
+  });
+  pg.line(x0, y0, x1, y0, th.line, 0.7);
+  const best = peak >= 0 && new Date(ref.getFullYear(), ref.getMonth(), ref.getDate() - ref.getDay() + r.week[peak].dow).toLocaleDateString('en-GB', { weekday: 'long' });
+  pg.text(box.x + box.w / 2, box.y + box.h - pad + 1, best ? `Most on ${best}s, on average` : 'No time on these days', { size: 6.8, color: th.muted, align: 'center' });
+}
+
+// Night, morning, afternoon or evening: when the time went, and what that makes you.
+function drawReportDayparts(pg, box, th, r) {
+  reportPanel(pg, box, th);
+  const pad = 12;
+  reportHeading(pg, box.x + pad, box.y + pad + 6, 'Time of day', th);
+  const persona = reportPersona(r);
+  if (!r.hoursMs) persona.part = '';
+  pg.text(box.x + pad, box.y + pad + 25, r.hoursMs ? persona.name : 'Not yet known', { size: 12.5, bold: true, color: th.deep, max: box.w - 2 * pad });
+  pg.text(box.x + pad, box.y + pad + 36, r.hoursMs ? `${persona.share}% of your time was in the ${persona.part.toLowerCase()}` : '', { size: 6.8, color: th.muted, max: box.w - 2 * pad });
+  const top = box.y + pad + 48;
+  const rowH = Math.min(17, (box.y + box.h - pad - top) / 4);
+  const max = Math.max(1, ...r.dayparts.map((d) => d.ms));
+  r.dayparts.forEach((d, i) => {
+    const y = top + i * rowH;
+    const w = pg.text(box.x + pad, y + 7.5, d.name, { size: 7, bold: d.name === persona.part, color: th.ink });
+    pg.text(box.x + pad + w + 3, y + 7.5, d.span.replace(' to ', '-'), { size: 5.6, color: th.faint });
+    const bx = box.x + pad + 66;
+    const bw = box.w - 2 * pad - 66 - 26;
+    pg.rect(bx, y + 3, bw, 5, th.empty, 2.5);
+    if (d.ms) pg.rect(bx, y + 3, Math.max(5, bw * (d.ms / max)), 5, d.name === persona.part ? th.deep : th.tint(0.6), 2.5);
+    pg.text(box.x + box.w - pad, y + 7.5, r.hoursMs ? `${Math.round((d.ms / r.hoursMs) * 100)}%` : '', { size: 6.8, bold: d.name === persona.part, color: th.ink, align: 'right' });
+  });
+}
+
+// The notes your time went to.
+function drawReportNotes(pg, box, th, r) {
+  reportPanel(pg, box, th);
+  const pad = 12;
+  reportHeading(pg, box.x + pad, box.y + pad + 6, 'Where the time went', th, { x: box.x + box.w - pad, text: r.notes.length ? `${reportNum(r.notes.length)} ${r.notes.length === 1 ? 'note' : 'notes'}` : '' });
+  if (!r.notes.length) {
+    pg.text(box.x + pad, box.y + pad + 30, 'No notes were recorded on these days.', { size: 7.5, color: th.faint });
+    return;
+  }
+  const top = box.y + pad + 20;
+  const rowH = 15.5;
+  const n = Math.max(1, Math.floor((box.y + box.h - pad - top) / rowH));
+  const max = r.notes[0].ms;
+  const nameW = (box.w - 2 * pad) * 0.5;
+  r.notes.slice(0, n).forEach((note, i) => {
+    const y = top + i * rowH;
+    const folder = note.path.includes('/') ? note.path.slice(0, note.path.lastIndexOf('/')) : '';
+    const w = pg.text(box.x + pad, y + 8, noteName(note.path), { size: 7.3, color: th.ink, max: nameW });
+    if (folder) pg.text(box.x + pad + w + 4, y + 8, folder, { size: 6, color: th.faint, max: Math.max(0, nameW - w - 4) });
+    const bx = box.x + pad + nameW + 8;
+    const bw = box.w - 2 * pad - nameW - 8 - 40;
+    let top2 = 0;
+    note.by.forEach((v, j) => {
+      if (v > note.by[top2]) top2 = j;
+    });
+    pg.rect(bx, y + 3.5, bw, 5, th.empty, 2.5);
+    pg.rect(bx, y + 3.5, Math.max(5, bw * (note.ms / max)), 5, r.series.length > 1 ? r.series[top2].color : i === 0 ? th.deep : th.tint(0.62), 2.5);
+    pg.text(box.x + box.w - pad, y + 8, fmtShort(note.ms), { size: 7.3, bold: true, color: th.ink, align: 'right' });
+  });
+}
+
+function reportFacts(r) {
+  const facts = [];
+  if (r.worked) {
+    facts.push(['First day', reportDate(r.first)]);
+    facts.push(['Last day', reportDate(r.last)]);
+  }
+  if (r.best.ms) facts.push(['Longest day', `${fmtShort(r.best.ms)}, ${reportDate(r.best.key, 'short')}`]);
+  if (r.wordiest.written) facts.push(['Most words in a day', `${reportNum(r.wordiest.written)}, ${reportDate(r.wordiest.key, 'short')}`]);
+  if (r.busiestMonth) facts.push(['Busiest month', `${reportDate(r.busiestMonth.key, 'month')}, ${fmtShort(r.busiestMonth.ms)}`]);
+  if (r.ms) facts.push(['In working weeks', `${(r.ms / (37.5 * 3600000)).toFixed(1)} weeks of 37.5 hours`]);
+  if (r.net > 0) facts.push(['On paper', `about ${reportNum(Math.max(1, r.net / 300))} pages, at 300 words a page`]);
+  if (r.ms) {
+    const d = Math.floor(r.ms / 86400000);
+    const h = Math.floor((r.ms % 86400000) / 3600000);
+    facts.push(['Without stopping', `${d ? `${d} ${d === 1 ? 'day' : 'days'} and ` : ''}${h} ${h === 1 ? 'hour' : 'hours'} on end`]);
+  }
+  if (r.sessions) facts.push(['A focus session', `${fmtShort(r.focusMs / r.sessions)} on average`]);
+  if (r.deleted && r.written) facts.push(['Kept', `${Math.round((r.net / r.written) * 100)}% of the words you wrote`]);
+  return facts;
+}
+
+// Your records, and the work put another way.
+function drawReportFacts(pg, box, th, r) {
+  reportPanel(pg, box, th);
+  const pad = 12;
+  reportHeading(pg, box.x + pad, box.y + pad + 6, 'Records and fun facts', th);
+  const facts = reportFacts(r);
+  const top = box.y + pad + 18;
+  const rowH = 14.2;
+  const n = Math.max(1, Math.floor((box.y + box.h - pad - top) / rowH));
+  facts.slice(0, n).forEach(([label, value], i) => {
+    const y = top + i * rowH;
+    if (i) pg.line(box.x + pad, y, box.x + box.w - pad, y, th.line, 0.5);
+    pg.text(box.x + pad, y + 9.5, label, { size: 7, color: th.muted });
+    pg.text(box.x + box.w - pad, y + 9.5, value, { size: 7.3, bold: true, color: th.ink, align: 'right', max: box.w - 2 * pad - 80 });
+  });
+}
+
+// Three things worth knowing, large.
+function drawReportHighlights(pg, box, th, r) {
+  const persona = reportPersona(r);
+  const items = [
+    [`${(r.ms / (37.5 * 3600000)).toFixed(1)}`, 'working weeks', 'of 37.5 hours each'],
+    r.net > 0 ? [reportNum(Math.max(1, r.net / 300)), 'pages of writing', 'at 300 words a page'] : [reportNum(r.sessions), 'focus sessions', `${fmtShort(r.focusMs)} of focus`],
+    r.hoursMs ? [`${persona.share}%`, `in the ${persona.part.toLowerCase()}`, persona.name] : [`${r.streak}`, 'days in a row', 'your longest streak'],
+  ];
+  const gap = 10;
+  const w = (box.w - gap * 2) / 3;
+  const big = Math.min(26, box.h * 0.34);
+  items.forEach(([value, label, sub], i) => {
+    const x = box.x + i * (w + gap);
+    pg.rect(x, box.y, w, box.h, th.tint(0.1), 8);
+    pg.rect(x, box.y + 10, 2.4, box.h - 20, th.accent, 1.2);
+    const vy = box.y + box.h / 2 + big * 0.18;
+    const vw = pg.text(x + 14, vy, value, { size: big, bold: true, color: th.deep });
+    pg.text(x + 14 + vw + 6, vy - big * 0.3, label, { size: 8.5, bold: true, color: th.ink, max: w - vw - 26 });
+    pg.text(x + 14 + vw + 6, vy - big * 0.3 + 11, sub, { size: 7, color: th.muted, max: w - vw - 26 });
+  });
+}
+
+// With several projects on the page: how the time split between them.
+function drawReportSplit(pg, box, th, r) {
+  reportPanel(pg, box, th);
+  const pad = 12;
+  reportHeading(pg, box.x + pad, box.y + pad + 6, 'Projects', th);
+  const total = Math.max(1, r.ms);
+  const bx = box.x + pad;
+  const bw = box.w - 2 * pad;
+  let x = bx;
+  const sorted = r.series.slice().sort((a, b) => b.ms - a.ms);
+  for (const s of sorted) {
+    const w = bw * (s.ms / total);
+    if (w > 0.5) pg.rect(x, box.y + pad + 14, Math.max(0.5, w - 1.5), 7, s.color, 2);
+    x += w;
+  }
+  const cols = Math.min(sorted.length, 3);
+  const cw = bw / cols;
+  sorted.forEach((s, i) => {
+    const cx = bx + (i % cols) * cw;
+    const cy = box.y + pad + 36 + Math.floor(i / cols) * 24;
+    pg.circle(cx + 3, cy - 2.6, 3, { fill: s.color });
+    pg.text(cx + 10, cy, s.name, { size: 7.8, bold: true, color: th.ink, max: cw - 16 });
+    pg.text(cx + 10, cy + 10, `${fmtShort(s.ms)}  ·  ${Math.round((s.ms / total) * 100)}%  ·  ${reportNum(s.written)} words`, { size: 6.8, color: th.muted, max: cw - 16 });
+  });
+}
+
+// One page: its header, the blocks for the level of detail, and its footer.
+function drawReportPage(p, ids, o) {
+  const [W, H] = (PAPERS[o.paper] || PAPERS.a4).size;
+  const pg = new ReportPage(W, H);
+  pg.weekStartsMonday = p.settings.weekStartsMonday;
+  const r = reportData(p, ids, o.from, o.to);
+  const th = reportTheme(r.series.length === 1 ? r.series[0].color : REPORT_INK);
+  const margin = 40;
+  // A title the PDF's fonts can't write, like one in Japanese, falls back to the projects' names.
+  const named = andList(r.series.map((x) => x.name));
+  const title = [o.title, named, 'Your time'].find((t) => t && pdfChars(t).trim());
+  drawReportHead(pg, th, r, { margin, title, note: o.note });
+  const box = (x, w) => ({ x, w });
+  const full = [box(margin, W - 2 * margin)];
+  // Columns across the page, by their share of its width.
+  const cols = (...shares) => {
+    const gap = 12;
+    const total = W - 2 * margin - gap * (shares.length - 1);
+    const sum = shares.reduce((a, b) => a + b, 0);
+    let x = margin;
+    return shares.map((s) => {
+      const b = box(x, (total * s) / sum);
+      x += b.w + gap;
+      return b;
+    });
+  };
+  const several = r.series.length > 1;
+  const blocks = [];
+  // A block's height, and whether it takes a share of any room to spare.
+  const add = (h, grow, columns, ...draws) => blocks.push({ h, grow, columns, draws, most: Infinity });
+  const L = o.level;
+  // The calendar is as tall as its weeks need at the width of the page.
+  const first = keyToDate(r.keys[0]);
+  const back = (first.getDay() - (pg.weekStartsMonday ? 1 : 0) + 7) % 7;
+  const weeks = Math.ceil((back + r.keys.length) / 7);
+  const cell = Math.min(13, (W - 2 * margin - 38) / weeks);
+  const calendar = weeks <= 6 ? 60 + weeks * 26 : 56 + 7 * cell;
+  add(L === 'essentials' ? 112 : L === 'balanced' ? 96 : 88, 0, full, (b) => drawReportHero(pg, b, th, r, L));
+  if (several) add(48 + 24 * Math.ceil(r.series.length / 3), 0, full, (b) => drawReportSplit(pg, b, th, r));
+  add(weeks <= 6 ? calendar : Math.min(calendar, L === 'essentials' ? 170 : L === 'balanced' ? 124 : 106), 0, full, (b) => drawReportCalendar(pg, b, th, r));
+  if (L === 'essentials') {
+    add(196, 1, full, (b) => drawReportBars(pg, b, th, r, p));
+    blocks[blocks.length - 1].most = 260;
+    add(74, 0, full, (b) => drawReportHighlights(pg, b, th, r));
+  } else {
+    add(L === 'balanced' ? 158 : 132, 1, cols(1.45, 1), (b) => drawReportBars(pg, b, th, r, p), (b) => drawReportWords(pg, b, th, r));
+    add(L === 'balanced' ? 150 : 128, 0, cols(1, 1.1, 1.1), (b) => drawReportDial(pg, b, th, r), (b) => drawReportWeek(pg, b, th, r), (b) => drawReportDayparts(pg, b, th, r));
+    if (L === 'balanced') add(66, 0, full, (b) => drawReportHighlights(pg, b, th, r));
+    else add(156, 1, cols(1.05, 1), (b) => drawReportNotes(pg, b, th, r), (b) => drawReportFacts(pg, b, th, r));
+  }
+  // Fit the blocks between the header and the footer.
+  const top = 134;
+  const bottom = H - 44;
+  const gap = 12;
+  const need = blocks.reduce((sum, b) => sum + b.h, 0);
+  const room = bottom - top - gap * (blocks.length - 1);
+  const k = Math.min(1, room / need);
+  const spare = Math.max(0, room - need * k);
+  const growing = blocks.reduce((sum, b) => sum + b.grow, 0) || 1;
+  const heights = blocks.map((b) => Math.min(b.most, b.h * k + (spare * b.grow) / growing));
+  const air = (room - heights.reduce((a, b) => a + b, 0)) / Math.max(1, blocks.length - 1);
+  let y = top;
+  blocks.forEach((b, j) => {
+    const h = heights[j];
+    b.columns.forEach((c, i) => b.draws[i] && b.draws[i]({ x: c.x, y, w: c.w, h }));
+    y += h + gap + air;
+  });
+  drawReportFoot(pg, th, { margin, page: o.page || 0, pages: o.pages || 1 });
+  return pg;
+}
+
+// The pages of a report: a page for each project, or one for all of them together.
+function buildReport(p, o) {
+  const groups = o.together || o.ids.length === 1 ? [o.ids] : o.ids.map((id) => [id]);
+  return groups.map((ids, i) => drawReportPage(p, ids, Object.assign({}, o, { title: groups.length > 1 ? '' : o.title, page: i, pages: groups.length })));
+}
+
+// Choose what a report covers, how much it shows, its dates and its title, with the pages as
+// they will print beside it; then save it as a PDF in the vault and open it.
+class ReportModal extends Modal {
+  constructor(app, plugin, o = {}) {
+    super(app);
+    this.plugin = plugin;
+    const p = plugin;
+    const active = p.activeProject();
+    const start = (o.ids || []).filter((id) => this.choices().some((x) => x.id === id));
+    const ids = start.length ? start : active && reportSpan(p, [active.id]) ? [active.id] : [REPORT_ALL];
+    this.o = { ids, together: false, level: 'everything', paper: 'a4', title: '', note: '' };
+    this.setSpan();
+  }
+
+  // What a report can cover: your projects with time, time without one, and all your time.
+  choices() {
+    const p = this.plugin;
+    const list = p.settings.projects.filter((x) => !x.archived || reportSpan(p, [x.id])).map((x) => reportInfo(p, x.id));
+    if (p.settings.projects.length && reportSpan(p, [NO_PROJECT])) list.push(reportInfo(p, NO_PROJECT));
+    list.push(reportInfo(p, REPORT_ALL));
+    return list;
+  }
+
+  // From the first day with time to the last, for what's chosen.
+  setSpan() {
+    const span = reportSpan(this.plugin, this.o.ids) || [dayKey(daysAgo(29)), dayKey(daysAgo(0))];
+    this.o.from = span[0];
+    this.o.to = span[1];
+  }
+
+  onOpen() {
+    this.modalEl.addClass('pw-report-modal');
+    this.titleEl.setText('A report of your time');
+    const body = this.contentEl.createDiv('pw-report');
+    this.optionsEl = body.createDiv('pw-report-options');
+    this.previewEl = body.createDiv('pw-report-preview');
+    this.renderOptions();
+    this.renderPreview();
+  }
+
+  onClose() {
+    window.clearTimeout(this.timer);
+    this.contentEl.empty();
+  }
+
+  section(name, note) {
+    const el = this.optionsEl.createDiv('pw-report-section');
+    el.createDiv({ cls: 'pw-report-label', text: name });
+    if (note) el.createDiv({ cls: 'pw-report-note', text: note });
+    return el;
+  }
+
+  // A row of choices, one of which is on.
+  segment(parent, options, value, onPick) {
+    const seg = parent.createDiv({ cls: 'pw-stats-seg', attr: { role: 'radiogroup' } });
+    for (const [key, name] of Object.entries(options)) {
+      const b = seg.createEl('button', { text: name, attr: { role: 'radio', 'aria-checked': String(key === value) } });
+      b.toggleClass('is-active', key === value);
+      b.addEventListener('click', () => onPick(key));
+    }
+  }
+
+  update(patch, redraw = true) {
+    Object.assign(this.o, patch);
+    if (redraw) this.renderOptions();
+    window.clearTimeout(this.timer);
+    this.timer = window.setTimeout(() => this.renderPreview(), redraw ? 0 : 200);
+  }
+
+  renderOptions() {
+    const el = this.optionsEl;
+    el.empty();
+    const o = this.o;
+    const pages = o.together || o.ids.length === 1 ? 1 : o.ids.length;
+
+    const what = this.section('What it covers', 'One project, or several. Each prints in its own colour.');
+    const chips = what.createDiv('pw-stats-chips');
+    for (const x of this.choices()) {
+      const on = o.ids.includes(x.id);
+      const chip = chips.createEl('button', { cls: 'pw-stats-chip', attr: { 'aria-pressed': String(on) } });
+      chip.toggleClass('is-on', on);
+      chip.createSpan('pw-stats-chip-dot').style.background = x.color;
+      chip.createSpan({ text: x.name });
+      chip.addEventListener('click', () => {
+        let ids;
+        if (x.id === REPORT_ALL) ids = [REPORT_ALL];
+        else {
+          ids = o.ids.filter((id) => id !== REPORT_ALL);
+          ids = on ? ids.filter((id) => id !== x.id) : ids.concat(x.id);
+          if (!ids.length) ids = [REPORT_ALL];
+        }
+        this.o.ids = ids;
+        this.setSpan();
+        this.update({});
+      });
+    }
+    if (o.ids.length > 1) {
+      this.segment(what, { apart: 'A page for each', together: 'All on one page' }, o.together ? 'together' : 'apart', (v) => this.update({ together: v === 'together' }));
+    }
+
+    const detail = this.section('How much it shows');
+    this.segment(detail, REPORT_LEVELS, o.level, (v) => this.update({ level: v }));
+    detail.createDiv({ cls: 'pw-report-note', text: REPORT_LEVEL_NOTES[o.level] });
+
+    const dates = this.section('Dates');
+    const row = dates.createDiv('pw-report-dates');
+    const date = (value, onChange) => {
+      const input = row.createEl('input', { attr: { type: 'date', value } });
+      input.addEventListener('change', () => input.value && onChange(input.value));
+      return input;
+    };
+    date(o.from, (v) => this.update(v <= o.to ? { from: v } : { from: o.to, to: v }));
+    row.createSpan({ cls: 'pw-report-note', text: 'to' });
+    date(o.to, (v) => this.update(v >= o.from ? { to: v } : { from: v, to: o.from }));
+    const whole = dates.createEl('button', { cls: 'pw-report-link', text: 'From the first day to the last' });
+    whole.addEventListener('click', () => {
+      this.setSpan();
+      this.update({});
+    });
+
+    const words = this.section('Title and note');
+    const fallback = andList(o.ids.map((id) => reportInfo(this.plugin, id).name));
+    const title = words.createEl('input', { cls: 'pw-project-input', attr: { type: 'text', placeholder: pages > 1 ? 'Each page has its project\'s name' : fallback, value: o.title } });
+    title.disabled = pages > 1;
+    title.addEventListener('input', () => this.update({ title: title.value }, false));
+    const note = words.createEl('input', { cls: 'pw-project-input', attr: { type: 'text', placeholder: 'Your name, or a line about the work', value: o.note } });
+    note.addEventListener('input', () => this.update({ note: note.value }, false));
+
+    const paper = this.section('Paper');
+    this.segment(paper, Object.fromEntries(Object.entries(PAPERS).map(([k, v]) => [k, v.name])), o.paper, (v) => this.update({ paper: v }));
+
+    const buttons = el.createDiv('pw-project-modal-buttons');
+    buttons.createDiv('pw-project-modal-gap');
+    buttons.createEl('button', { text: 'Cancel' }).addEventListener('click', () => this.close());
+    const save = buttons.createEl('button', { cls: 'mod-cta', text: pages > 1 ? `Save PDF, ${pages} pages` : 'Save PDF' });
+    save.addEventListener('click', () => this.save(save));
+  }
+
+  pages() {
+    return buildReport(this.plugin, Object.assign({}, this.o, { title: this.o.title.trim(), note: this.o.note.trim() }));
+  }
+
+  renderPreview() {
+    const el = this.previewEl;
+    if (!el) return;
+    const scroll = el.scrollTop;
+    el.empty();
+    for (const pg of this.pages()) drawReportSvg(el, pg);
+    el.scrollTop = scroll;
+  }
+
+  async save(button) {
+    button.disabled = true;
+    const app = this.app;
+    const title = this.o.title.trim() || andList(this.o.ids.map((id) => reportInfo(this.plugin, id).name));
+    const bytes = makePdf(this.pages(), title);
+    const name = `${title} - time report ${dayKey(new Date())}.pdf`.replace(/[\\/:*?"<>|#^[\]]/g, '-');
+    // Where attachments go in this vault, or else the top of the vault.
+    let path = null;
+    try {
+      if (app.fileManager.getAvailablePathForAttachment) path = await app.fileManager.getAvailablePathForAttachment(name);
+    } catch (e) {
+      path = null;
+    }
+    if (!path) {
+      path = name;
+      for (let n = 2; app.vault.getAbstractFileByPath(path); n++) path = name.replace(/\.pdf$/, ` ${n}.pdf`);
+    }
+    try {
+      const folder = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+      if (folder && !app.vault.getAbstractFileByPath(folder)) await app.vault.createFolder(folder);
+      const file = await app.vault.createBinary(path, bytes.buffer);
+      this.close();
+      new Notice(`Saved your report as ${path}`);
+      await app.workspace.getLeaf(true).openFile(file);
+    } catch (e) {
+      button.disabled = false;
+      new Notice(`Pocket Watch couldn't save the report: ${e.message}`);
     }
   }
 }

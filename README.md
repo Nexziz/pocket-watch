@@ -20,6 +20,7 @@
 - 🍅 **Pomodoro timer** built into the watch: focus sessions, short and long breaks, a soft chime, and a face that paints your session on the dial.
 - 📊 **A full stats page** you arrange yourself: a year of days at a glance, trends, your goal, the hours you work, words written, records, and where your time went.
 - 🗂️ **Projects** in their own colours, so you can see what your time went toward, and move it if it landed on the wrong one.
+- 📄 **A one-page PDF report** of a project, in its colour: the time it took, the words, the days, the hours and the records, to print or attach to your thesis.
 - ⌚ **24 analog watches and 12 digital ones**, from porcelain and malachite to a spinning vinyl record and a word clock.
 - 📱 **Desktop, phone and tablet**, with each device's time kept apart and added up, so sync never overwrites it.
 
@@ -67,6 +68,17 @@ Every watch has its own dial, hands, complications and case: a moon phase, small
 
 ![Your stats, with projects and devices](images/stats.png)
 
+## A report of the work
+
+When a project is done, press **PDF report** on the stats page (or run *Make a PDF report of your time*) for a page that sums it up, ready to print or to attach to a dissertation or thesis.
+
+- **Pick what it covers**: one project, several, or all your time. Several get a page each, every page in its own project's colour, or share one page with each project in its colour.
+- **Pick how much it shows**: *Essentials* has the big numbers, every day of the work and your weeks. *Balanced* adds your words as they added up, the hours and days you work, and three highlights. *Everything* adds the notes your time went to, your records and some fun facts, like how many working weeks it took and how many pages you wrote.
+- **Pick the dates**, a title and a line for your name, and A4 or US Letter. The pages show beside the choices as they will print.
+- The PDF is saved in your vault, where attachments go, and opens in Obsidian.
+
+![Two reports: a novel in blue, with everything, and a garden journal in green](images/report.png)
+
 ## On every device
 
 Pocket Watch runs on desktop, phones and tablets. On a phone it counts while Obsidian is on screen, and the watch sits in the bar at the top of the note, between its buttons, out of the way of your writing. Tap it for your stats, and press and hold it for the menu.
@@ -94,7 +106,7 @@ If you use it on more than one device, update every device to 1.14 or later.
 
 ## Privacy
 
-Pocket Watch works entirely offline. It makes no network requests and only writes its own `data.json` in the plugin folder. Words written are counted from how a note's word count changes as you edit it. Chinese, Japanese and Korean characters count as one word each, as in Obsidian's own count.
+Pocket Watch works entirely offline. It makes no network requests and only writes its own `data.json` in the plugin folder, and the PDF reports you ask it to save. Words written are counted from how a note's word count changes as you edit it. Chinese, Japanese and Korean characters count as one word each, as in Obsidian's own count.
 
 ## Support
 
