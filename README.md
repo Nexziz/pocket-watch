@@ -20,7 +20,7 @@
 - 🍅 **Pomodoro timer** built into the watch: focus sessions, short and long breaks, a soft chime, and a face that paints your session on the dial.
 - 📊 **A full stats page** you arrange yourself: a year of days at a glance, trends, your goal, the hours you work, words written, records, and where your time went.
 - 🗂️ **Projects** in their own colours, so you can see what your time went toward, and move it if it landed on the wrong one.
-- 📄 **A one-page PDF report** of a project, in its colour: the time it took, the words, the days, the hours and the records, to print or attach to your thesis.
+- 📄 **A PDF report** of a project, in its colour, packed with what you'd want to know about the work: to print, or to attach to your thesis.
 - ⌚ **24 analog watches and 12 digital ones**, from porcelain and malachite to a spinning vinyl record and a word clock.
 - 📱 **Desktop, phone and tablet**, with each device's time kept apart and added up, so sync never overwrites it.
 
@@ -65,19 +65,29 @@ Every watch has its own dial, hands, complications and case: a moon phase, small
 - **Track outside Obsidian** with one click, while you research in a browser or a PDF reader.
 - **Projects** each have a colour. Switch from the shelf or the command palette, lock the one you're on, show one or several on the stats page, and move time between projects with an undo.
 - **Arrange the page**: press *Edit layout*, then drag the cards where you want them, make them wide or narrow, and hide the ones you don't need. Bring them back whenever you like.
+- **How you work**: as you write, Pocket Watch also counts the keys you type, Backspace, pastes and undos, the time you spend typing rather than reading and thinking, the words you write in each hour and each note, your fastest minute, each sitting and when it starts, the notes you open and make, the links you add and the tasks you tick off, and the breaks you take.
 
 ![Your stats, with projects and devices](images/stats.png)
 
 ## A report of the work
 
-When a project is done, press **PDF report** on the stats page (or run *Make a PDF report of your time*) for a page that sums it up, ready to print or to attach to a dissertation or thesis.
+When a project is done, press **PDF report** on the stats page (or run *Make a PDF report of your time*) for pages that sum it up, ready to print or to attach to a dissertation or thesis.
 
-- **Pick what it covers**: one project, several, or all your time. Several get a page each, every page in its own project's colour, or share one page with each project in its colour.
-- **Pick how much it shows**: *Essentials* has the big numbers, every day of the work and your weeks. *Balanced* adds your words as they added up, the hours and days you work, and three highlights. *Everything* adds the notes your time went to, your records and some fun facts, like how many working weeks it took and how many pages you wrote.
-- **Pick the dates**, a title and a line for your name, and A4 or US Letter. The pages show beside the choices as they will print.
-- The PDF is saved in your vault, where attachments go, and opens in Obsidian.
+- **Pick what it covers**: one project, several, or all your time. Several get pages of their own, each in its project's colour, or share pages with each project in its colour.
+- **Pick what it shows, section by section.** Start from *Essentials*, *Balanced* or *Everything*, then set each section to off, essentials, balanced or everything:
+  - the big numbers, every day of the work, time each week, and words adding up
+  - your working day (when it started and ended), when you worked, your week, and the time of day you work best
+  - how you write: words an hour, what you kept, keys and Backspace, your fastest minute, time typing
+  - the text itself, read from your notes: the words in them, your favourite word, the longest, sentence length, reading time, citations, footnotes, links and questions
+  - sittings, focus sessions and the devices you worked on
+  - where the time went, folders and chapters, milestones and month by month
+  - records, fun facts and highlights
+- **Pick the dates**, a title and a line for your name, A4 or US Letter, portrait or landscape, and whether it fits on one page or takes as many as it needs.
+- **Save it as a PDF, or as images.** It's saved in your vault, where attachments go, and opens in Obsidian.
 
-![Two reports: a novel in blue, with everything, and a garden journal in green](images/report.png)
+![A report of a novel in blue, with everything: its first two pages](images/report.png)
+
+![A garden journal in green, balanced, on a landscape page](images/report-landscape.png)
 
 ## On every device
 

@@ -5266,6 +5266,7 @@ body.theme-light {
 }
 
 .pw-report-page {
+  flex: none;
   display: block;
   width: 100%;
   max-width: 560px;
@@ -5303,4 +5304,85 @@ body.theme-light {
 
 .is-mobile .pw-report .pw-report-link {
   padding: 0;
+}
+
+/* The sections of a report, each with how much it shows */
+.pw-report-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pw-report-count {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.pw-report-options {
+  max-height: 76vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.pw-report-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.pw-report-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.pw-report-row-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--font-ui-small);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pw-report-row.is-off .pw-report-row-name {
+  color: var(--text-faint);
+}
+
+.pw-stats-seg.is-small {
+  flex: none;
+  padding: 2px;
+  border-radius: 8px;
+}
+
+.pw-stats-seg.is-small button,
+.is-mobile .pw-report .pw-stats-seg.is-small button {
+  padding: 3px 7px;
+  border-radius: 6px;
+  font-size: var(--font-ui-smaller);
+}
+
+.pw-report .pw-stats-seg + .pw-stats-seg {
+  margin-top: 2px;
+}
+
+.pw-report-page.is-landscape {
+  max-width: 760px;
+}
+
+@media (max-width: 760px) {
+  .pw-report-options {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+.pw-stats-tiles.is-habits .pw-stats-tile {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--pw-s-empty);
 }
