@@ -5386,3 +5386,301 @@ body.theme-light {
   border-radius: 10px;
   background: var(--pw-s-empty);
 }
+
+/* What you're working on: a phase or task of the project's timeline */
+.pw-section-pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  height: auto;
+  margin-top: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-normal);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--background-modifier-border);
+}
+
+.pw-section-pick:hover {
+  background: var(--background-modifier-hover);
+}
+
+.pw-section-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.pw-section-dot.is-auto {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--text-faint);
+}
+
+.pw-section-label {
+  color: var(--text-muted);
+}
+
+.pw-section-name {
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pw-section-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pw-section-suggestion.is-in-phase {
+  padding-left: 30px;
+}
+
+.pw-section-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.pw-section-suggestion.is-current .pw-section-title {
+  font-weight: 600;
+}
+
+.pw-section-note {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.pw-section-time {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pw-section-check {
+  display: flex;
+  color: var(--interactive-accent);
+}
+
+.pw-section-check .svg-icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* The Sections card */
+.pw-sections + .pw-sections {
+  margin-top: 24px;
+}
+
+.pw-sections-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.pw-sections-project {
+  font-weight: 650;
+}
+
+.pw-sections-timeline {
+  height: auto;
+  min-width: 0;
+  overflow: hidden;
+  padding: 1px 9px;
+  border-radius: 999px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: var(--pw-s-empty);
+  box-shadow: none;
+}
+
+.pw-sections-head .clickable-icon {
+  margin-left: auto;
+}
+
+.pw-sections-missing {
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+.pw-projects-seg.is-unsorted {
+  background: repeating-linear-gradient(135deg, var(--pw-p-none) 0 2px, transparent 2px 5px);
+  box-shadow: inset 0 0 0 1px var(--pw-p-none);
+  opacity: 0.7;
+}
+
+.pw-section-row {
+  grid-template-columns: auto minmax(0, 1.7fr) minmax(0, 1fr) 84px 58px;
+  border-bottom: none;
+}
+
+.pw-section-row .pw-project-time,
+.pw-section-row .pw-project-pct {
+  white-space: nowrap;
+}
+
+.pw-section-row.is-phase:not(:first-child),
+.pw-section-row.is-unsorted {
+  margin-top: 4px;
+  border-top: 1px solid var(--pw-s-line);
+}
+
+.pw-section-row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pw-section-row.is-phase .pw-section-row-title {
+  font-weight: 600;
+}
+
+.pw-section-row.is-task {
+  padding: 3px 0;
+  font-size: var(--font-ui-small);
+}
+
+.pw-section-row.is-task .pw-project-dot {
+  width: 6px;
+  height: 6px;
+  margin: 0 2px;
+  opacity: 0.75;
+}
+
+.pw-section-row.is-task .pw-project-row-name {
+  padding-left: 14px;
+}
+
+.pw-section-row.is-task .pw-project-share {
+  height: 4px;
+}
+
+.pw-section-row.is-task .pw-project-time {
+  font-weight: 550;
+}
+
+.pw-section-row.is-empty .pw-project-row-name,
+.pw-section-row.is-empty .pw-project-time {
+  color: var(--text-faint);
+}
+
+.pw-section-row.is-dropped .pw-section-row-title {
+  text-decoration: line-through;
+}
+
+.pw-section-when {
+  overflow: hidden;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+  text-overflow: ellipsis;
+}
+
+.pw-section-done {
+  display: flex;
+  color: var(--color-green);
+}
+
+.pw-section-done .svg-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.pw-sections-sort {
+  justify-self: end;
+  height: auto;
+  padding: 2px 9px;
+  font-size: var(--font-ui-smaller);
+}
+
+.pw-sections-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-top: 12px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.pw-sections-foot .pw-section-pick {
+  margin-top: 0;
+}
+
+@media (max-width: 560px) {
+  .pw-section-row {
+    grid-template-columns: auto minmax(0, 1fr) auto 52px;
+  }
+
+  .pw-section-row .pw-section-when {
+    display: none;
+  }
+}
+
+/* Sorting the time the notes and picks didn't */
+.pw-sort-intro {
+  margin-bottom: 12px;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+.pw-sort-all {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+}
+
+.pw-sort-list {
+  max-height: 50vh;
+  overflow: auto;
+}
+
+.pw-sort-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1.5fr);
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-small);
+}
+
+.pw-sort-row select,
+.pw-sort-all select {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pw-sort-time {
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.pw-sort-row.is-unsorted .pw-sort-date {
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+.pw-sort-more {
+  margin-top: 10px;
+}
+
+.pw-sort-empty {
+  padding: 16px 0;
+  color: var(--text-muted);
+}

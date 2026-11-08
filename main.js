@@ -1,6 +1,6 @@
 'use strict';
 
-const { Plugin, PluginSettingTab, Setting, MarkdownView, Notice, Menu, ItemView, Modal, Platform, setIcon } = require('obsidian');
+const { Plugin, PluginSettingTab, Setting, MarkdownView, Notice, Menu, ItemView, Modal, SuggestModal, Platform, setIcon, parseYaml } = require('obsidian');
 
 // ---------------------------------------------------------------------------
 // Options
@@ -668,19 +668,25 @@ function sitIn(sit, id) {
   return id === NO_PROJECT ? !sit[2] : sit[2] === id;
 }
 
-// A renamed note keeps its time, and a renamed folder takes its notes' time with it.
+// A renamed note keeps its time, and a renamed folder takes its notes' time with it. The time
+// you picked a section in a note is kept by the section and the note, and moves too.
 function renameDays(days, oldPath, newPath) {
-  const move = (files) => {
-    for (const path of Object.keys(files)) {
-      const moved = path === oldPath ? newPath : path.startsWith(`${oldPath}/`) ? newPath + path.slice(oldPath.length) : null;
+  const renamed = (path) => (path === oldPath ? newPath : path.startsWith(`${oldPath}/`) ? newPath + path.slice(oldPath.length) : null);
+  const move = (files, picked) => {
+    for (const key of Object.keys(files)) {
+      const cut = picked ? key.indexOf(PICK_SEP) : -1;
+      if (picked && cut < 0) continue;
+      const path = picked ? key.slice(cut + 1) : key;
+      const moved = renamed(path);
       if (!moved) continue;
-      files[moved] = (files[moved] || 0) + files[path];
-      delete files[path];
+      const next = picked ? key.slice(0, cut + 1) + moved : moved;
+      files[next] = (files[next] || 0) + files[key];
+      delete files[key];
     }
   };
   for (const day of Object.values(days)) {
     for (const x of [day, ...Object.values(day.projects || {})]) {
-      for (const k of SLICE_NOTES) if (x[k]) move(x[k]);
+      for (const k of SLICE_NOTES) if (x[k]) move(x[k], k === 'picked');
     }
   }
 }
@@ -701,6 +707,198 @@ function runChange(change, days, undos) {
   } else if (change.kind === 'rename') renameDays(days, change.from, change.to);
   else if (change.kind === 'reset') return {};
   return days;
+}
+
+// ---------------------------------------------------------------------------
+// Timelines: a project's sections, from Simple Gantt
+// ---------------------------------------------------------------------------
+
+// A project can follow a timeline made with Simple Gantt: a note with a ```simple-gantt block.
+// Its phases and tasks become the project's sections, and your time on the project shares out
+// among them, day by day:
+//   1. time in a note that a task links to goes to that task;
+//   2. otherwise, to the section you said you were working on;
+//   3. otherwise, when one task is planned for that day (or several, all in one phase), to it;
+//   4. otherwise it isn't sorted yet, and you can sort it by the day.
+// As you go, only the picks are kept, each with the note it was made in. The rest is worked out
+// when the time is shown, so a note you link later brings its earlier time with it.
+const TIMELINE_KEY = 'simple-gantt';
+const TIMELINE_BLOCK = /^```simple-gantt[^\n]*\n([\s\S]*?)^```[ \t]*$/m;
+// Simple Gantt's colours, in the order of the projects' colours.
+const TIMELINE_COLOURS = ['blue', 'orange', 'aqua', 'yellow', 'magenta', 'green', 'violet', 'red'];
+const TIMELINE_TYPES = ['task', 'milestone', 'deadline', 'event', 'location'];
+// Time that isn't sorted into a section, and what sits between a pick and its note.
+const UNSORTED = '?';
+const PICK_SEP = '\t';
+
+function timelineText(v) {
+  const s = typeof v === 'string' ? v.trim()
+    : typeof v === 'number' || typeof v === 'boolean' ? String(v)
+      : v instanceof Date && !isNaN(v.getTime()) ? v.toISOString().slice(0, 10) : '';
+  return s || null;
+}
+
+function timelineDate(v) {
+  if (v instanceof Date && !isNaN(v.getTime())) return v.toISOString().slice(0, 10);
+  const m = typeof v === 'string' ? /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(v.trim()) : null;
+  return m ? dayKey(new Date(+m[1], +m[2] - 1, +m[3])) : null;
+}
+
+function timelineYes(v) {
+  return v === true || String(v) === 'true';
+}
+
+// Ids made from names as Simple Gantt makes them, so both find the same phases and tasks.
+function timelineSlug(name) {
+  const slug = String(name).toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return slug || 'phase';
+}
+
+// A timeline as Pocket Watch needs it, read the way Simple Gantt reads it: its title and dates,
+// its phases and tasks (each a section, by key: p: and the id for a phase, i: for a task), and
+// its milestones and deadlines. Buffers and vacations take no time, so they aren't sections.
+function readTimeline(raw, path, fallbackTitle) {
+  const r = raw && typeof raw === 'object' ? raw : {};
+  const tl = {
+    path, title: timelineText(r.title) || fallbackTitle || 'Timeline', start: timelineDate(r.start), end: timelineDate(r.end),
+    phases: [], tasks: [], marks: [], byKey: new Map(), guesses: new Map(),
+  };
+  const phaseIds = new Set();
+  for (const ph of Array.isArray(r.phases) ? r.phases : []) {
+    const o = ph && typeof ph === 'object' ? ph : { name: ph };
+    const name = timelineText(o.name) || timelineText(o.id) || 'Phase';
+    let id = timelineText(o.id) || timelineSlug(name);
+    while (phaseIds.has(id)) id += '-2';
+    phaseIds.add(id);
+    const c = TIMELINE_COLOURS.indexOf(String(o.color));
+    const phase = { key: `p:${id}`, kind: 'phase', id, name, color: (c >= 0 ? c : tl.phases.length % 8) + 1, tasks: [] };
+    tl.phases.push(phase);
+    tl.byKey.set(phase.key, phase);
+  }
+  const itemIds = new Set();
+  for (const it of Array.isArray(r.items) ? r.items : []) {
+    if (!it || typeof it !== 'object') continue;
+    const type = TIMELINE_TYPES.includes(String(it.type)) ? String(it.type) : 'task';
+    const name = timelineText(it.title) || 'Untitled';
+    let id = timelineText(it.id) || timelineSlug(name);
+    while (itemIds.has(id)) id += '-2';
+    itemIds.add(id);
+    const start = timelineDate(it.start) || timelineDate(it.date) || tl.start || dayKey(new Date());
+    const given = timelineText(it.phase);
+    const phase = given ? tl.phases.find((x) => x.id === given) || tl.phases.find((x) => x.name.toLowerCase() === given.toLowerCase()) : null;
+    const progress = Number(String(it.progress == null ? '' : it.progress).replace('%', ''));
+    const done = timelineYes(it.done) || (type === 'task' && progress >= 100);
+    if (type === 'task' && !timelineYes(it.buffer)) {
+      let end = timelineDate(it.end) || start;
+      if (end < start) end = start;
+      const task = {
+        key: `i:${id}`, kind: 'task', id, name, start, end, phase: phase ? phase.id : null, color: phase ? phase.color : 0,
+        note: timelineText(it.note), done, doneOn: done ? timelineDate(it.doneOn) : null, dropped: timelineYes(it.dropped),
+      };
+      tl.tasks.push(task);
+      tl.byKey.set(task.key, task);
+      if (phase) phase.tasks.push(task);
+    } else if (type === 'milestone' || type === 'deadline') {
+      tl.marks.push({ id, type, name, date: start, done, phase: phase ? phase.id : null, color: phase ? phase.color : 0 });
+    }
+  }
+  // A phase is planned from its first task to its last.
+  for (const ph of tl.phases) {
+    if (!ph.tasks.length) continue;
+    ph.start = ph.tasks.reduce((a, x) => (x.start < a ? x.start : a), ph.tasks[0].start);
+    ph.end = ph.tasks.reduce((a, x) => (x.end > a ? x.end : a), ph.tasks[0].end);
+  }
+  const starts = tl.tasks.map((x) => x.start).concat(tl.marks.map((x) => x.date)).sort();
+  const ends = tl.tasks.map((x) => x.end).concat(tl.marks.map((x) => x.date)).sort();
+  if (!tl.start) tl.start = starts[0] || dayKey(new Date());
+  if (!tl.end) tl.end = ends[ends.length - 1] || tl.start;
+  if (tl.end < tl.start) [tl.start, tl.end] = [tl.end, tl.start];
+  return tl;
+}
+
+// The timeline in a note's text, or null when it has none or it can't be read.
+function parseTimelineNote(text, path, fallbackTitle) {
+  const m = TIMELINE_BLOCK.exec(text || '');
+  if (!m) return null;
+  try {
+    return readTimeline(parseYaml(m[1]), path, fallbackTitle);
+  } catch (e) {
+    return null;
+  }
+}
+
+// The section a note's time goes to on a day: the task that links to it or, when several do, the
+// one planned for that day, else the first.
+function noteSection(notes, path, key) {
+  const tasks = path ? notes.get(path) : null;
+  if (!tasks) return null;
+  return (tasks.find((x) => x.start <= key && key <= x.end) || tasks[0]).key;
+}
+
+// The section a day's time goes to by the calendar: the one task planned for that day, or the
+// phase when every task planned for it is in one phase. A task you finished early stops taking
+// time after the day you finished it, and one that Plan B replaced takes none.
+function calendarSection(tl, key) {
+  if (tl.guesses.has(key)) return tl.guesses.get(key);
+  const on = tl.tasks.filter((x) => !x.dropped && x.start <= key && key <= x.end && !(x.doneOn && key > x.doneOn));
+  let out = null;
+  if (on.length === 1) out = on[0].key;
+  else if (on.length > 1 && on[0].phase && on.every((x) => x.phase === on[0].phase)) out = `p:${on[0].phase}`;
+  tl.guesses.set(key, out);
+  return out;
+}
+
+// How one day's time on a project shares out among its timeline's sections: { key: ms }, with
+// what's left under UNSORTED. `sorted` is where you sorted that day's leftover time, if you did,
+// and `how` adds up what each rule placed: note, pick, date, hand and none.
+function shareDay(slice, tl, notes, key, sorted, how) {
+  const out = {};
+  let left = slice.ms || 0;
+  const put = (k, ms, rule) => {
+    const take = Math.min(ms, left);
+    if (take <= 0) return;
+    out[k] = (out[k] || 0) + take;
+    left -= take;
+    if (how) how[rule] = (how[rule] || 0) + take;
+  };
+  for (const [path, ms] of Object.entries(slice.files || {})) {
+    const k = noteSection(notes, path, key);
+    if (k) put(k, ms, 'note');
+  }
+  for (const [pk, ms] of Object.entries(slice.picked || {})) {
+    const cut = pk.indexOf(PICK_SEP);
+    const k = cut < 0 ? pk : pk.slice(0, cut);
+    // A note linked to a task keeps its time, whatever you picked.
+    if ((cut >= 0 && noteSection(notes, pk.slice(cut + 1), key)) || !tl.byKey.has(k)) continue;
+    put(k, ms, 'pick');
+  }
+  if (left >= 1000) {
+    const hand = sorted === UNSORTED || tl.byKey.has(sorted) ? sorted : null;
+    const k = hand || calendarSection(tl, key) || UNSORTED;
+    put(k, left, k === UNSORTED ? 'none' : hand ? 'hand' : 'date');
+  }
+  return out;
+}
+
+// The phases of a timeline with their tasks and time, in the timeline's order. Tasks in no phase
+// come last, together.
+function sectionTree(tl, res) {
+  const time = (x) => res.ms.get(x.key) || 0;
+  const rows = tl.phases.map((ph) => ({ section: ph, own: time(ph), tasks: ph.tasks.map((t) => ({ section: t, ms: time(t) })) }));
+  const loose = tl.tasks.filter((t) => !t.phase);
+  if (loose.length) rows.push({ section: { key: null, kind: 'phase', name: 'Other tasks', color: 0, tasks: loose }, own: 0, tasks: loose.map((t) => ({ section: t, ms: time(t) })) });
+  for (const row of rows) row.ms = row.own + row.tasks.reduce((sum, x) => sum + x.ms, 0);
+  return rows;
+}
+
+// A section's name with its phase, as in "Analysis: Interviews".
+function sectionLabel(tl, key) {
+  if (key === UNSORTED) return 'Not sorted';
+  const x = tl && tl.byKey.get(key);
+  if (!x) return 'A section no longer on the timeline';
+  const phase = x.kind === 'task' && x.phase ? tl.byKey.get(`p:${x.phase}`) : null;
+  return phase ? `${phase.name}: ${x.name}` : x.name;
 }
 
 const STATE_LABELS = {
@@ -800,6 +998,16 @@ module.exports = class PocketWatchPlugin extends Plugin {
     this.addCommand({ id: 'new-project', name: 'New project', callback: () => new ProjectModal(this.app, this).open() });
     this.addCommand({ id: 'lock-project', name: 'Lock or unlock the project you are tracking', callback: () => this.toggleProjectLock() });
     this.addCommand({ id: 'move-time', name: 'Move time to a project', callback: () => new MoveTimeModal(this.app, this, {}).open() });
+    this.addCommand({
+      id: 'working-on',
+      name: 'Choose what you are working on (a phase or task of the timeline)',
+      checkCallback: (checking) => {
+        const project = this.activeProject();
+        if (!project || !project.timeline) return false;
+        if (!checking) this.openSectionPicker(project);
+        return true;
+      },
+    });
     this.addCommand({ id: 'make-report', name: 'Make a PDF report of your time', callback: () => new ReportModal(this.app, this).open() });
     this.addCommand({ id: 'toggle-watch', name: 'Show or hide the watch', callback: () => this.updateWatch({ showWatch: !this.settings.showWatch }) });
     this.addCommand({ id: 'toggle-pause', name: 'Pause or resume the timer', callback: () => this.togglePause() });
@@ -876,7 +1084,23 @@ module.exports = class PocketWatchPlugin extends Plugin {
         this.wordCounts.delete(oldPath);
       }
       this.renameInDays(oldPath, file.path);
+      this.renameTimeline(oldPath, file.path);
     }));
+    // Notes that come and go can change where a task's note link leads.
+    this.notesEpoch = 0;
+    this.registerEvent(this.app.vault.on('create', () => this.notesEpoch++));
+    this.registerEvent(this.app.vault.on('delete', () => this.notesEpoch++));
+    // A timeline you change is read again, and what's shown follows it.
+    this.registerEvent(this.app.vault.on('modify', (file) => {
+      if (this.timelineCache && this.timelineCache.has(file.path)) this.timeline(file.path);
+    }));
+    // For other plugins, like Simple Gantt: your time on the phases and tasks of a timeline, and
+    // the 'pocket-watch:time-changed' event on the workspace when it changes.
+    this.api = {
+      version: 1,
+      timelineHours: (path, raw) => this.timelineHours(path, raw),
+      formatTime: (ms) => fmtShort(ms),
+    };
     this.registerInterval(window.setInterval(() => this.tick(), 1000));
     // Save, and catch up with your other devices, every half minute; and at once when Obsidian
     // goes to the background, as a phone may close it there.
@@ -1030,14 +1254,25 @@ module.exports = class PocketWatchPlugin extends Plugin {
       if (state === 'outside') this.count('outsideMs', delta);
       // Typing in the last few seconds: time spent writing, rather than reading or thinking.
       else if (now - (this.typedAt || 0) < 4000) this.count('typingMs', delta);
+      let file = null;
       if (state === 'tracking') {
         this.sinceActivityMs += delta;
         // The note you're working in gets the time too. Time outside Obsidian isn't in a note.
-        const file = this.app.workspace.getActiveFile();
+        file = this.app.workspace.getActiveFile();
         if (file) {
           day.files = day.files || {};
           day.files[file.path] = (day.files[file.path] || 0) + delta;
           if (project) project.files[file.path] = (project.files[file.path] || 0) + delta;
+        }
+      }
+      // The section of the project's timeline you said you're working on, and the note you're
+      // in, so a note linked to a task can still claim its own time later.
+      const picked = project && this.pickFor(this.activeProject());
+      if (picked) {
+        const key = `${picked}${PICK_SEP}${file ? file.path : ''}`;
+        for (const x of [day, project]) {
+          x.picked = x.picked || {};
+          x.picked[key] = (x.picked[key] || 0) + delta;
         }
       }
       this.dirty = true;
@@ -1232,6 +1467,13 @@ module.exports = class PocketWatchPlugin extends Plugin {
       menu.addItem((i) => i.setTitle(`Long break, ${s.longBreakMinutes} minutes`).setIcon('armchair').onClick(() => this.startSession('long')));
     }
     menu.addSeparator();
+    const project = this.activeProject();
+    if (project && project.timeline) {
+      const tl = this.timeline(project.timeline);
+      const key = this.pickFor(project);
+      const x = key && tl && tl.byKey.get(key);
+      menu.addItem((i) => i.setTitle(x ? `Working on ${x.name}…` : 'What are you working on?').setIcon('list-checks').onClick(() => this.openSectionPicker(project)));
+    }
     menu.addItem((i) => i.setTitle('Open the shelf').setIcon('calendar-days').onClick(() => this.watch && !this.watch.shelfEl && this.watch.openShelf()));
     menu.addItem((i) => i.setTitle('Open your stats').setIcon('bar-chart-2').onClick(() => this.openStats()));
     menu.addItem((i) => i.setTitle(this.paused ? 'Resume tracking' : 'Pause tracking').setIcon('timer').onClick(() => this.togglePause()));
@@ -1392,6 +1634,8 @@ module.exports = class PocketWatchPlugin extends Plugin {
     this.alert = own.alert || null;
     this.applied = new Set(own.applied || []);
     this.undos = Object.assign({}, own.undo);
+    // What you're working on, on this device, for each project that follows a timeline.
+    this.picks = Object.assign({}, own.picks);
     this.rev = own.rev || 0;
     // Where the watch sits is this device's own. A new phone starts with a smaller watch.
     const layout = own.layout || Object.assign(pick(DEFAULT_SETTINGS, DEVICE_SETTINGS), Platform.isPhone ? { watchSize: 84 } : {});
@@ -1435,7 +1679,7 @@ module.exports = class PocketWatchPlugin extends Plugin {
   record() {
     return {
       days: this.ownDays, session: this.session, cycle: this.cycle, alert: this.alert, layout: pick(this.settings, DEVICE_SETTINGS),
-      applied: [...this.applied], undo: this.undos, rev: this.rev, seen: Date.now(),
+      picks: this.picks, applied: [...this.applied], undo: this.undos, rev: this.rev, seen: Date.now(),
     };
   }
 
@@ -1481,6 +1725,7 @@ module.exports = class PocketWatchPlugin extends Plugin {
       version: 2, settings: this.settings, settingsAt: this.settingsAt, info: this.info, devices, ops: this.changes, removed: this.removed,
     });
     this.local('record', { id: this.deviceId, record });
+    if (this.settings.projects.some((x) => x.timeline)) this.timeChanged();
   }
 
   flush() {
@@ -1657,6 +1902,30 @@ module.exports = class PocketWatchPlugin extends Plugin {
     this.change({ kind: 'rename', from: oldPath, to: newPath });
   }
 
+  // A project keeps following its timeline when the note, or its folder, is renamed.
+  renameTimeline(oldPath, newPath) {
+    this.notesEpoch = (this.notesEpoch || 0) + 1;
+    let changed = false;
+    for (const x of this.settings.projects) {
+      if (!x.timeline) continue;
+      const moved = x.timeline === oldPath ? newPath : x.timeline.startsWith(`${oldPath}/`) ? newPath + x.timeline.slice(oldPath.length) : null;
+      if (moved) {
+        x.timeline = moved;
+        changed = true;
+      }
+    }
+    if (this.timelineCache) {
+      for (const [path, hit] of [...this.timelineCache]) {
+        const moved = path === oldPath ? newPath : path.startsWith(`${oldPath}/`) ? newPath + path.slice(oldPath.length) : null;
+        if (!moved) continue;
+        this.timelineCache.delete(path);
+        if (hit.tl) hit.tl.path = moved;
+        this.timelineCache.set(moved, hit);
+      }
+    }
+    if (changed) this.saveSettings();
+  }
+
   // --- Projects ---
 
   activeProject() {
@@ -1755,6 +2024,210 @@ module.exports = class PocketWatchPlugin extends Plugin {
   refreshProjects() {
     if (this.watch && this.watch.dashboard) this.watch.dashboard.render();
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW_STATS)) leaf.view.render();
+  }
+
+  // --- Timelines --------------------------------------------------------------
+
+  // The notes in the vault that hold a Simple Gantt timeline, by name.
+  timelineFiles() {
+    const mc = this.app.metadataCache;
+    if (!mc || !this.app.vault.getMarkdownFiles) return [];
+    return this.app.vault.getMarkdownFiles().filter((f) => {
+      const fm = mc.getFileCache(f) && mc.getFileCache(f).frontmatter;
+      return fm && timelineYes(fm[TIMELINE_KEY]);
+    }).sort((a, b) => a.basename.localeCompare(b.basename));
+  }
+
+  // A timeline read from its note, kept until the note changes. The first time, or after a
+  // change, it's read in the background and the page is drawn again once it's in; until then
+  // the copy from before, if any, stands in.
+  timeline(path) {
+    if (!path) return null;
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!file || !file.stat) return null;
+    const cache = this.timelineCache || (this.timelineCache = new Map());
+    const hit = cache.get(path);
+    if (hit && hit.mtime === file.stat.mtime) return hit.tl;
+    this.loadTimeline(path).then((tl) => {
+      if (tl !== (hit && hit.tl)) {
+        this.refreshProjects();
+        this.timeChanged();
+      }
+    });
+    return hit ? hit.tl : null;
+  }
+
+  // The same, waiting for the note to be read.
+  loadTimeline(path) {
+    const file = path && this.app.vault.getAbstractFileByPath(path);
+    if (!file || !file.stat) return Promise.resolve(null);
+    const cache = this.timelineCache || (this.timelineCache = new Map());
+    const hit = cache.get(path);
+    if (hit && hit.mtime === file.stat.mtime) return Promise.resolve(hit.tl);
+    const loading = this.timelineLoads || (this.timelineLoads = new Map());
+    if (loading.has(path)) return loading.get(path);
+    const mtime = file.stat.mtime;
+    const job = this.app.vault.cachedRead(file).then((text) => {
+      const tl = parseTimelineNote(text, path, file.basename);
+      cache.set(path, { mtime, tl });
+      return tl;
+    }, () => {
+      // A note that can't be read isn't tried again until it changes.
+      const tl = hit ? hit.tl : null;
+      cache.set(path, { mtime, tl });
+      return tl;
+    }).finally(() => loading.delete(path));
+    loading.set(path, job);
+    return job;
+  }
+
+  // Where a task's note link leads: a note in the vault, or null.
+  resolveNote(link, from) {
+    const s = String(link).trim().replace(/^!?\[\[/, '').replace(/\]\]$/, '').split('|')[0].split('#')[0].trim();
+    if (!s) return null;
+    const mc = this.app.metadataCache;
+    const hit = mc && mc.getFirstLinkpathDest ? mc.getFirstLinkpathDest(s, from || '') : null;
+    if (hit) return hit.path;
+    const v = this.app.vault;
+    const direct = v.getAbstractFileByPath(s.endsWith('.md') ? s : `${s}.md`);
+    return direct && direct.stat ? direct.path : null;
+  }
+
+  // The notes a timeline's tasks link to: path to tasks. Worked out again when notes come, go or
+  // move.
+  timelineNotes(tl) {
+    if (tl.notes && tl.notesAt === (this.notesEpoch || 0)) return tl.notes;
+    const notes = new Map();
+    for (const task of tl.tasks) {
+      const path = task.note && this.resolveNote(task.note, tl.path);
+      if (!path) continue;
+      if (!notes.has(path)) notes.set(path, []);
+      notes.get(path).push(task);
+    }
+    tl.notes = notes;
+    tl.notesAt = this.notesEpoch || 0;
+    return notes;
+  }
+
+  // The projects that follow a timeline.
+  timelineProjects(path) {
+    return this.settings.projects.filter((x) => x.timeline && x.timeline === path);
+  }
+
+  // Your time on a timeline's sections over the days given (every day when none are), from every
+  // device and every project given: each section's time and the days it had, how each rule
+  // placed it, and the days with time the notes and your picks didn't sort, with where it goes.
+  sectionTime(tl, projects, keys) {
+    const notes = this.timelineNotes(tl);
+    const res = { tl, total: 0, unsorted: 0, ms: new Map(), days: new Map(), how: {}, left: [] };
+    const all = this.days;
+    for (const key of keys || Object.keys(all).sort()) {
+      const d = all[key];
+      if (!d || !d.projects) continue;
+      for (const project of projects) {
+        const slice = d.projects[project.id];
+        if (!slice || !slice.ms) continue;
+        const sorted = project.sort ? project.sort[key] : null;
+        const how = {};
+        for (const [k, ms] of Object.entries(shareDay(slice, tl, notes, key, sorted, how))) {
+          res.total += ms;
+          res.ms.set(k, (res.ms.get(k) || 0) + ms);
+          if (!res.days.has(k)) res.days.set(k, new Map());
+          const byDay = res.days.get(k);
+          byDay.set(key, (byDay.get(key) || 0) + ms);
+        }
+        for (const [rule, ms] of Object.entries(how)) res.how[rule] = (res.how[rule] || 0) + ms;
+        const rest = (how.date || 0) + (how.hand || 0) + (how.none || 0);
+        if (rest >= ACTIVE_DAY_MS) {
+          const to = sorted === UNSORTED || tl.byKey.has(sorted) ? sorted : calendarSection(tl, key) || UNSORTED;
+          res.left.push({ key, project, ms: rest, to, how: how.hand ? 'hand' : how.date ? 'date' : 'none' });
+        }
+      }
+    }
+    res.unsorted = res.ms.get(UNSORTED) || 0;
+    return res;
+  }
+
+  // Sort a day's leftover time on a project into a section (UNSORTED to keep it out of every
+  // section, null to let the calendar decide again). Shared by every device.
+  async sortDays(project, keys, to) {
+    const x = this.settings.projects.find((y) => y.id === project.id);
+    if (!x) return;
+    x.sort = Object.assign({}, x.sort);
+    for (const key of keys) {
+      if (to) x.sort[key] = to;
+      else delete x.sort[key];
+    }
+    if (!Object.keys(x.sort).length) delete x.sort;
+    await this.saveSettings();
+    this.refreshProjects();
+    this.timeChanged();
+  }
+
+  // What you're working on for a project, on this device: a section's key, or null to let your
+  // notes and the calendar decide.
+  pickFor(project) {
+    return (project && project.timeline && this.picks && this.picks[project.id]) || null;
+  }
+
+  async setPick(project, key) {
+    if (!project) return;
+    this.picks = this.picks || {};
+    if (key) this.picks[project.id] = key;
+    else delete this.picks[project.id];
+    this.dirty = true;
+    this.refreshProjects();
+    this.timeChanged();
+    await this.sync();
+  }
+
+  // Choose what you're working on for a project, once its timeline is read.
+  async openSectionPicker(project) {
+    project = project || this.activeProject();
+    if (!project || !project.timeline) {
+      new Notice('Link the project to a Simple Gantt timeline first: edit the project and choose its timeline.');
+      return;
+    }
+    const tl = await this.loadTimeline(project.timeline);
+    if (!tl) {
+      new Notice(`Pocket Watch can't read the timeline in ${project.timeline}.`);
+      return;
+    }
+    new SectionModal(this.app, this, project, tl).open();
+  }
+
+  // Let other plugins know your time has changed, at most every few seconds.
+  timeChanged() {
+    const now = Date.now();
+    if (this.changedAt && now - this.changedAt < 5000) return;
+    this.changedAt = now;
+    this.app.workspace.trigger('pocket-watch:time-changed');
+  }
+
+  // Your time on a timeline, for Simple Gantt: its total, what isn't sorted, and each task's and
+  // phase's time (a phase's with its tasks'), with how many days each had and the last of them.
+  // `raw` is the timeline as Simple Gantt holds it, when it has it to hand. Null when no
+  // project follows the timeline.
+  timelineHours(path, raw) {
+    const projects = this.timelineProjects(path);
+    if (!projects.length) return null;
+    const file = this.app.vault.getAbstractFileByPath(path);
+    const tl = raw ? readTimeline(raw, path, file && file.basename) : this.timeline(path);
+    if (!tl) return null;
+    const res = this.sectionTime(tl, projects);
+    const out = { total: res.total, unsorted: res.unsorted, projects: projects.map((x) => ({ id: x.id, name: x.name, color: x.color })), items: {}, phases: {}, how: res.how };
+    // A phase's days are its own and its tasks'.
+    const stat = (keys, ms) => {
+      const set = new Set();
+      for (const k of keys) for (const day of (res.days.get(k) || new Map()).keys()) set.add(day);
+      const days = [...set].sort();
+      return { ms, days: days.length, first: days[0] || null, last: days[days.length - 1] || null };
+    };
+    for (const row of sectionTree(tl, res)) {
+      for (const t of row.tasks) out.items[t.section.id] = stat([t.section.key], t.ms);
+      if (row.section.key) out.phases[row.section.id] = Object.assign(stat([row.section.key, ...row.tasks.map((t) => t.section.key)], row.ms), { own: row.own });
+    }
+    return out;
   }
 
   // Pick the project to track, start a new one, or unlock.
@@ -5118,7 +5591,213 @@ function projectSwitcher(plugin, el) {
     ? `Locked to ${project.name}: switching asks first. Click to unlock.`
     : 'Lock to this project, so a stray click can\'t switch it (suggested)');
   lock.addEventListener('click', () => plugin.toggleProjectLock());
+  // And for a project that follows a timeline, what you're working on.
+  sectionSwitcher(plugin, el);
   return wrap;
+}
+
+// What you're working on, for a project that follows a timeline: a phase or task, or Automatic,
+// when your notes and the calendar decide. Click it to choose.
+function sectionSwitcher(plugin, el) {
+  const project = plugin.activeProject();
+  if (!project || !project.timeline) return null;
+  const tl = plugin.timeline(project.timeline);
+  const key = plugin.pickFor(project);
+  const x = key && tl ? tl.byKey.get(key) : null;
+  const b = el.createEl('button', {
+    cls: 'pw-section-pick',
+    attr: { 'aria-label': x ? `Working on ${sectionLabel(tl, key)}. Click to change.` : 'Choose what you are working on. Until you do, your notes and the timeline\'s dates decide.' },
+  });
+  const dot = b.createSpan('pw-section-dot');
+  if (x && x.color) dot.style.background = `var(--pw-p${x.color})`;
+  else dot.addClass('is-auto');
+  b.createSpan({ cls: 'pw-section-label', text: 'Working on' });
+  // Until the timeline is read, a pick shows as "…" rather than as Automatic.
+  b.createSpan({ cls: 'pw-section-name', text: x ? x.name : key && !tl ? '…' : 'Automatic' });
+  setIcon(b.createSpan('pw-project-chevron'), 'chevron-down');
+  b.addEventListener('click', () => plugin.openSectionPicker(project));
+  return b;
+}
+
+// "3 Feb – 14 Mar", and how long that is: "6 weeks", "4 days".
+function spanText(start, end) {
+  const a = keyToDate(start);
+  const b = keyToDate(end);
+  const o = { day: 'numeric', month: 'short' };
+  const sameYear = a.getFullYear() === b.getFullYear() && a.getFullYear() === new Date().getFullYear();
+  const f = (d) => d.toLocaleDateString(undefined, sameYear ? o : Object.assign({ year: 'numeric' }, o));
+  return start === end ? f(a) : `${f(a)} – ${f(b)}`;
+}
+
+function spanLength(start, end) {
+  const days = Math.round((keyToDate(end) - keyToDate(start)) / 86400000) + 1;
+  if (days < 14) return plural(days, 'day');
+  const weeks = Math.round(days / 7);
+  return plural(weeks, 'week');
+}
+
+// Choose what you're working on: a phase or a task of the project's timeline, or Automatic.
+// What's planned for today comes first; type to find the rest.
+class SectionModal extends SuggestModal {
+  constructor(app, plugin, project, tl) {
+    super(app);
+    this.plugin = plugin;
+    this.project = project;
+    this.tl = tl;
+    this.res = plugin.sectionTime(tl, [project]);
+    this.current = plugin.pickFor(project);
+    this.setPlaceholder('What are you working on? Type to find a phase or task');
+    if (this.modalEl) this.modalEl.addClass('pw-section-modal');
+  }
+
+  getSuggestions(query) {
+    const tl = this.tl;
+    const q = query.trim().toLowerCase();
+    const today = dayKey(new Date());
+    const now = tl.tasks.filter((t) => !t.dropped && !t.done && t.start <= today && today <= t.end);
+    const list = [{ key: null, auto: true }];
+    for (const t of now) list.push({ key: t.key, section: t, today: true });
+    for (const ph of tl.phases) {
+      list.push({ key: ph.key, section: ph });
+      for (const t of ph.tasks) if (!now.includes(t)) list.push({ key: t.key, section: t, inPhase: true });
+    }
+    for (const t of tl.tasks) if (!t.phase && !now.includes(t)) list.push({ key: t.key, section: t });
+    if (!q) return list;
+    return list.filter((x) => (x.auto ? 'automatic' : sectionLabel(tl, x.key)).toLowerCase().includes(q));
+  }
+
+  renderSuggestion(x, el) {
+    el.addClass('pw-section-suggestion');
+    el.toggleClass('is-in-phase', !!x.inPhase);
+    el.toggleClass('is-current', (x.key || null) === (this.current || null));
+    const dot = el.createSpan('pw-section-dot');
+    if (x.section && x.section.color) dot.style.background = `var(--pw-p${x.section.color})`;
+    else dot.addClass('is-auto');
+    const text = el.createDiv('pw-section-text');
+    if (x.auto) {
+      text.createDiv({ cls: 'pw-section-title', text: 'Automatic' });
+      text.createDiv({ cls: 'pw-section-note', text: 'Time in a note a task links to goes to that task, and other time to what the timeline plans for the day.' });
+    } else {
+      const s = x.section;
+      const phase = s.kind === 'task' && s.phase ? this.tl.byKey.get(`p:${s.phase}`) : null;
+      text.createDiv({ cls: 'pw-section-title', text: s.name });
+      const bits = [];
+      if (x.today) bits.push(phase ? `Today, in ${phase.name}` : 'Planned for today');
+      else if (s.kind === 'phase') bits.push(`Phase, ${plural(s.tasks.length, 'task')}`);
+      if (s.start) bits.push(spanText(s.start, s.end));
+      if (s.done) bits.push('Done');
+      text.createDiv({ cls: 'pw-section-note', text: bits.join(' · ') });
+      let ms = this.res.ms.get(s.key) || 0;
+      if (s.kind === 'phase') for (const t of s.tasks) ms += this.res.ms.get(t.key) || 0;
+      if (ms >= 60000) el.createDiv({ cls: 'pw-section-time', text: fmtShort(ms) });
+    }
+    if ((x.key || null) === (this.current || null)) setIcon(el.createSpan('pw-section-check'), 'check');
+  }
+
+  onChooseSuggestion(x) {
+    this.plugin.setPick(this.project, x.key);
+    new Notice(x.key ? `Working on ${sectionLabel(this.tl, x.key)}` : 'Your notes and the timeline decide where your time goes');
+  }
+}
+
+// Sort the time your notes and picks didn't: for each day, the section its leftover time goes
+// to. Until you choose, the timeline's dates decide where they can. Undo puts back what was
+// there when you opened it.
+class SortModal extends Modal {
+  constructor(app, plugin, project, tl, keys) {
+    super(app);
+    this.plugin = plugin;
+    this.project = project;
+    this.tl = tl;
+    this.keys = keys;
+    this.before = Object.assign({}, project.sort);
+    this.limit = 60;
+  }
+
+  onOpen() {
+    this.modalEl.addClass('pw-sort-modal');
+    this.titleEl.setText('Sort your time');
+    this.render();
+  }
+
+  // The phases and tasks to choose from, in the timeline's order, after the choices given first.
+  options(select, first) {
+    const tl = this.tl;
+    for (const [value, text] of first) select.createEl('option', { text, attr: { value } });
+    for (const row of sectionTree(tl, { ms: new Map() })) {
+      const group = select.createEl('optgroup', { attr: { label: row.section.name } });
+      if (row.section.key) group.createEl('option', { text: `${row.section.name} (the phase)`, attr: { value: row.section.key } });
+      for (const t of row.tasks) group.createEl('option', { text: t.section.name, attr: { value: t.section.key } });
+    }
+  }
+
+  render() {
+    const { contentEl } = this;
+    contentEl.empty();
+    const res = this.plugin.sectionTime(this.tl, [this.project], this.keys);
+    const project = this.plugin.settings.projects.find((x) => x.id === this.project.id) || this.project;
+    const days = res.left.slice().sort((a, b) => (a.key < b.key ? 1 : -1));
+    contentEl.createDiv({
+      cls: 'pw-sort-intro',
+      text: 'The time below wasn\'t in a note linked to a task, and you hadn\'t said what you were working on. Choose where each day\'s time goes. Where the timeline plans one task for the day, that\'s where it goes until you choose.',
+    });
+    if (!days.length) {
+      contentEl.createDiv({ cls: 'pw-sort-empty', text: 'Nothing to sort over these days.' });
+    } else {
+      const all = contentEl.createDiv('pw-sort-all');
+      all.createSpan({ text: `All ${plural(Math.min(days.length, this.limit), 'day')} below` });
+      const pickAll = all.createEl('select', { cls: 'dropdown', attr: { 'aria-label': 'Put the time on every day below in one section' } });
+      this.options(pickAll, [['', 'Put them all in…']]);
+      pickAll.addEventListener('change', async () => {
+        if (!pickAll.value) return;
+        await this.plugin.sortDays(project, days.slice(0, this.limit).map((x) => x.key), pickAll.value);
+        this.render();
+      });
+      const list = contentEl.createDiv('pw-sort-list');
+      for (const x of days.slice(0, this.limit)) {
+        const row = list.createDiv('pw-sort-row');
+        row.createDiv({ cls: 'pw-sort-date', text: keyToDate(x.key).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) });
+        row.createDiv({ cls: 'pw-sort-time', text: fmtShort(x.ms) });
+        const select = row.createEl('select', { cls: 'dropdown', attr: { 'aria-label': `Where the time on ${x.key} goes` } });
+        const guess = calendarSection(this.tl, x.key);
+        this.options(select, guess ? [['', `By the dates: ${sectionLabel(this.tl, guess)}`], [UNSORTED, 'Not sorted']] : [['', 'Not sorted']]);
+        select.value = (project.sort && project.sort[x.key]) || '';
+        row.toggleClass('is-unsorted', x.to === UNSORTED);
+        select.addEventListener('change', async () => {
+          await this.plugin.sortDays(project, [x.key], select.value || null);
+          this.render();
+        });
+      }
+      if (days.length > this.limit) {
+        const more = contentEl.createEl('button', { cls: 'pw-sort-more', text: `Show ${Math.min(60, days.length - this.limit)} more days` });
+        more.addEventListener('click', () => {
+          this.limit += 60;
+          this.render();
+        });
+      }
+    }
+    const buttons = contentEl.createDiv('pw-project-modal-buttons');
+    const changed = JSON.stringify(project.sort || {}) !== JSON.stringify(this.before);
+    if (changed) {
+      buttons.createEl('button', { text: 'Undo changes' }).addEventListener('click', async () => {
+        const x = this.plugin.settings.projects.find((y) => y.id === project.id);
+        if (x) {
+          x.sort = Object.keys(this.before).length ? Object.assign({}, this.before) : undefined;
+          if (!x.sort) delete x.sort;
+          await this.plugin.saveSettings();
+          this.plugin.refreshProjects();
+          this.plugin.timeChanged();
+        }
+        this.render();
+      });
+    }
+    buttons.createDiv('pw-project-modal-gap');
+    buttons.createEl('button', { cls: 'mod-cta', text: 'Done' }).addEventListener('click', () => this.close());
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
 }
 
 // A new project, or changes to one: its name and colour, and whether to track it now.
@@ -5202,6 +5881,7 @@ class ProjectModal extends Modal {
     this.project = project || null;
     this.name = project ? project.name : '';
     this.color = project ? project.color : plugin.nextColour();
+    this.timeline = project ? project.timeline || null : null;
     this.track = !project;
   }
 
@@ -5234,6 +5914,20 @@ class ProjectModal extends Modal {
         });
       });
     });
+    // A Simple Gantt timeline the project follows: its phases and tasks become its sections.
+    const files = this.plugin.timelineFiles();
+    if (files.length || this.timeline) {
+      new Setting(contentEl).setName('Timeline')
+        .setDesc('A Simple Gantt timeline. Its phases and tasks become this project\'s sections, and your time on the project is shared out among them.')
+        .addDropdown((d) => {
+          d.addOption('', 'None');
+          for (const f of files) d.addOption(f.path, f.basename);
+          if (this.timeline && !files.some((f) => f.path === this.timeline)) d.addOption(this.timeline, `${this.timeline} (not found)`);
+          d.setValue(this.timeline || '').onChange((v) => {
+            this.timeline = v || null;
+          });
+        });
+    }
     if (!this.project) {
       new Setting(contentEl).setName('Track it now').setDesc('Your time goes to this project from now on.')
         .addToggle((t) => t.setValue(this.track).onChange((v) => {
@@ -5260,7 +5954,7 @@ class ProjectModal extends Modal {
       new Notice('Give the project a name');
       return;
     }
-    const project = await this.plugin.saveProject({ name, color: this.color }, this.project && this.project.id);
+    const project = await this.plugin.saveProject({ name, color: this.color, timeline: this.timeline || null }, this.project && this.project.id);
     this.close();
     if (this.track) await this.plugin.setProject(project.id);
   }
@@ -5412,9 +6106,10 @@ const SLICE_NUMBERS = [
   'ms', 'written', 'deleted', 'sessions', 'focusMs', 'typed', 'erased', 'pastes', 'pasted', 'undos',
   'opens', 'created', 'links', 'tasks', 'breaks', 'stopped', 'outsideMs', 'typingMs',
 ];
-// Counts by the hour of the day, and by note.
+// Counts by the hour of the day, and by note. `picked` is the time you said you were working on
+// a section of the project's timeline, by the section and the note you were in.
 const SLICE_HOURS = ['hours', 'wordHours'];
-const SLICE_NOTES = ['files', 'fileWords'];
+const SLICE_NOTES = ['files', 'fileWords', 'picked'];
 const EMPTY_SLICE = Object.freeze(Object.fromEntries(SLICE_NUMBERS.map((k) => [k, 0])));
 
 // A sitting: time at it without a break of more than this, as [start minute, minutes, project].
@@ -5439,7 +6134,7 @@ function projectSlice(d, id) {
     for (const k of SLICE_NOTES) {
       for (const [path, v] of Object.entries(x[k] || {})) {
         rest[k][path] = (rest[k][path] || 0) - v;
-        if (rest[k][path] < (k === 'files' ? 1000 : 1)) delete rest[k][path];
+        if (rest[k][path] < (k === 'fileWords' ? 1 : 1000)) delete rest[k][path];
       }
     }
   }
@@ -5467,6 +6162,7 @@ const STATS_CARDS = [
   { id: 'year', name: 'The past year', wide: true },
   { id: 'summary', name: 'Your time', wide: true },
   { id: 'projects', name: 'Projects', wide: true },
+  { id: 'sections', name: 'Sections', wide: true },
   { id: 'devices', name: 'Devices', wide: true },
   { id: 'daily', name: 'Every day', wide: false },
   { id: 'hours', name: 'When you work', wide: false },
@@ -5841,6 +6537,7 @@ class StatsView extends ItemView {
       year: (el) => this.renderYear(el),
       summary: (el) => this.renderHero(el, r),
       projects: (el) => this.renderProjects(el, r),
+      sections: (el) => this.renderSections(el, r),
       devices: (el) => this.renderDevices(el, r),
       daily: (el) => this.renderDaily(el, r),
       hours: (el) => this.renderHours(el, r),
@@ -5851,8 +6548,10 @@ class StatsView extends ItemView {
       records: (el) => this.renderRecords(el),
       table: (el) => this.renderTable(el, r),
     };
+    // Sections only once there's a timeline to follow, made with Simple Gantt.
+    const timelines = this.plugin.settings.projects.some((x) => x.timeline) || this.plugin.timelineFiles().length > 0;
     for (const item of this.layout()) {
-      if (item.hidden) continue;
+      if (item.hidden || (item.id === 'sections' && !timelines)) continue;
       const cell = board.createDiv({ cls: ['pw-stats-cell', item.wide ? 'is-wide' : 'is-narrow'], attr: { 'data-card': item.id } });
       draw[item.id](cell);
       if (this.editing) this.cardTools(cell, item);
@@ -6240,6 +6939,112 @@ class StatsView extends ItemView {
     }
     const foot = card.createDiv('pw-projects-foot');
     foot.createEl('button', { text: 'New project' }).addEventListener('click', () => new ProjectModal(this.app, p).open());
+  }
+
+  // The phases and tasks of the timeline each project you're looking at follows, with your time
+  // on each over the days shown, when each was planned, and the time not sorted yet.
+  renderSections(page, r) {
+    const p = this.plugin;
+    const followed = p.settings.projects.filter((x) => x.timeline && this.isShown(x.id));
+    const card = this.card(page, 'Sections', followed.length ? `Your time on each phase and task, last ${r.n} days` : '');
+    if (!followed.length) {
+      const empty = card.createDiv('pw-projects-empty');
+      const some = p.settings.projects.some((x) => x.timeline);
+      empty.createDiv({
+        text: some
+          ? 'None of the projects shown follows a timeline.'
+          : 'Link a project to one of your Simple Gantt timelines, and its phases and tasks show here, each with the time you spent on it.',
+      });
+      const project = p.activeProject() || p.settings.projects.find((x) => !x.archived);
+      if (!some) {
+        empty.createEl('button', { cls: 'mod-cta', text: project ? `Link ${project.name} to a timeline` : 'New project' })
+          .addEventListener('click', () => new ProjectModal(this.app, p, project || undefined).open());
+      }
+      return;
+    }
+    for (const project of followed) {
+      const block = card.createDiv('pw-sections');
+      const tl = p.timeline(project.timeline);
+      const head = block.createDiv('pw-sections-head');
+      head.createSpan('pw-project-dot').style.background = `var(--pw-p${project.color})`;
+      head.createSpan({ cls: 'pw-sections-project', text: project.name });
+      const open = head.createEl('button', { cls: 'pw-sections-timeline', text: tl ? tl.title : project.timeline.replace(/\.md$/, ''), attr: { 'aria-label': 'Open the timeline\'s note' } });
+      open.addEventListener('click', () => this.app.workspace.openLinkText(project.timeline, '', false));
+      const edit = head.createEl('button', { cls: 'clickable-icon', attr: { 'aria-label': `Edit ${project.name}, or link it to another timeline` } });
+      setIcon(edit, 'pencil');
+      edit.addEventListener('click', () => new ProjectModal(this.app, p, project).open());
+      if (!tl) {
+        const there = this.app.vault.getAbstractFileByPath(project.timeline);
+        block.createDiv({ cls: 'pw-sections-missing', text: there ? 'Reading the timeline…' : `Can't find the timeline at ${project.timeline}. Edit the project to link it again.` });
+        continue;
+      }
+      const res = p.sectionTime(tl, [project], r.keys);
+      const rows = sectionTree(tl, res);
+      const total = res.total;
+      if (total > 0) {
+        const split = block.createDiv('pw-projects-split');
+        for (const row of rows) {
+          if (!row.ms) continue;
+          const seg = split.createDiv('pw-projects-seg');
+          seg.style.flexGrow = String(row.ms);
+          seg.style.background = row.section.color ? `var(--pw-p${row.section.color})` : 'var(--pw-p-none)';
+          this.hover(seg, fmtShort(row.ms), `${row.section.name}, ${Math.round((row.ms / total) * 100)}%`);
+        }
+        if (res.unsorted) {
+          const seg = split.createDiv({ cls: ['pw-projects-seg', 'is-unsorted'] });
+          seg.style.flexGrow = String(res.unsorted);
+          this.hover(seg, fmtShort(res.unsorted), `Not sorted, ${Math.round((res.unsorted / total) * 100)}%`);
+        }
+      }
+      const pick = p.pickFor(project);
+      const list = block.createDiv('pw-projects');
+      const most = Math.max(1, ...rows.map((x) => x.ms));
+      const line = (cls, color, name, note, ms, share, o = {}) => {
+        const row = list.createDiv({ cls: ['pw-project-row', 'pw-section-row', cls] });
+        const dot = row.createSpan('pw-project-dot');
+        if (color) dot.style.background = color;
+        else dot.addClass('is-none');
+        const label = row.createDiv('pw-project-row-name');
+        label.createSpan({ cls: 'pw-section-row-title', text: name });
+        if (o.done) setIcon(label.createSpan({ cls: 'pw-section-done', attr: { 'aria-label': 'Done' } }), 'check');
+        if (o.picked) label.createSpan({ cls: 'pw-project-badge', text: 'Working on' });
+        if (note) label.createSpan({ cls: 'pw-section-when', text: note });
+        const bar = row.createDiv('pw-project-share');
+        bar.createDiv('pw-project-share-fill').style.cssText = `width: ${(share * 100).toFixed(1)}%; background: ${color || 'var(--pw-p-none)'}`;
+        row.createDiv({ cls: 'pw-project-time', text: ms >= 60000 ? fmtShort(ms) : '–' });
+        row.toggleClass('is-empty', ms < 60000);
+        return row;
+      };
+      for (const group of rows) {
+        const color = group.section.color ? `var(--pw-p${group.section.color})` : null;
+        const ph = group.section;
+        const row = line('is-phase', color, ph.name, ph.start ? `${spanText(ph.start, ph.end)} · ${spanLength(ph.start, ph.end)}` : '', group.ms, group.ms / most, { picked: !!pick && pick === ph.key });
+        row.createDiv({ cls: 'pw-project-pct', text: total && group.ms ? `${Math.round((group.ms / total) * 100)}%` : '' });
+        if (group.own >= 60000 && group.tasks.length) {
+          line('is-task', color, `${ph.name} in general`, '', group.own, group.own / most).createDiv('pw-project-pct');
+        }
+        for (const t of group.tasks) {
+          const task = t.section;
+          const days = res.days.get(task.key);
+          const n = days ? [...days.values()].filter((ms) => ms >= ACTIVE_DAY_MS).length : 0;
+          const tr = line('is-task', color, task.name, spanText(task.start, task.end), t.ms, t.ms / most, { done: task.done, picked: pick === task.key });
+          tr.createDiv({ cls: 'pw-project-pct', text: n ? plural(n, 'day') : '' });
+          if (task.dropped) tr.addClass('is-dropped');
+        }
+      }
+      if (res.unsorted >= 60000 || res.left.length) {
+        const row = line('is-unsorted', null, 'Not sorted', res.unsorted >= 60000 ? 'Not in a linked note, not picked, and no single task planned for the day' : '', res.unsorted, res.unsorted / most);
+        const sort = row.createEl('button', { cls: 'pw-sections-sort', text: 'Sort…', attr: { 'aria-label': 'Choose where each day\'s time goes' } });
+        sort.addEventListener('click', () => new SortModal(this.app, p, project, tl, r.keys).open());
+      }
+      // How the time was placed.
+      const how = res.how;
+      const bits = [['note', 'in linked notes'], ['pick', 'picked'], ['date', 'by the dates'], ['hand', 'sorted by hand']]
+        .filter(([k]) => (how[k] || 0) >= 60000).map(([k, text]) => `${fmtShort(how[k])} ${text}`);
+      const foot = block.createDiv('pw-sections-foot');
+      foot.createSpan({ cls: 'pw-sections-how', text: bits.length ? bits.join(' · ') : 'No time on this project over these days.' });
+      if (p.activeProject() && p.activeProject().id === project.id) sectionSwitcher(p, foot);
+    }
   }
 
   // Where your time comes from: this computer, your phone, and any other device, with the
@@ -7812,7 +8617,7 @@ function reportBarList(pg, room, th, items, o = {}) {
     const bx = room.x + nameW + 8;
     const bw = room.w - nameW - 8 - valueW;
     pg.rect(bx, y + 3.5, bw, 5, th.empty, 2.5);
-    pg.rect(bx, y + 3.5, Math.max(5, bw * (x.value / max)), 5, x.color || (i === 0 ? th.deep : th.tint(0.62)), 2.5);
+    if (x.value > 0) pg.rect(bx, y + 3.5, Math.max(5, bw * (x.value / max)), 5, x.color || (i === 0 ? th.deep : th.tint(0.62)), 2.5);
     pg.text(room.x + room.w, y + 8, x.text, { size: 7.1, bold: true, color: th.ink, align: 'right' });
   });
   return n;
@@ -8101,8 +8906,237 @@ function drawReportDevices(pg, box, th, r) {
 // The sections a report can show, in the order they fill the page. Each can be off, or show
 // the essentials, a balanced amount, or everything; with it, how much of the page's width it
 // takes and how tall it wants to be. The presets set every section at once.
+// --- The timeline ------------------------------------------------------------
+
+// The timelines the projects on a page follow, each with your time on its phases and tasks over
+// the report's days. With all your time, every project that follows one.
+function reportTimelines(p, ids, keys) {
+  const projects = p.settings.projects.filter((x) => x.timeline && (ids.includes(REPORT_ALL) || ids.includes(x.id)));
+  const byPath = new Map();
+  for (const x of projects) {
+    if (!byPath.has(x.timeline)) byPath.set(x.timeline, []);
+    byPath.get(x.timeline).push(x);
+  }
+  const out = [];
+  for (const [path, list] of byPath) {
+    const tl = p.timeline(path);
+    if (!tl) continue;
+    const res = p.sectionTime(tl, list, keys);
+    out.push({ tl, res, rows: sectionTree(tl, res), projects: list });
+  }
+  return out;
+}
+
+function timelineInk(color) {
+  return color ? REPORT_COLOURS[(color - 1 + 8) % 8] : REPORT_NONE;
+}
+
+// How tall a timeline wants to be: a list of its phases, a chart of them, or a chart of every
+// phase and task.
+function reportTimelineHeight(t, level) {
+  const unsorted = t.res.unsorted >= 60000 ? 1 : 0;
+  const phases = t.rows.length + unsorted;
+  if (level === 'essentials') return 60 + 15 * phases;
+  const tasks = level === 'everything' ? t.rows.reduce((sum, row) => sum + row.tasks.length + (row.own >= 60000 && row.tasks.length ? 1 : 0), 0) : 0;
+  return Math.min(700, 74 + 18 * phases + 12.5 * tasks);
+}
+
+function reportTimelinesHeight(r, level) {
+  return r.timelines.reduce((sum, t) => sum + reportTimelineHeight(t, level), 0) + 11 * Math.max(0, r.timelines.length - 1);
+}
+
+// "3 Feb – 14 Mar 2027".
+function reportSpanText(start, end) {
+  const a = keyToDate(start);
+  const b = keyToDate(end);
+  const f = (d, year) => d.toLocaleDateString('en-GB', year ? { day: 'numeric', month: 'short', year: 'numeric' } : { day: 'numeric', month: 'short' });
+  if (start === end) return f(a, true);
+  return `${f(a, a.getFullYear() !== b.getFullYear())} – ${f(b, true)}`;
+}
+
+// The timeline the work followed. With essentials, each phase with its time. Otherwise a chart:
+// each phase (and with everything, each task) as planned, a light bar from its first day to its
+// last, with the days you worked on it standing on it, taller for longer days, and your time on
+// it at the end of the row. Deadlines run through it in red, milestones sit on it as diamonds.
+function drawReportTimeline(pg, box, th, r, level) {
+  const list = r.timelines;
+  const total = list.reduce((sum, t) => sum + reportTimelineHeight(t, level), 0);
+  const gap = 11;
+  const room = box.h - gap * (list.length - 1);
+  let y = box.y;
+  for (const t of list) {
+    const h = list.length === 1 ? box.h : room * (reportTimelineHeight(t, level) / total);
+    const b = { x: box.x, y, w: box.w, h };
+    if (level === 'essentials') drawTimelineList(pg, b, th, t, list.length > 1);
+    else drawTimelineChart(pg, b, th, t, level, list.length > 1);
+    y += h + gap;
+  }
+}
+
+function timelineHow(res) {
+  const how = res.how;
+  return [['note', 'in linked notes'], ['pick', 'picked'], ['date', 'by the dates'], ['hand', 'sorted by hand']]
+    .filter(([k]) => (how[k] || 0) >= 60000).map(([k, text]) => `${fmtShort(how[k])} ${text}`).join('  ·  ');
+}
+
+function drawTimelineList(pg, box, th, t, named) {
+  const { tl, res, rows } = t;
+  const room = reportCard(pg, box, th, named ? `The timeline: ${tl.title}` : 'The timeline', `${fmtShort(res.total)} over ${plural(rows.length, 'phase')}`);
+  const items = rows.map((row) => ({
+    name: row.section.name,
+    note: row.section.start ? reportSpanText(row.section.start, row.section.end) : '',
+    value: row.ms,
+    text: row.ms >= 60000 ? `${fmtShort(row.ms)} · ${Math.round((row.ms / Math.max(1, res.total)) * 100)}%` : '–',
+    color: timelineInk(row.section.color),
+  }));
+  if (res.unsorted >= 60000) items.push({ name: 'Not sorted', note: '', value: res.unsorted, text: `${fmtShort(res.unsorted)} · ${Math.round((res.unsorted / Math.max(1, res.total)) * 100)}%`, color: REPORT_NONE });
+  const n = reportBarList(pg, { x: room.x, y: room.y + 2, w: room.w, h: room.h - 12 }, th, items, { rowH: 15, nameShare: 0.44, valueW: 64 });
+  const how = timelineHow(res);
+  if (how && room.h - 12 >= n * 15 + 6) pg.text(room.x, room.y + room.h - 1, how, { size: 5.8, color: th.faint, max: room.w });
+}
+
+function drawTimelineChart(pg, box, th, t, level, named) {
+  const { tl, res, rows } = t;
+  // The chart runs over the plan, and over any day you worked outside it.
+  let from = tl.start;
+  let to = tl.end;
+  for (const byDay of res.days.values()) {
+    for (const key of byDay.keys()) {
+      if (key < from) from = key;
+      if (key > to) to = key;
+    }
+  }
+  const room = reportCard(pg, box, th, named ? `The timeline: ${tl.title}` : 'The timeline', `${reportSpanText(tl.start, tl.end)}  ·  ${fmtShort(res.total)}`);
+  const d0 = keyToDate(from);
+  const span = Math.max(1, Math.round((keyToDate(to) - d0) / 86400000) + 1);
+  const nameW = Math.min(150, room.w * 0.27);
+  const valueW = 62;
+  const gx = room.x + nameW + 8;
+  const gw = Math.max(40, room.w - nameW - 8 - valueW - 6);
+  const at = (key) => Math.round((keyToDate(key) - d0) / 86400000);
+  const X = (key) => gx + gw * (at(key) / span);
+  const X1 = (key) => gx + gw * ((at(key) + 1) / span);
+  const dayW = gw / span;
+
+  // The rows: each phase, and with everything its tasks, and the time not sorted.
+  const phaseDays = (row) => {
+    const sum = new Map();
+    for (const key of [row.section.key, ...row.tasks.map((x) => x.section.key)]) {
+      for (const [day, ms] of res.days.get(key) || []) sum.set(day, (sum.get(day) || 0) + ms);
+    }
+    return sum;
+  };
+  let lines = [];
+  for (const row of rows) {
+    lines.push({ kind: 'phase', row, color: row.section.color, days: phaseDays(row) });
+    if (level !== 'everything') continue;
+    if (row.own >= 60000 && row.tasks.length) lines.push({ kind: 'task', name: `${row.section.name} in general`, ms: row.own, color: row.section.color, days: res.days.get(row.section.key) || new Map() });
+    for (const x of row.tasks) lines.push({ kind: 'task', task: x.section, name: x.section.name, ms: x.ms, color: x.section.color, days: res.days.get(x.section.key) || new Map() });
+  }
+  if (res.unsorted >= 60000) lines.push({ kind: 'phase', unsorted: true, color: 0, days: res.days.get(UNSORTED) || new Map() });
+  const axisH = 14;
+  const footH = 14;
+  const avail = room.h - axisH - footH;
+  let heights = lines.map((x) => (x.kind === 'phase' ? 18 : 12.5));
+  let need = heights.reduce((a, b) => a + b, 0);
+  // Too many to fit: the tasks go first, then the rows tighten.
+  if (need > avail && level === 'everything' && avail < need * 0.72) {
+    lines = lines.filter((x) => x.kind === 'phase');
+    heights = lines.map(() => 18);
+    need = heights.reduce((a, b) => a + b, 0);
+  }
+  const k = Math.min(1, avail / Math.max(1, need));
+  heights = heights.map((h) => h * k);
+
+  // Months along the top, with a faint line at each.
+  const top = room.y + axisH;
+  const bottom = top + heights.reduce((a, b) => a + b, 0);
+  const months = [];
+  for (let m = new Date(d0.getFullYear(), d0.getMonth(), 1); dayKey(m) <= to; m = new Date(m.getFullYear(), m.getMonth() + 1, 1)) months.push(new Date(m));
+  const every = Math.max(1, Math.ceil(months.length / Math.max(1, Math.floor(gw / 26))));
+  months.forEach((m, i) => {
+    const key = dayKey(m);
+    const x = key < from ? gx : X(key);
+    if (key >= from) pg.line(x, top - 2, x, bottom, th.line, 0.4);
+    if (i % every) return;
+    const month = m.toLocaleDateString('en-GB', { month: 'short' });
+    const mid = Math.min(gx + gw, X1(dayKey(new Date(m.getFullYear(), m.getMonth() + 1, 0))));
+    // The year with January and the first month, when there's room for it.
+    const withYear = m.getMonth() === 0 || i === 0 ? `${month} ${String(m.getFullYear()).slice(2)}` : month;
+    const fits = (t) => textWidth(pdfChars(t.toUpperCase()), 5.4, true, 0.3) <= mid - x - 3;
+    const label = fits(withYear) ? withYear : month;
+    if (mid - x > 14) pg.text(x + 2, top - 4, label, { size: 5.4, bold: true, upper: true, track: 0.3, color: th.muted, max: Math.max(10, mid - x - 3) });
+  });
+
+  // Each row: its name, its plan, the days worked on it, and its time.
+  const most = (kind) => Math.max(1, ...lines.filter((x) => x.kind === kind).flatMap((x) => [...x.days.values()]));
+  const max = { phase: most('phase'), task: most('task') };
+  let yy = top;
+  lines.forEach((line, i) => {
+    const h = heights[i];
+    const phase = line.kind === 'phase';
+    const ink = timelineInk(line.color);
+    const mid = yy + h / 2;
+    if (i && phase) pg.line(room.x, yy, room.x + room.w, yy, th.line, 0.5);
+    const name = line.unsorted ? 'Not sorted' : phase ? line.row.section.name : line.name;
+    if (phase) pg.circle(room.x + 3, mid - 0.4, 2.6, { fill: ink });
+    pg.text(room.x + (phase ? 9 : 14), mid + 2.4, name, { size: phase ? 7.2 : 6.4, bold: phase && !line.unsorted, color: line.unsorted || !phase ? th.muted : th.ink, max: nameW - (phase ? 9 : 14) });
+    // The plan: a light bar from the first day to the last.
+    const plan = line.unsorted ? null : phase ? line.row.section : line.task;
+    const barH = Math.max(3, (phase ? 10 : 6) * Math.min(1, h / (phase ? 18 : 12.5)));
+    const by = mid - barH / 2;
+    if (plan && plan.start) pg.rect(X(plan.start), by, Math.max(1.2, X1(plan.end) - X(plan.start)), barH, mixHex('#ffffff', ink, phase ? 0.24 : 0.18), Math.min(2.5, barH / 2));
+    // The days you worked on it, standing on the bar's baseline.
+    for (const [day, ms] of line.days) {
+      if (day < from || day > to || ms < 60000) continue;
+      const hh = Math.max(1, barH * Math.min(1, ms / max[line.kind]));
+      pg.rect(X(day) + dayW * 0.1, by + barH - hh, Math.max(0.6, dayW * 0.8), hh, ink);
+    }
+    // A tick after what's done.
+    if (plan && plan.done) {
+      const cx = Math.min(X1(plan.end) + 2.5, gx + gw - 5);
+      pg.path([['M', cx, mid], ['L', cx + 1.5, mid + 1.6], ['L', cx + 4, mid - 1.8]], { stroke: ink, width: 0.9, cap: 'round' });
+    }
+    // Its time, and its share of all of it.
+    const ms = line.unsorted ? res.unsorted : phase ? line.row.ms : line.ms;
+    const w = pg.text(room.x + room.w, mid + 2.4, ms >= 60000 ? fmtShort(ms) : '–', { size: phase ? 7.4 : 6.6, bold: phase, color: ms >= 60000 ? th.ink : th.faint, align: 'right' });
+    if (phase && ms >= 60000 && res.total) pg.text(room.x + room.w - w - 4, mid + 2.4, `${Math.round((ms / res.total) * 100)}%`, { size: 6, color: th.faint, align: 'right' });
+    yy += h;
+  });
+
+  // Milestones as diamonds on their phase's row, deadlines as red lines through it all.
+  const rowOf = new Map();
+  yy = top;
+  lines.forEach((line, i) => {
+    if (line.kind === 'phase' && !line.unsorted && line.row.section.key) rowOf.set(line.row.section.id, yy + heights[i] / 2);
+    yy += heights[i];
+  });
+  for (const mark of tl.marks) {
+    if (mark.date < from || mark.date > to) continue;
+    const x = (X(mark.date) + X1(mark.date)) / 2;
+    if (mark.type === 'deadline') {
+      pg.line(x, top - 2, x, bottom, '#d0403c', 0.7, { dash: [2, 1.6] });
+      pg.text(x - 2, room.y + 4, mark.name, { size: 5.4, bold: true, color: '#d0403c', align: 'right', max: Math.max(20, x - gx - 2) });
+    } else {
+      const cy = mark.phase && rowOf.has(mark.phase) ? rowOf.get(mark.phase) : top + 4;
+      const s = 3;
+      pg.path([['M', x, cy - s], ['L', x + s, cy], ['L', x, cy + s], ['L', x - s, cy], ['Z']], { fill: mark.done ? timelineInk(mark.color) : '#ffffff', stroke: timelineInk(mark.color), width: 0.8 });
+    }
+  }
+
+  // What the marks mean, and how the time was placed.
+  const fy = room.y + room.h - 2;
+  pg.rect(room.x, fy - 5, 12, 5, mixHex('#ffffff', th.accent, 0.24), 2);
+  let x = room.x + 15 + pg.text(room.x + 15, fy, 'planned', { size: 5.8, color: th.faint });
+  [3, 5, 2.5, 4].forEach((hh, i) => pg.rect(x + 8 + i * 2, fy - hh, 1.3, hh, th.accent));
+  x += 18 + pg.text(x + 18, fy, 'days you worked on it', { size: 5.8, color: th.faint });
+  const how = timelineHow(res);
+  if (how) pg.text(room.x + room.w, fy, how, { size: 5.8, color: th.faint, align: 'right', max: Math.max(0, room.x + room.w - x - 22) });
+}
+
 const REPORT_SECTIONS = [
   { id: 'summary', name: 'The big numbers', preset: ['essentials', 'balanced', 'everything'], span: 1, h: { essentials: 110, balanced: 96, everything: 124 } },
+  { id: 'timeline', name: 'The timeline', preset: ['essentials', 'balanced', 'everything'], span: 1, h: (c, level, r) => reportTimelinesHeight(r, level), skip: (r) => !r.timelines.length },
   { id: 'calendar', name: 'Every day of the work', preset: ['essentials', 'balanced', 'everything'], span: 1, h: (c) => c.calendar },
   { id: 'weekly', name: 'Time each week', preset: ['essentials', 'balanced', 'everything'], span: { essentials: 1, balanced: 0.6, everything: 0.6 }, h: { essentials: 190, balanced: 152, everything: 150 }, grow: true },
   { id: 'words', name: 'Words, adding up', preset: ['off', 'balanced', 'everything'], span: 0.4, h: 150, skip: (r) => !r.written },
@@ -8145,6 +9179,7 @@ function drawReportPages(p, ids, o) {
   const [W, H] = landscape ? [size[1], size[0]] : size;
   const r = reportData(p, ids, o.from, o.to);
   r.text = o.texts ? o.texts[ids.join(',')] || null : null;
+  r.timelines = reportTimelines(p, ids, r.keys);
   const th = reportTheme(r.series.length === 1 ? r.series[0].color : REPORT_INK);
   const margin = landscape ? 32 : 36;
   const named = andList(r.series.map((x) => x.name));
@@ -8193,6 +9228,7 @@ function drawReportPages(p, ids, o) {
   const draw = {
     summary: (pg, b, lv) => drawReportHero(pg, b, th, r, lv),
     projects: (pg, b) => drawReportSplit(pg, b, th, r),
+    timeline: (pg, b, lv) => drawReportTimeline(pg, b, th, r, lv),
     calendar: (pg, b, lv) => drawReportCalendar(pg, b, th, r, lv),
     weekly: (pg, b) => drawReportBars(pg, b, th, r, p),
     words: (pg, b) => drawReportWords(pg, b, th, r),
@@ -8427,7 +9463,10 @@ class ReportModal extends Modal {
     this.segment(shows, Object.fromEntries(REPORT_PRESETS.map((lv) => [lv, REPORT_LEVELS[lv]])), preset || '', (v) => this.update({ sections: reportPreset(v) }));
     const list = shows.createDiv('pw-report-sections');
     const short = { off: 'Off', essentials: 'Ess.', balanced: 'Bal.', everything: 'All' };
+    const timelines = this.plugin.settings.projects.some((x) => x.timeline);
     for (const sec of REPORT_SECTIONS) {
+      // The timeline, once a project follows one.
+      if (sec.id === 'timeline' && !timelines) continue;
       const row = list.createDiv('pw-report-row');
       const level = o.sections[sec.id] || 'off';
       row.toggleClass('is-off', level === 'off');
@@ -8498,10 +9537,22 @@ class ReportModal extends Modal {
     return buildReport(this.plugin, Object.assign({}, this.o, { title: this.o.title.trim(), note: this.o.note.trim() }));
   }
 
+  // The timelines the projects follow, read from their notes.
+  loadTimelines() {
+    const p = this.plugin;
+    const paths = [...new Set(p.settings.projects.filter((x) => x.timeline).map((x) => x.timeline))];
+    return Promise.all(paths.map((path) => p.loadTimeline(path)));
+  }
+
   renderPreview() {
     const el = this.previewEl;
     if (!el) return;
     const o = this.o;
+    // Draw again once the timelines are read.
+    if (!this.timelinesRead) {
+      this.timelinesRead = true;
+      this.loadTimelines().then(() => this.renderPreview(), () => {});
+    }
     const reading = (o.sections.text || 'off') !== 'off';
     const missing = reading && this.groups().some((ids) => !this.textCache[`${ids.join(',')}|${o.from}|${o.to}`]);
     if (reading && !missing) o.texts = Object.fromEntries(this.groups().map((ids) => [ids.join(','), this.textCache[`${ids.join(',')}|${o.from}|${o.to}`]]));
@@ -8555,6 +9606,7 @@ class ReportModal extends Modal {
       p.settings.report = { sections: Object.assign({}, o.sections), paper: o.paper, orientation: o.orientation, pages: o.pages };
       p.saveSettings();
       if ((o.sections.text || 'off') !== 'off') o.texts = await this.readTexts();
+      await this.loadTimelines();
       const pages = this.pages();
       const title = o.title.trim() || andList(o.ids.map((id) => reportInfo(p, id).name));
       const base = `${title} - time report ${dayKey(new Date())}`.replace(/[\\/:*?"<>|#^[\]]/g, '-');

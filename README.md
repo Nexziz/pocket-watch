@@ -20,6 +20,7 @@
 - 🍅 **Pomodoro timer** built into the watch: focus sessions, short and long breaks, a soft chime, and a face that paints your session on the dial.
 - 📊 **A full stats page** you arrange yourself: a year of days at a glance, trends, your goal, the hours you work, words written, records, and where your time went.
 - 🗂️ **Projects** in their own colours, so you can see what your time went toward, and move it if it landed on the wrong one.
+- 📅 **Your plan's sections**: link a project to a [Simple Gantt](https://github.com/Nexziz/simple-gantt) timeline and see the hours on each phase and task, in Pocket Watch and on the Gantt chart.
 - 📄 **A PDF report** of a project, in its colour, packed with what you'd want to know about the work: to print, or to attach to your thesis.
 - ⌚ **24 analog watches and 12 digital ones**, from porcelain and malachite to a spinning vinyl record and a word clock.
 - 📱 **Desktop, phone and tablet**, with each device's time kept apart and added up, so sync never overwrites it.
@@ -69,13 +70,27 @@ Every watch has its own dial, hands, complications and case: a moon phase, small
 
 ![Your stats, with projects and devices](images/stats.png)
 
+## Your plan, phase by phase
+
+Plan the work on a timeline with [Simple Gantt](https://github.com/Nexziz/simple-gantt), then edit a project here and choose that timeline. Its phases and tasks become the project's sections, and your time on the project is shared out among them, day by day:
+
+1. **The note you're in.** Time in a note that a task links to goes to that task. That includes the time you'd already spent in it, so linking a note later brings its earlier hours along.
+2. **What you're working on.** Pick a phase or task from **Working on** on the shelf, the stats page, the watch's menu or the command palette. It stays until you change it, on that device.
+3. **The plan.** Otherwise, when the timeline plans one task for that day (or several, all in one phase), the time goes there.
+
+Whatever's left is **not sorted**. Press **Sort…** to choose where each day's time goes, with an undo. The **Sections** card on the stats page shows each phase and task in its colour, with its hours, its days and when it was planned. In Simple Gantt the hours show after each task's name, under each phase, in the overview panel and on paper.
+
+![Sections: the time on each phase and task of a novel's plan](images/sections.png)
+
+Don't want them somewhere? In Simple Gantt, switch **Hours worked** off under the timeline's Features, or only for paper in Print / PDF. In the report, set **The timeline** to off. On the stats page, hide the Sections card with **Edit layout**.
+
 ## A report of the work
 
 When a project is done, press **PDF report** on the stats page (or run *Make a PDF report of your time*) for pages that sum it up, ready to print or to attach to a dissertation or thesis.
 
 - **Pick what it covers**: one project, several, or all your time. Several get pages of their own, each in its project's colour, or share pages with each project in its colour.
 - **Pick what it shows, section by section.** Start from *Essentials*, *Balanced* or *Everything*, then set each section to off, essentials, balanced or everything:
-  - the big numbers, every day of the work, time each week, and words adding up
+  - the big numbers, the timeline (each phase and task as planned, with the days you actually worked on it and its hours), every day of the work, time each week, and words adding up
   - your working day (when it started and ended), when you worked, your week, and the time of day you work best
   - how you write: words an hour, what you kept, keys and Backspace, your fastest minute, time typing
   - the text itself, read from your notes: the words in them, your favourite word, the longest, sentence length, reading time, citations, footnotes, links and questions
@@ -88,6 +103,8 @@ When a project is done, press **PDF report** on the stats page (or run *Make a P
 ![A report of a novel in blue, with everything: its first two pages](images/report.png)
 
 ![A garden journal in green, balanced, on a landscape page](images/report-landscape.png)
+
+![The timeline in a report: each phase and task as planned, the days worked on it, and its hours](images/report-timeline.png)
 
 ## On every device
 
