@@ -22,25 +22,27 @@
 - 🗂️ **Projects** in their own colours, so you can see what your time went toward, and move it if it landed on the wrong one.
 - 📅 **Your plan's sections**: link a project to a [Simple Gantt](https://github.com/Nexziz/simple-gantt) timeline and see the hours on each phase and task, in Pocket Watch and on the Gantt chart.
 - 📄 **A PDF report** of a project, in its colour, packed with what you'd want to know about the work: to print, or to attach to your thesis.
-- ⌚ **24 analog watches and 12 digital ones**, from porcelain and malachite to a spinning vinyl record and a word clock.
+- ⌚ **27 analog watches and 13 digital ones**, from porcelain and malachite to a tourbillon, a painted lavender field, a spinning vinyl record and a word clock.
 - 📱 **Desktop, phone and tablet**, with each device's time kept apart and added up, so sync never overwrites it.
 
 ## The watches
 
 Every watch has its own dial, hands, complications and case: a moon phase, small seconds, today's time or a goal dial. Drag one onto a corner of a pane and it snaps into place. Drop it on a tab bar and it tucks in there, in a bolder mini version that stays readable when it's small. If you'd rather it stayed out of the way, let it fade back when you leave it alone; it comes back when you point at it, and when time is up.
 
-![Twenty-four watches and twelve digital styles](images/make-it-yours.png)
+![Twenty-seven watches and thirteen digital styles](images/make-it-yours.png)
 
 <table>
   <tr>
-    <td><img src="images/retro-vinyl-terrazzo.png" alt="Retro, Vinyl and Terrazzo"></td>
-    <td><img src="images/square-digital.png" alt="Square digital watches: Tomato, Pixel and Words"></td>
+    <td><img src="images/lavender-jungle-tourbillon.png" alt="Lavender, Jungle and Tourbillon"></td>
+    <td><img src="images/square-digital.png" alt="Square digital watches: Tomato, Pixel, Words and Terminal"></td>
   </tr>
   <tr>
+    <td><img src="images/retro-vinyl-terrazzo.png" alt="Retro, Vinyl and Terrazzo"></td>
     <td><img src="images/painted-dials.png" alt="Painted dials: Sakura, Nocturne and Koi"></td>
-    <td><img src="images/tab-bar.png" alt="Tucked into a tab bar"></td>
   </tr>
 </table>
+
+![Tucked into a tab bar](images/tab-bar.png)
 
 ## Pomodoro and focus
 

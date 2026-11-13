@@ -110,6 +110,18 @@ const ANALOG_FACES = {
     name: 'Terrazzo', case: 'ceramic', markers: 'batons', art: 'terrazzo', brandWidth: 24,
     hands: 'baton', set: {},
   },
+  lavender: {
+    name: 'Lavender', case: 'polished', markers: 'pips', art: 'lavender', flange: true, applied: true,
+    hands: 'leaf', set: {},
+  },
+  jungle: {
+    name: 'Jungle', case: 'polished', markers: 'batons', art: 'jungle', flange: true, applied: true,
+    hands: 'dauphine', set: {},
+  },
+  tourbillon: {
+    name: 'Tourbillon', case: 'polished', markers: 'batons', texture: 'sunburst', flange: true, applied: true, tourbillon: 'slotBottom',
+    hands: 'dauphine', set: {},
+  },
   theme: {
     name: 'Match theme', case: 'thin', markers: 'batons', decor: 'minute-dots',
     hands: 'baton', set: { slotRight: 'date' },
@@ -209,16 +221,17 @@ const DIGITAL_STYLES = {
   tomato: 'Tomato',
   pixel: 'Pixel',
   words: 'Words',
+  terminal: 'Terminal',
 };
 
 // Slim styles that come in a shape of their own and show just the time: Hairline is bare
 // numerals in your theme's colours, Capsule a slim pill that fills with the session, and
 // Column the hours over the minutes in a narrow strip. The layout doesn't apply to them.
-const SHAPED_STYLES = ['hairline', 'capsule', 'column', 'tomato', 'pixel', 'words'];
+const SHAPED_STYLES = ['hairline', 'capsule', 'column', 'tomato', 'pixel', 'words', 'terminal'];
 
 // The square ones: Tomato, a Pomodoro timer first; Pixel, the time in lights on a dot-matrix
-// screen; and Words, the time in words.
-const SQUARE_STYLES = ['tomato', 'pixel', 'words'];
+// screen; Words, the time in words; and Terminal, a green screen with a blinking cursor.
+const SQUARE_STYLES = ['tomato', 'pixel', 'words', 'terminal'];
 
 // Pixel's digits, three dots wide and five tall, a row at a time.
 const PIXEL_DIGITS = {
@@ -2484,6 +2497,7 @@ class FloatingWatch {
       else if (live.type === 'streak') setText(live.el, `${p.streak()}d`);
       else if (live.type === 'goal') setIfChanged(live.el, 'stroke-dasharray', `${(goal * 100).toFixed(2)} 100`);
       else if (live.type === 'subsec' && s.seconds !== 'sweep') turn(live.el, sec * 6);
+      else if (live.type === 'cage' && !live.sweep) turn(live.el, sec * 6);
     }
 
     const d = parts.digital;
@@ -2529,7 +2543,7 @@ class FloatingWatch {
     this.uid = ++drawings;
     const slots = faceSlots(s);
     const used = {};
-    for (const slot of SLOTS) used[slot.hour] = slots[slot.key] !== 'none' || face.window === slot.key || face.regulator === slot.key;
+    for (const slot of SLOTS) used[slot.hour] = slots[slot.key] !== 'none' || face.window === slot.key || face.regulator === slot.key || face.tourbillon === slot.key;
 
     // The crown or the pocket watch bow sits outside the case, so the drawing grows to fit it.
     const caseStyle = CASES[s.caseStyle] ? s.caseStyle : 'crown';
@@ -2617,6 +2631,8 @@ class FloatingWatch {
     else if (face.art === 'retro') this.drawRetro(svg, add, R, k);
     else if (face.art === 'vinyl') this.drawVinyl(svg, add, text, R, k);
     else if (face.art === 'terrazzo') this.drawTerrazzo(svg, add, R);
+    else if (face.art === 'lavender') this.drawLavender(svg, add, R);
+    else if (face.art === 'jungle') this.drawJungle(svg, add, R);
     if (face.pomodoro) this.drawPomodoro(svg, add, text, R, k);
     if (face.texture) this.drawTexture(svg, add, face.texture, R);
     if (face.decor) this.drawDecor(svg, add, text, face.decor, R, k, used);
@@ -2647,6 +2663,11 @@ class FloatingWatch {
       const [cx, cy] = polar(R * 0.415, slot.hour * 30);
       this.drawMovementWindow(svg, add, cx, cy, R * 0.345, face.windowShape);
     }
+    if (face.tourbillon && !mini) {
+      const slot = SLOTS.find((x) => x.key === face.tourbillon);
+      const [cx, cy] = polar(R * 0.44, slot.hour * 30);
+      this.drawTourbillon(svg, add, cx, cy, R * 0.33, now);
+    }
     let hourDial = null;
     if (face.regulator && !mini) {
       const slot = SLOTS.find((x) => x.key === face.regulator);
@@ -2655,7 +2676,7 @@ class FloatingWatch {
     }
     for (const slot of SLOTS) {
       const type = slots[slot.key];
-      if (mini || face.window === slot.key || face.regulator === slot.key || !type || type === 'none' || !COMPLICATIONS[type]) continue;
+      if (mini || face.window === slot.key || face.regulator === slot.key || face.tourbillon === slot.key || !type || type === 'none' || !COMPLICATIONS[type]) continue;
       const [cx, cy] = polar(R * 0.47, slot.hour * 30);
       this.drawComplication(svg, add, text, type, cx, cy, k, now);
     }
@@ -3432,6 +3453,455 @@ class FloatingWatch {
     add(svg, 'circle', { cx: 100, cy: 100, r: R, fill: `url(#${this.id('polish')})` }, 'pw-stone-polish');
   }
 
+  // Lavender, painted: rows of lavender running away to the hills of Provence at sunset,
+  // a farmhouse with a lamp lit among cypresses, and the low sun glowing through the haze.
+  // The field is laid in with short dabs of the brush, finer toward the horizon, and the
+  // nearest stalks are painted flower by flower.
+  drawLavender(svg, add, R) {
+    const url = (name) => `url(#${this.id(name)})`;
+    const g = add(svg, 'g', { 'clip-path': url('dial-clip') });
+    const rand = rng(83);
+    const H = 90;
+    const [vx, sunX, sunY] = [108, 126, H - 5];
+    const f1 = (v) => v.toFixed(1);
+    const lin = (name, y1, y2, stops) => this.gradient(add, 'linearGradient', name, { gradientUnits: 'userSpaceOnUse', x1: 0, x2: 0, y1, y2 }, stops);
+    lin('lav-sky', 8, H, [['0%', '#3c3d84'], ['26%', '#6556a3'], ['50%', '#a97fb6'], ['70%', '#e7979a'], ['86%', '#f9b989'], ['100%', '#ffdc9c']]);
+    lin('lav-soil', H, 192, [['0%', '#d99a86'], ['16%', '#7d5058'], ['50%', '#45293a'], ['100%', '#24161f']]);
+    lin('lav-row', H, 192, [['0%', '#c6a6d8'], ['14%', '#9a78c4'], ['50%', '#6c4aa6'], ['100%', '#432c7a']]);
+    lin('lav-far', 72, H, [['0%', '#a48ab9'], ['100%', '#d6a4ae']]);
+    lin('lav-near', 80, H + 1, [['0%', '#7d679e'], ['100%', '#a3819f']]);
+    this.gradient(add, 'radialGradient', 'lav-sun', { cx: '45%', cy: '40%', r: '60%' }, [['0%', '#fffdf0'], ['70%', '#fff0bf'], ['100%', '#ffd88a']]);
+    this.gradient(add, 'radialGradient', 'lav-glow', { cx: '50%', cy: '50%', r: '50%' }, [['0%', 'rgba(255,236,186,0.85)'], ['25%', 'rgba(255,214,160,0.42)'], ['100%', 'rgba(255,190,150,0)']]);
+    this.gradient(add, 'linearGradient', 'lav-haze', { x1: 0, x2: 0, y1: 0, y2: 1 }, [['0%', 'rgba(255,205,170,0)'], ['45%', 'rgba(255,205,170,0.55)'], ['100%', 'rgba(220,170,210,0)']]);
+    const soft = add(this.defs, 'filter', { id: this.id('lav-soft'), x: '-50%', y: '-50%', width: '200%', height: '200%' });
+    add(soft, 'feGaussianBlur', { stdDeviation: 1.1 });
+
+    // The sky, laid in with long horizontal strokes, lighter and darker.
+    add(g, 'rect', { x: 0, y: 0, width: 200, height: H + 1, fill: url('lav-sky') });
+    const strokes = ['', ''];
+    for (let i = 0; i < 70; i++) {
+      const y = 8 + rand() * (H - 12);
+      const x = rand() * 200 - 20;
+      const len = 18 + rand() * 40;
+      const bend = (rand() - 0.5) * 3;
+      strokes[i % 2] += brushPath([[x, y], [x + len * 0.33, y + bend], [x + len * 0.66, y - bend], [x + len, y + (rand() - 0.5) * 2]], 1.2 + rand() * 2.2, 0.3, 8);
+    }
+    add(g, 'path', { d: strokes[0] }, ['pw-lav-sky-stroke', 'is-light']);
+    add(g, 'path', { d: strokes[1] }, ['pw-lav-sky-stroke', 'is-dark']);
+
+    // The sun low over the hills, and its glow.
+    add(g, 'circle', { cx: sunX, cy: sunY, r: 46, fill: url('lav-glow') });
+    add(g, 'circle', { cx: sunX, cy: sunY, r: 7.2, fill: url('lav-sun') }, 'pw-lav-sun');
+
+    // Clouds in long soft streaks: violet above, lit rose and gold underneath by the sun.
+    const streak = (x, y, len, w) => {
+      const half = len / 2;
+      const c = x + half;
+      return brushPath([[c, y], [c - half * 0.4, y + 0.3], [c - half * 0.75, y - 0.2], [x, y + 0.5]], w, 0.4, 10)
+        + brushPath([[c, y], [c + half * 0.4, y - 0.3], [c + half * 0.75, y + 0.2], [x + len, y - 0.4]], w, 0.4, 10);
+    };
+    let cloud = '';
+    let lit = '';
+    for (const [x, y, len, w] of [[-6, 30, 74, 4.2], [96, 22, 90, 3.6], [24, 48, 58, 3.4], [120, 44, 72, 3.2], [58, 64, 52, 2.6], [150, 66, 50, 2.2], [4, 72, 40, 2]]) {
+      cloud += streak(x, y, len, w);
+      lit += streak(x + len * 0.12, y + w * 0.42, len * 0.78, w * 0.5);
+    }
+    add(g, 'path', { d: cloud }, 'pw-lav-cloud');
+    add(g, 'path', { d: lit }, 'pw-lav-cloud-lit');
+
+    // Hills, hazy in the distance, a little firmer nearer.
+    const ridge = (points, seed, rough) => {
+      const r = rng(seed);
+      let pts = points;
+      for (let pass = 0; pass < 2; pass++) {
+        const next = [];
+        for (let i = 0; i < pts.length - 1; i++) {
+          const [x1, y1] = pts[i];
+          const [x2, y2] = pts[i + 1];
+          next.push(pts[i], [(x1 + x2) / 2 + (r() - 0.5) * rough, (y1 + y2) / 2 + (r() - 0.5) * rough]);
+        }
+        next.push(pts[pts.length - 1]);
+        pts = next;
+        rough /= 2;
+      }
+      return pts.map(([x, y], i) => `${i ? 'L' : 'M'} ${f1(x)} ${f1(y)}`).join(' ');
+    };
+    add(g, 'path', { d: `${ridge([[-5, 82], [22, 76], [44, 79], [70, 73], [96, 78], [120, 80], [146, 75], [172, 79], [205, 76]], 5, 3)} L 205 ${H + 1} L -5 ${H + 1} Z`, fill: url('lav-far') });
+    add(g, 'path', { d: `${ridge([[-5, 86], [18, 83], [40, 86], [62, 84], [84, 87], [130, 88], [158, 84], [182, 86], [205, 83]], 11, 2)} L 205 ${H + 1} L -5 ${H + 1} Z`, fill: url('lav-near') });
+
+    // On the horizon: a farmhouse among cypresses, with a lamp lit, and a row of trees.
+    const [fx, fy] = [46, H - 0.6];
+    let dark = '';
+    const cypress = (x, base, h, w) => `M ${f1(x - w)} ${f1(base)} C ${f1(x - w * 1.1)} ${f1(base - h * 0.5)} ${f1(x - w * 0.4)} ${f1(base - h * 0.9)} ${f1(x)} ${f1(base - h)} C ${f1(x + w * 0.4)} ${f1(base - h * 0.9)} ${f1(x + w * 1.1)} ${f1(base - h * 0.5)} ${f1(x + w)} ${f1(base)} Z `;
+    for (const [x, h, w] of [[fx - 9, 15, 1.5], [fx - 6.6, 11, 1.3], [fx + 14, 13, 1.4], [fx + 16.4, 9.5, 1.2], [176, 10, 1.2]]) dark += cypress(x, fy + 0.5, h, w);
+    for (let x = 136; x < 168; x += 2.4 + rand() * 2) {
+      const r = 1.6 + rand() * 1.6;
+      dark += circlePath(f1(x), f1(fy - r * 0.7), f1(r));
+    }
+    add(g, 'path', { d: dark }, 'pw-lav-tree');
+    add(g, 'path', { d: `M ${fx - 4} ${fy} L ${fx - 4} ${fy - 4.4} L ${fx + 8} ${fy - 4.4} L ${fx + 8} ${fy} Z` }, 'pw-lav-wall');
+    add(g, 'path', { d: `M ${fx + 8} ${fy} L ${fx + 8} ${fy - 4.4} L ${fx + 11} ${fy - 3.4} L ${fx + 11} ${fy} Z` }, 'pw-lav-wall-lit');
+    add(g, 'path', { d: `M ${fx - 5} ${fy - 4.2} L ${fx + 1.5} ${fy - 7.4} L ${fx + 9} ${fy - 4.6} L ${fx + 11.5} ${fy - 3.3} L ${fx + 8} ${fy - 4.4} Z` }, 'pw-lav-roof');
+    add(g, 'rect', { x: fx + 2.2, y: fy - 3, width: 1.3, height: 1.4 }, 'pw-lav-lamp');
+    add(g, 'circle', { cx: fx + 2.85, cy: fy - 2.3, r: 2.6, filter: url('lav-soft') }, 'pw-lav-lamp-glow');
+
+    // The field: earth between the rows, then the rows running to a point on the horizon.
+    add(g, 'rect', { x: 0, y: H, width: 200, height: 200 - H, fill: url('lav-soil') });
+    const Y = 320;
+    const pitch = 34;
+    const share = 0.34;
+    let rows = '';
+    for (let i = -16; i <= 16; i++) {
+      const c = vx + i * pitch;
+      rows += `M ${vx} ${H} L ${f1(c - pitch * share)} ${Y} L ${f1(c + pitch * share)} ${Y} Z `;
+    }
+    add(g, 'path', { d: rows, fill: url('lav-row') });
+    // A warm haze where the field meets the hills.
+    add(g, 'rect', { x: 0, y: H - 6, width: 200, height: 16, fill: url('lav-haze') });
+
+    // Dabs of the brush along the rows: short and round in the distance, longer up close,
+    // where they become the spikes of the flowers themselves. Each row is a rounded mound,
+    // light along its crown, deep on the side away from the sun and touched with the
+    // sunset on the side toward it. Dabs of a tone and size share one stroked path.
+    const dabs = {};
+    const dab = (tone, band, d) => {
+      const key = `${tone} ${band}`;
+      dabs[key] = (dabs[key] || '') + d;
+    };
+    for (let y = H + 2.5; y < 197; y += Math.max(0.75, (y - H) * 0.06)) {
+      const depth = (y - H) / (Y - H);
+      const spacing = pitch * depth;
+      const half = pitch * share * depth;
+      const near = Math.min(1, (y - H) / 75);
+      const band = Math.min(5, Math.floor(near * 6));
+      const width = 0.55 + band * 0.2;
+      const len = 0.3 + (y - H) * 0.08 * (0.4 + near * 0.9);
+      const chord = 2 * Math.sqrt(Math.max(0, R * R - (y - 100) * (y - 100)));
+      const n = Math.ceil(chord / (width * (1.25 - near * 0.4)));
+      for (let j = 0; j < n; j++) {
+        const x = 100 - chord / 2 - 2 + rand() * (chord + 4);
+        const row = Math.round((x - vx) / spacing);
+        const off = (x - (vx + row * spacing)) / half;
+        if (Math.abs(off) > 1.02 || (Math.abs(off) > 0.8 && rand() < 0.4 * near)) {
+          if (rand() < 0.25) dab('soil', band, `M${f1(x)} ${f1(y)}l${f1((rand() - 0.5) * len)} ${f1(-len * 0.3)}`);
+          continue;
+        }
+        // Taller on the crown of the row, fanning out a little at its sides.
+        const l = len * (0.6 + rand() * 0.5) * (1.1 - Math.min(1, Math.abs(off)) * 0.35);
+        const lean = off * l * 0.12 + (x - vx) * 0.004 * l + (rand() - 0.5) * l * 0.12;
+        const r = rand();
+        const toSun = (sunX - x) * off > 0;
+        const glow = Math.max(0, 1 - Math.abs(x - sunX) / 110) * Math.max(0, 1 - near * 1.6);
+        let tone;
+        if (Math.abs(off) < 0.45) tone = r < 0.2 + (1 - near) * 0.4 ? 'pale' : r < 0.75 ? 'light' : 'mid';
+        else if (toSun) tone = r < 0.06 * (1 - near) + glow * 0.5 ? 'warm' : r < 0.55 ? 'light' : 'mid';
+        else tone = r < 0.5 * near + 0.1 ? 'deep' : 'mid';
+        dab(tone, band, `M${f1(x)} ${f1(y)}l${f1(lean)} ${f1(-l)}`);
+      }
+    }
+    for (const tone of ['soil', 'deep', 'mid', 'light', 'pale', 'warm']) {
+      for (let band = 0; band < 6; band++) {
+        const d = dabs[`${tone} ${band}`];
+        if (d) add(g, 'path', { d, 'stroke-width': (0.55 + band * 0.2).toFixed(2) }, ['pw-lav-dab', `is-${tone}`]);
+      }
+    }
+
+    // The nearest stalks, painted flower by flower: a thin green stem, then little whorls
+    // of buds that get smaller toward the tip.
+    const oval = (x, y, rx, ry) => `M ${f1(x - rx)} ${f1(y)} a ${f1(rx)} ${f1(ry)} 0 1 0 ${f1(2 * rx)} 0 a ${f1(rx)} ${f1(ry)} 0 1 0 ${f1(-2 * rx)} 0 Z `;
+    const stems = [];
+    const buds = { deep: '', mid: '', light: '', pale: '' };
+    let lights = '';
+    for (const [x0, top, bend] of [[18, 140, 5], [30, 150, -3], [41, 136, 4], [54, 152, 6], [67, 142, -4], [135, 146, 4], [147, 133, -6], [159, 148, 3], [171, 139, -2], [183, 152, -5], [84, 160, 3], [118, 158, -3]]) {
+      const curve = [[x0, 206], [x0 + bend * 0.2, 190], [x0 + bend * 0.7, top + 16], [x0 + bend, top]];
+      stems.push(brushPath(curve, 1, 0.45, 12));
+      const flower = 0.4;
+      let i = 0;
+      for (let t = 1 - flower; t <= 1.001; t += 0.034, i++) {
+        const [x, y] = bezier(curve, t);
+        const size = 1 + (1 - (t - (1 - flower)) / flower) * 1.05;
+        // A whorl every few steps, with a gap of stem between the lower ones.
+        if (t < 1 - flower * 0.55 && i % 3 === 2) continue;
+        for (const side of [-1, 0, 1]) {
+          const bx = x + side * size * (0.75 + rand() * 0.3);
+          const by = y + (rand() - 0.5) * size * 0.5 - Math.abs(side) * size * 0.2;
+          const tone = side === 0 ? 'mid' : ['deep', 'mid', 'light'][Math.floor(rand() * 3)];
+          buds[tone] += oval(bx, by, size * 0.58, size * 0.95);
+          if (rand() < 0.45) lights += oval(bx - size * 0.15, by - size * 0.35, size * 0.22, size * 0.35);
+        }
+      }
+      const [tx, ty] = bezier(curve, 1);
+      buds.pale += oval(tx, ty - 0.8, 0.6, 1.2);
+    }
+    add(g, 'path', { d: stems.join(' ') }, 'pw-lav-stem');
+    for (const tone of ['deep', 'mid', 'light', 'pale']) add(g, 'path', { d: buds[tone] }, ['pw-lav-bud', `is-${tone}`]);
+    add(g, 'path', { d: lights }, 'pw-lav-bud-light');
+  }
+
+  // Jungle, painted in gouache: palm fronds in the shade behind, a banana leaf, monstera
+  // leaves split and holed as they grow, a red hibiscus, and a blue morpho butterfly
+  // resting in a patch of sun that comes down through the canopy.
+  drawJungle(svg, add, R) {
+    const url = (name) => `url(#${this.id(name)})`;
+    const g = add(svg, 'g', { 'clip-path': url('dial-clip') });
+    const rand = rng(67);
+    const f2 = (v) => v.toFixed(2);
+    const pt = ([x, y]) => `${f2(x)} ${f2(y)}`;
+    this.gradient(add, 'radialGradient', 'jun-ground', { gradientUnits: 'userSpaceOnUse', cx: 104, cy: 92, r: 104 }, [['0%', '#3f6f43'], ['40%', '#1f4a33'], ['100%', '#081d15']]);
+    this.gradient(add, 'radialGradient', 'jun-sun', { cx: '50%', cy: '50%', r: '50%' }, [['0%', 'rgba(244,255,190,0.32)'], ['100%', 'rgba(244,255,190,0)']]);
+    this.gradient(add, 'linearGradient', 'jun-monstera', { x1: 0, y1: 0, x2: 0.4, y2: 1 }, [['0%', '#6fb468'], ['45%', '#3d8a4e'], ['100%', '#1f5a36']]);
+    this.gradient(add, 'linearGradient', 'jun-monstera-dark', { x1: 0, y1: 0, x2: 0.4, y2: 1 }, [['0%', '#4d9157'], ['50%', '#2b6c42'], ['100%', '#164a2d']]);
+    this.gradient(add, 'linearGradient', 'jun-banana', { x1: 0, y1: 0, x2: 1, y2: 0.3 }, [['0%', '#2f7a45'], ['55%', '#5aa157'], ['100%', '#88c069']]);
+    this.gradient(add, 'linearGradient', 'jun-morpho', { x1: 0, y1: 0, x2: 1, y2: 1 }, [['0%', '#7fe0ff'], ['40%', '#2b8ff0'], ['100%', '#14309e']]);
+    const blur = add(this.defs, 'filter', { id: this.id('jun-soft'), x: '-50%', y: '-50%', width: '200%', height: '200%' });
+    add(blur, 'feGaussianBlur', { stdDeviation: 3 });
+    const shade = add(this.defs, 'filter', { id: this.id('jun-shade'), x: '-20%', y: '-20%', width: '140%', height: '140%' });
+    add(shade, 'feDropShadow', { dx: 1.2, dy: 2, stdDeviation: 1.8, 'flood-color': '#02100a', 'flood-opacity': 0.7 });
+
+    // The shade of the forest, with sun coming down through a gap in the canopy.
+    add(g, 'rect', { x: 0, y: 0, width: 200, height: 200, fill: url('jun-ground') });
+    for (const [x, y, rx, ry] of [[96, 70, 46, 30], [124, 98, 30, 20], [70, 104, 22, 14]]) {
+      add(g, 'ellipse', { cx: x, cy: y, rx, ry, fill: url('jun-sun') });
+    }
+
+    // A path like brushPath's, but as wide as the profile says along the way.
+    const blade = (chain, W, profile, steps = 40) => {
+      const left = [];
+      const right = [];
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        const [x, y] = chainAt(chain, t);
+        const [ax, ay] = chainAt(chain, Math.max(0, t - 0.004));
+        const [bx, by] = chainAt(chain, Math.min(1, t + 0.004));
+        const len = Math.hypot(bx - ax, by - ay) || 1;
+        const w = (W * profile(t)) / 2;
+        left.push(pt([x - ((by - ay) / len) * w, y + ((bx - ax) / len) * w]));
+        right.unshift(pt([x + ((by - ay) / len) * w, y - ((bx - ax) / len) * w]));
+      }
+      return `M ${left.join(' L ')} L ${right.join(' L ')} Z`;
+    };
+    // Where a chain is at t, and which way it is heading.
+    const frame = (chain, t) => {
+      const [x, y] = chainAt(chain, t);
+      const [ax, ay] = chainAt(chain, Math.max(0, t - 0.005));
+      const [bx, by] = chainAt(chain, Math.min(1, t + 0.005));
+      const len = Math.hypot(bx - ax, by - ay) || 1;
+      return { x, y, tx: (bx - ax) / len, ty: (by - ay) / len };
+    };
+
+    // Heart-shaped leaves, the way taro and philodendron grow: a pointed tip, two rounded
+    // lobes at the base and veins curving out from the midrib.
+    const heartLeaf = (bx, by, toward, L, W, cls) => {
+      const turn = (Math.atan2(toward[0] - bx, -(toward[1] - by)) * 180) / Math.PI;
+      const leaf = add(g, 'g', { transform: `translate(${f2(bx)} ${f2(by)}) rotate(${f2(turn)})` });
+      const h = W / 2;
+      add(leaf, 'path', { d: `M 0 ${-L} C ${h * 0.55} ${-L * 0.78} ${h * 1.05} ${-L * 0.42} ${h * 0.96} ${-L * 0.05} C ${h * 0.9} ${L * 0.16} ${h * 0.42} ${L * 0.2} ${h * 0.12} ${L * 0.04} L 0 0 L ${-h * 0.12} ${L * 0.04} C ${-h * 0.42} ${L * 0.2} ${-h * 0.9} ${L * 0.16} ${-h * 0.96} ${-L * 0.05} C ${-h * 1.05} ${-L * 0.42} ${-h * 0.55} ${-L * 0.78} 0 ${-L} Z` }, ['pw-jun-heart', cls]);
+      let v = `M 0 ${L * 0.02} Q ${L * 0.02} ${-L * 0.5} 0 ${-L * 0.96} `;
+      for (const side of [-1, 1]) {
+        for (let k = 0; k < 5; k++) {
+          const y0 = -L * (0.08 + k * 0.17);
+          v += `M 0 ${f2(y0)} Q ${f2(side * h * 0.45)} ${f2(y0 - L * 0.06)} ${f2(side * h * (0.8 - k * 0.12))} ${f2(y0 - L * (0.16 + k * 0.02))} `;
+        }
+      }
+      add(leaf, 'path', { d: v }, ['pw-jun-heart-vein', cls]);
+    };
+    for (const [bx, by, tx, ty, L, W, cls] of [
+      [126, -8, 112, 56, 62, 52, 'is-back'], [54, 132, 92, 78, 66, 54, 'is-back'], [158, 128, 122, 76, 64, 50, 'is-back'],
+      [100, 214, 100, 136, 70, 58, 'is-back'], [-6, 58, 50, 40, 48, 40, 'is-back'], [200, 76, 150, 92, 48, 40, 'is-back'],
+      [86, 118, 110, 66, 44, 36, 'is-mid'], [196, 196, 150, 160, 54, 44, 'is-mid'], [12, 104, 50, 92, 40, 32, 'is-mid'],
+    ]) heartLeaf(bx, by, [tx, ty], L, W, cls);
+
+    // Palm fronds far back in the shade: a stem with narrow leaflets down both sides.
+    const frond = (curve, reach, cls) => {
+      const chain = [curve];
+      let d = brushPath(curve, 1.6, 0.4);
+      for (let t = 0.06; t < 0.98; t += 0.034) {
+        const f = frame(chain, t);
+        const l = reach * Math.pow(Math.sin(Math.PI * Math.min(1, t * 0.9 + 0.08)), 0.7) * (0.85 + rand() * 0.25);
+        for (const side of [-1, 1]) {
+          const a = Math.atan2(f.ty, f.tx) + side * (0.95 + rand() * 0.2);
+          const tip = [f.x + Math.cos(a) * l, f.y + Math.sin(a) * l];
+          // The leaflets droop under their weight.
+          const mid = [f.x + Math.cos(a) * l * 0.5, f.y + Math.sin(a) * l * 0.5 + l * 0.12];
+          d += brushPath([[f.x, f.y], mid, mid, [tip[0], tip[1] + l * 0.12]], 2.6, 0.2, 8);
+        }
+      }
+      add(g, 'path', { d }, ['pw-jun-frond', cls]);
+    };
+    frond([[214, 60], [184, 46], [156, 42], [124, 52]], 22, 'is-far');
+    frond([[206, 200], [186, 170], [174, 142], [170, 110]], 22, 'is-far');
+    frond([[-10, 146], [16, 132], [40, 128], [66, 134]], 20, 'is-mid');
+
+    // A banana leaf from the left: a broad blade with a pale midrib, fine veins running out
+    // from it to the edge, and the tears the wind has made between them.
+    const banana = [[[-14, 92], [10, 70], [34, 50], [58, 30]], [[58, 30], [70, 20], [82, 14], [96, 12]]];
+    const bananaProfile = (t) => Math.pow(Math.sin(Math.PI * Math.min(1, 0.06 + t * 0.96)), 0.55) * (t < 0.05 ? t / 0.05 : 1);
+    const bg = add(g, 'g', { filter: url('jun-shade') });
+    add(bg, 'path', { d: blade(banana, 40, bananaProfile), fill: url('jun-banana') }, 'pw-jun-banana');
+    let veins = '';
+    let tears = '';
+    for (let t = 0.04; t < 0.97; t += 0.022) {
+      const f = frame(banana, t);
+      const w = (40 * bananaProfile(t)) / 2;
+      for (const side of [-1, 1]) {
+        const nx = -f.ty * side;
+        const ny = f.tx * side;
+        // The veins sweep toward the tip as they go out.
+        const ex = f.x + nx * w * 0.98 + f.tx * w * 0.32;
+        const ey = f.y + ny * w * 0.98 + f.ty * w * 0.32;
+        veins += `M ${pt([f.x, f.y])} L ${pt([ex, ey])} `;
+        if (rand() < 0.16) {
+          const depth = 0.35 + rand() * 0.5;
+          const sx = f.x + nx * w * (1 - depth) + f.tx * w * 0.32 * (1 - depth);
+          const sy = f.y + ny * w * (1 - depth) + f.ty * w * 0.32 * (1 - depth);
+          tears += brushPath([[ex + nx, ey + ny], [ex, ey], [sx, sy], [sx, sy]], 1.3, 0.1, 6);
+        }
+      }
+    }
+    add(bg, 'path', { d: veins }, 'pw-jun-banana-vein');
+    add(bg, 'path', { d: tears }, 'pw-jun-tear');
+    add(bg, 'path', { d: brushPath(banana, 2.6, 0.6) }, 'pw-jun-banana-rib');
+
+    // A monstera leaf: heart-shaped, with slits running in from the edge between its veins
+    // and holes along the midrib. A mask cuts them, so what lies behind shows through.
+    let leaves = 0;
+    const monstera = (bx, by, toward, L, gradient, slits) => {
+      const [tx, ty] = toward;
+      const turn = (Math.atan2(tx - bx, -(ty - by)) * 180) / Math.PI;
+      const leaf = add(g, 'g', { transform: `translate(${f2(bx)} ${f2(by)}) rotate(${f2(turn)})`, filter: url('jun-shade') });
+      const a = 0.5 * L;
+      const notch = 0.13 * L;
+      const outline = [];
+      for (let i = 0; i <= 96; i++) {
+        const th = (i / 96) * 2 * Math.PI;
+        const b = (th < Math.PI ? 0.49 : 0.46) * L;
+        let x = b * Math.sin(th);
+        let y = -0.5 * L - a * Math.cos(th);
+        const tip = Math.max(0, 1 - Math.min(th, 2 * Math.PI - th) / 0.55);
+        y -= 0.07 * L * tip * tip;
+        x *= 1 - 0.25 * tip;
+        y += notch * -Math.exp(-Math.pow((th - Math.PI) / 0.24, 2));
+        outline.push([x, y]);
+      }
+      const edge = (th) => outline[Math.round((((th % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI) * 96)];
+      const body = `M ${outline.map(pt).join(' L ')} Z`;
+      const id = this.id(`jun-leaf-${leaves++}`);
+      const mask = add(this.defs, 'mask', { id, maskUnits: 'userSpaceOnUse', x: -L, y: -1.3 * L, width: 2 * L, height: 1.6 * L });
+      add(mask, 'path', { d: body, fill: '#fff' });
+      const base = -notch;
+      const rib = (k) => [0, base - (0.06 + k * 0.118) * 0.9 * L];
+      const ribs = [];
+      for (const side of [-1, 1]) {
+        for (let k = 0; k < 7; k++) {
+          const th = side > 0 ? 2.6 - k * 0.35 : 2 * Math.PI - (2.6 - k * 0.35);
+          ribs.push({ side, k, from: rib(k), to: edge(th) });
+        }
+      }
+      // Slits between the veins, from the edge most of the way to the midrib.
+      for (const side of [-1, 1]) {
+        const mine = ribs.filter((v) => v.side === side);
+        for (let k = 0; k < 6; k++) {
+          if (k >= slits || (k === 0 && L < 60)) continue;
+          const A = mine[k];
+          const B = mine[k + 1];
+          const out = [(A.to[0] + B.to[0]) / 2 * 1.2, (A.to[1] + B.to[1]) / 2 - L * 0.02];
+          const reach = 0.26 + rand() * 0.14;
+          const inner = [(A.from[0] + B.from[0]) / 2 + (out[0] - (A.from[0] + B.from[0]) / 2) * reach, (A.from[1] + B.from[1]) / 2 + (out[1] - (A.from[1] + B.from[1]) / 2) * reach];
+          const dx = out[0] - inner[0];
+          const dy = out[1] - inner[1];
+          const len = Math.hypot(dx, dy) || 1;
+          const [nx, ny] = [-dy / len, dx / len];
+          const wi = L * 0.006;
+          const wo = L * (0.045 + rand() * 0.02);
+          add(mask, 'path', { d: `M ${pt([inner[0] - nx * wi, inner[1] - ny * wi])} Q ${pt([inner[0] - nx * wi * 2 - dx * 0.05, inner[1] - ny * wi * 2 - dy * 0.05])} ${pt([inner[0] + nx * wi, inner[1] + ny * wi])} L ${pt([out[0] + nx * wo, out[1] + ny * wo])} L ${pt([out[0] - nx * wo, out[1] - ny * wo])} Z`, fill: '#000' });
+          // An oval hole nearer the midrib.
+          if (k > 0 && k < 5 && rand() < 0.75) {
+            const hx = (A.from[0] + B.from[0]) / 2 + dx * -0.15 + (out[0] - inner[0]) * 0.0;
+            const hy = (A.from[1] + B.from[1]) / 2;
+            const cx = hx + side * L * 0.06;
+            const cy = hy - L * 0.01;
+            add(mask, 'ellipse', { cx: f2(cx), cy: f2(cy), rx: f2(L * (0.022 + rand() * 0.012)), ry: f2(L * (0.045 + rand() * 0.02)), transform: `rotate(${f2(side * (62 + rand() * 12))} ${f2(cx)} ${f2(cy)})`, fill: '#000' });
+          }
+        }
+      }
+      const cut = add(leaf, 'g', { mask: `url(#${id})` });
+      add(cut, 'path', { d: body, fill: url(gradient) }, 'pw-jun-leaf');
+      // Gouache: broad strokes of lighter and darker green across the leaf.
+      let lightStrokes = '';
+      for (let i = 0; i < 9; i++) {
+        const y0 = -L * (0.1 + rand() * 0.8);
+        const x0 = (rand() - 0.5) * L * 0.7;
+        lightStrokes += brushPath([[x0, y0], [x0 + L * 0.1, y0 - L * 0.04], [x0 + L * 0.2, y0 - L * 0.06], [x0 + L * 0.3, y0 - L * 0.1]], L * 0.05, L * 0.01, 8);
+      }
+      add(cut, 'path', { d: lightStrokes }, 'pw-jun-leaf-stroke');
+      let veinPath = '';
+      for (const v of ribs) {
+        const c = [(v.from[0] + v.to[0]) / 2, (v.from[1] + v.to[1]) / 2 - L * 0.06];
+        veinPath += `M ${pt(v.from)} Q ${pt(c)} ${pt(v.to)} `;
+      }
+      add(cut, 'path', { d: veinPath, 'stroke-width': f2(L * 0.012) }, 'pw-jun-leaf-vein');
+      add(cut, 'path', { d: brushPath([[0, base], [L * 0.01, base - L * 0.3], [-L * 0.01, -L * 0.7], [0, -L * 1.05]], L * 0.045, L * 0.008) }, 'pw-jun-leaf-rib');
+      // The stalk, running off the dial.
+      add(leaf, 'path', { d: brushPath([[0, base + L * 0.02], [L * 0.02, L * 0.25], [L * 0.05, L * 0.5], [L * 0.08, L * 0.8]], L * 0.045, L * 0.06) }, 'pw-jun-stalk');
+    };
+    monstera(176, 36, [112, 74], 74, 'jun-monstera-dark', 6);
+    monstera(206, 118, [150, 116], 46, 'jun-monstera-dark', 4);
+    monstera(28, 188, [86, 118], 84, 'jun-monstera', 6);
+
+    // A hibiscus: five crinkled petals, red at the heart, and a long column of stamens.
+    const [hx, hy, hr] = [144, 154, 19];
+    this.gradient(add, 'radialGradient', 'jun-petal', { gradientUnits: 'userSpaceOnUse', cx: hx, cy: hy, r: hr }, [['0%', '#7d0f2a'], ['22%', '#c3233d'], ['60%', '#ef5246'], ['100%', '#ff9a7c']]);
+    const flower = add(g, 'g', { filter: url('jun-shade') });
+    for (let i = 0; i < 5; i++) {
+      const a = (i * 72 - 18 + (rand() - 0.5) * 10) * (Math.PI / 180);
+      const spread = 0.78;
+      const p = (ang, rr) => [hx + Math.cos(ang) * rr, hy + Math.sin(ang) * rr];
+      let d = `M ${pt([hx, hy])} `;
+      d += `C ${pt(p(a - spread * 0.4, hr * 0.5))} ${pt(p(a - spread, hr * 0.85))} ${pt(p(a - spread * 0.7, hr))} `;
+      for (let j = 1; j <= 4; j++) d += `Q ${pt(p(a - spread * 0.7 + (j - 0.5) * spread * 0.35, hr * (1.08 + (j % 2) * 0.05)))} ${pt(p(a - spread * 0.7 + j * spread * 0.35, hr * (0.98 + rand() * 0.06)))} `;
+      d += `C ${pt(p(a + spread, hr * 0.85))} ${pt(p(a + spread * 0.4, hr * 0.5))} ${pt([hx, hy])} Z`;
+      add(flower, 'path', { d, fill: url('jun-petal') }, 'pw-jun-petal');
+      add(flower, 'path', { d: `M ${pt(p(a, hr * 0.15))} Q ${pt(p(a + 0.1, hr * 0.5))} ${pt(p(a + 0.05, hr * 0.88))}` }, 'pw-jun-petal-vein');
+    }
+    // The deep red heart, where the petals overlap.
+    add(flower, 'circle', { cx: hx, cy: hy, r: hr * 0.42, fill: url('jun-petal') });
+    let heart = '';
+    for (let i = 0; i < 5; i++) {
+      const a = (i * 72 + 18) * (Math.PI / 180);
+      heart += `M ${pt([hx, hy])} L ${pt([hx + Math.cos(a) * hr * 0.4, hy + Math.sin(a) * hr * 0.4])} `;
+    }
+    add(flower, 'path', { d: heart }, 'pw-jun-petal-vein');
+    const column = [[hx, hy], [hx - 4, hy - 6], [hx - 9, hy - 10], [hx - 15, hy - 13]];
+    add(flower, 'path', { d: brushPath(column, 1.4, 0.9, 10) }, 'pw-jun-column');
+    let pollen = '';
+    for (let i = 0; i < 12; i++) {
+      const [px, py] = bezier(column, 0.55 + rand() * 0.4);
+      pollen += circlePath(f2(px + (rand() - 0.5) * 3.4), f2(py + (rand() - 0.5) * 3.4), '0.55');
+    }
+    add(flower, 'path', { d: pollen }, 'pw-jun-pollen');
+    let stigma = '';
+    for (let i = 0; i < 5; i++) stigma += circlePath(f2(hx - 15.6 + Math.cos(i * 1.26) * 1.4), f2(hy - 13.4 + Math.sin(i * 1.26) * 1.4), '0.7');
+    add(flower, 'path', { d: stigma }, 'pw-jun-stigma');
+
+    // A blue morpho butterfly, wings open in the sun.
+    const morpho = add(g, 'g', { transform: 'translate(62 70) rotate(-24) scale(0.68)', filter: url('jun-shade') });
+    for (const side of [-1, 1]) {
+      const wing = add(morpho, 'g', { transform: `scale(${side} 1)` });
+      add(wing, 'path', { d: 'M 0.6 -1 C 4 -9 12 -15 19 -13.5 C 21 -10 19 -5 16 -1.5 C 10 1 4 1 0.6 0.6 Z' }, 'pw-jun-wing-edge');
+      add(wing, 'path', { d: 'M 0.8 -1 C 4 -8 11 -12.6 17 -11.6 C 18 -9 16.5 -5.5 14 -2.6 C 9 -0.4 4 -0.2 0.8 0.2 Z', fill: url('jun-morpho') });
+      add(wing, 'path', { d: 'M 0.6 0.8 C 5 0.6 12 1.6 14 5 C 14.6 9 11 13 6.5 13 C 3 12 1 7 0.6 0.8 Z' }, 'pw-jun-wing-edge');
+      add(wing, 'path', { d: 'M 0.8 1.2 C 5 1.2 10.6 2.4 12.2 5.2 C 12.6 8.4 10 11 6.6 11.2 C 3.6 10.4 1.6 6.6 0.8 1.2 Z', fill: url('jun-morpho') });
+      add(wing, 'path', { d: circlePath(16.4, -10.4, 0.7) + circlePath(14.6, -11.6, 0.5) + circlePath(12.6, 9.6, 0.5) }, 'pw-jun-wing-spot');
+    }
+    add(morpho, 'ellipse', { cx: 0, cy: 0.6, rx: 0.9, ry: 6.2 }, 'pw-jun-body');
+    add(morpho, 'path', { d: 'M -0.3 -5.2 Q -2 -9 -4 -11 M 0.3 -5.2 Q 2 -9 4 -11' }, 'pw-jun-antenna');
+
+    // Sun dappling the leaves.
+    for (let i = 0; i < 7; i++) {
+      add(g, 'ellipse', { cx: f2(40 + rand() * 130), cy: f2(30 + rand() * 140), rx: f2(5 + rand() * 9), ry: f2(3 + rand() * 5), filter: url('jun-soft') }, 'pw-jun-dapple');
+    }
+  }
+
   // A panda's face: round black ears at the top of the dial, the subdials at 9 and 3 set in
   // black patches that slope down and out like a panda's eyes, and a small nose and mouth.
   drawPanda(svg, add, R, k) {
@@ -3805,7 +4275,8 @@ class FloatingWatch {
           }, major ? ['pw-index', 'is-major'] : 'pw-index');
         }
       };
-      const windowHour = face.window ? SLOTS.find((x) => x.key === face.window).hour : -1;
+      const opening = face.window || face.tourbillon;
+      const windowHour = opening ? SLOTS.find((x) => x.key === opening).hour : -1;
       for (let i = 1; i < 12; i++) if (i !== windowHour) baton(i * 30, 0, i % 3 === 0);
       baton(0, -3.6 * k, true);
       baton(0, 3.6 * k, true);
@@ -4342,6 +4813,117 @@ class FloatingWatch {
     add(outer, 'path', { d: outline, fill: 'none', stroke: url('metal') }, heart ? ['pw-window-rim', 'is-fine'] : 'pw-window-rim');
   }
 
+  // A flying tourbillon in an opening in the dial: the cage carrying the balance, the
+  // escapement and the hairspring turns once a minute over a fixed wheel, and one of its
+  // arms is blued and points to the seconds on a scale printed round the opening. The
+  // balance swings and the escape wheel turns inside it while the movement runs.
+  drawTourbillon(svg, add, cx, cy, r, now) {
+    const url = (name) => `url(#${this.id(name)})`;
+    const s = this.plugin.settings;
+    const scale = (r / 30).toFixed(4);
+    const place = `translate(${cx.toFixed(2)} ${cy.toFixed(2)}) scale(${scale})`;
+    this.gradient(add, 'radialGradient', 'tb-plate', { cx: '40%', cy: '35%', r: '75%' }, [['0%', '#5d6570'], ['100%', '#1f242b']]);
+    this.gradient(add, 'linearGradient', 'tb-steel', { x1: 0, y1: 0, x2: 1, y2: 1 }, [['0%', '#fafbfc'], ['50%', '#c8ced6'], ['100%', '#7a828d']]);
+    this.gradient(add, 'linearGradient', 'tb-blued', { x1: 0, y1: 0, x2: 1, y2: 1 }, [['0%', '#7fa4e8'], ['50%', '#2c56b0'], ['100%', '#14285a']]);
+    this.gradient(add, 'linearGradient', 'tb-gold', { x1: 0, y1: 0, x2: 1, y2: 1 }, [['0%', '#f7e4a8'], ['50%', '#d2a54e'], ['100%', '#8a6325']]);
+    this.gradient(add, 'radialGradient', 'tb-vignette', { cx: '50%', cy: '50%', r: '50%' }, [['62%', 'rgba(0,0,0,0)'], ['100%', 'rgba(0,0,0,0.65)']]);
+    this.gradient(add, 'linearGradient', 'tb-sapphire', { x1: 0, y1: 0, x2: 0.6, y2: 1 }, [['0%', 'rgba(255,255,255,0.24)'], ['100%', 'rgba(255,255,255,0)']]);
+    const fade = add(this.defs, 'filter', { id: this.id('tb-fade'), x: '-30%', y: '-30%', width: '160%', height: '160%' });
+    add(fade, 'feGaussianBlur', { stdDeviation: 3 });
+    const lift = add(this.defs, 'filter', { id: this.id('tb-lift'), x: '-30%', y: '-30%', width: '160%', height: '160%' });
+    add(lift, 'feDropShadow', { dx: 0.8, dy: 1.4, stdDeviation: 0.8, 'flood-color': '#000', 'flood-opacity': 0.6 });
+    add(add(this.defs, 'clipPath', { id: this.id('tb-window') }), 'circle', { cx: 0, cy: 0, r: 30 });
+
+    // The seconds scale printed round the opening, and the dial falling away into it.
+    const outer = add(svg, 'g', { transform: place });
+    let fine = '';
+    let major = '';
+    for (let i = 0; i < 60; i++) {
+      const a = (i * 6 * Math.PI) / 180;
+      const big = i % 15 === 0;
+      const r2 = big ? 36 : i % 5 === 0 ? 34.6 : 33.4;
+      const seg = `M ${(31.8 * Math.sin(a)).toFixed(2)} ${(-31.8 * Math.cos(a)).toFixed(2)} L ${(r2 * Math.sin(a)).toFixed(2)} ${(-r2 * Math.cos(a)).toFixed(2)} `;
+      if (i % 5 === 0) major += seg;
+      else fine += seg;
+    }
+    add(outer, 'path', { d: fine }, ['pw-tb-scale', 'is-fine']);
+    add(outer, 'path', { d: major }, 'pw-tb-scale');
+    add(outer, 'circle', { cx: 0, cy: 0, r: 30, filter: url('tb-fade') }, 'pw-window-fade');
+
+    // Under the cage: the plate, grained in circles, and the fixed wheel the cage runs round.
+    const under = add(outer, 'g', { 'clip-path': url('tb-window') });
+    add(under, 'circle', { cx: 0, cy: 0, r: 31, fill: url('tb-plate') });
+    for (let rr = 1.5; rr < 30; rr += 0.9) add(under, 'circle', { cx: 0, cy: 0, r: rr }, 'pw-tb-graining');
+    let ring = '';
+    for (let i = 0; i < 80; i++) {
+      const a0 = (i / 80) * 2 * Math.PI;
+      const step = (2 * Math.PI) / 80;
+      const at = (rr, a) => `${(rr * Math.sin(a)).toFixed(2)} ${(-rr * Math.cos(a)).toFixed(2)}`;
+      ring += `${i ? 'L' : 'M'} ${at(26.2, a0)} L ${at(27.6, a0 + step * 0.2)} L ${at(27.6, a0 + step * 0.5)} L ${at(26.2, a0 + step * 0.7)} `;
+    }
+    ring += `Z ${circlePath(0, 0, 23.6)}`;
+    add(under, 'path', { d: ring, 'fill-rule': 'evenodd', fill: url('tb-gold'), filter: url('tb-lift') }, 'pw-tb-wheel');
+    add(under, 'circle', { cx: 0, cy: 0, r: 25 }, 'pw-tb-wheel-ring');
+
+    // The cage, turned by update() or swept round once a minute.
+    const turnEl = add(svg, 'g', {}, 'pw-turn');
+    turnEl.style.transformOrigin = `${cx.toFixed(2)}px ${cy.toFixed(2)}px`;
+    const live = { type: 'cage', el: turnEl, sweep: s.movement !== 'still' };
+    this.parts.live.push(live);
+    if (live.sweep) sweep(turnEl, now);
+    else turn(turnEl, now.getSeconds() * 6);
+    const cage = add(turnEl, 'g', { transform: place, filter: url('tb-lift') });
+    // The lower frame of the cage.
+    add(cage, 'circle', { cx: 0, cy: 0, r: 21.6 }, 'pw-tb-frame');
+    // The escape wheel, whose pinion runs round the fixed wheel, and the pallet fork.
+    const escape = add(cage, 'g', {}, ['pw-mv-spin', 'is-escape']);
+    add(escape, 'path', { d: gearPath(0, 19, 5.2, 15, true), 'fill-rule': 'evenodd', fill: url('tb-steel') }, 'pw-mv-steel');
+    const fork = add(cage, 'g', {}, 'pw-mv-fork');
+    add(fork, 'circle', { cx: 0, cy: 13.5, r: 6, fill: 'none' });
+    add(fork, 'path', { d: 'M -3.2 16.6 L 0 11.4 L 3.2 16.6 M 0 11.4 L 0 7.6' }, ['pw-mv-lever', 'is-outline']);
+    add(fork, 'path', { d: 'M -3.2 16.6 L 0 11.4 L 3.2 16.6 M 0 11.4 L 0 7.6' }, 'pw-mv-lever');
+    // The blued hairspring, breathing with the balance.
+    const spring = add(cage, 'g', {}, 'pw-mv-hairspring');
+    add(spring, 'circle', { cx: 0, cy: 0, r: 9.5, fill: 'none' });
+    let d = '';
+    for (let t = 0; t <= 18 * Math.PI; t += 0.2) {
+      const rr = 1.8 + (t / (18 * Math.PI)) * 7.2;
+      d += `${d ? ' L' : 'M'} ${(rr * Math.cos(t)).toFixed(2)} ${(rr * Math.sin(t)).toFixed(2)}`;
+    }
+    add(spring, 'path', { d }, 'pw-mv-spring');
+    // The balance: a gold rim with timing screws on two arms.
+    const balance = add(cage, 'g', {}, 'pw-mv-balance');
+    add(balance, 'circle', { cx: 0, cy: 0, r: 14.6, fill: 'none' });
+    add(balance, 'circle', { cx: 0, cy: 0, r: 12.4, fill: 'none', stroke: url('tb-gold') }, 'pw-mv-rim');
+    add(balance, 'circle', { cx: 0, cy: 0, r: 13.5 }, 'pw-mv-rim-shine');
+    add(balance, 'path', { d: 'M -11.4 0 L 11.4 0', stroke: url('tb-gold') }, 'pw-mv-arm');
+    for (let i = 0; i < 12; i++) {
+      const a = (i * 30 * Math.PI) / 180;
+      add(balance, 'circle', { cx: (13.8 * Math.cos(a)).toFixed(2), cy: (13.8 * Math.sin(a)).toFixed(2), r: 0.8, fill: url('tb-gold') }, 'pw-mv-rim-screw');
+    }
+    // The upper cage: three arms like a lyre, polished, meeting at a jewelled hub. The arm
+    // at the top is blued and runs out to point at the seconds.
+    for (let i = 0; i < 3; i++) {
+      const g = add(cage, 'g', { transform: `rotate(${i * 120})` });
+      const arm = 'M -1.6 -3 C -4.6 -9 -5.4 -15 -2.6 -21.8 L 2.6 -21.8 C 5.4 -15 4.6 -9 1.6 -3 Z M -1.2 -8 C -2.6 -12 -2.6 -15.5 -1 -19 L 1 -19 C 2.6 -15.5 2.6 -12 1.2 -8 Z';
+      add(g, 'path', { d: arm, 'fill-rule': 'evenodd', fill: url(i ? 'tb-steel' : 'tb-blued') }, 'pw-tb-arm');
+      add(g, 'circle', { cx: 0, cy: -21.6, r: 1.3 }, 'pw-mv-screw');
+      if (!i) add(g, 'path', { d: 'M -1 -22 L 0 -29 L 1 -22 Z', fill: url('tb-blued') }, 'pw-tb-arm');
+    }
+    add(cage, 'circle', { cx: 0, cy: 0, r: 21.6 }, 'pw-tb-frame-top');
+    add(cage, 'circle', { cx: 0, cy: 0, r: 3.6, fill: url('tb-steel') }, 'pw-tb-arm');
+    add(cage, 'circle', { cx: 0, cy: 0, r: 2.3, fill: url('tb-gold') }, 'pw-mv-chaton');
+    add(cage, 'circle', { cx: 0, cy: 0, r: 1.25 }, 'pw-mv-ruby');
+    add(cage, 'circle', { cx: -0.45, cy: -0.45, r: 0.4 }, 'pw-mv-glint');
+
+    // The sapphire over it all, and the polished edge of the opening.
+    const top = add(svg, 'g', { transform: place });
+    add(top, 'circle', { cx: 0, cy: 0, r: 30, fill: url('tb-vignette') });
+    add(top, 'path', { d: 'M -27 -9 A 28.5 28.5 0 0 1 9 -27 A 34 34 0 0 0 -27 -9 Z', fill: url('tb-sapphire') });
+    add(top, 'circle', { cx: 0, cy: 0, r: 30 }, 'pw-window-edge');
+    add(top, 'circle', { cx: 0, cy: 0, r: 30, fill: 'none', stroke: url('metal') }, ['pw-window-rim', 'is-fine']);
+  }
+
   // Hands are drawn pointing at 12 around (0, 0) and turned into place by update(). Most are
   // faceted: the two halves catch the light differently, like polished metal.
   drawHand(g, add, style, len, k, hour) {
@@ -4489,6 +5071,30 @@ class FloatingWatch {
       for (const cy of [25, 45]) svg.createSvg('circle', { attr: { cx: 95, cy, r: 4 }, cls: ['pw-px', 'is-on', 'pw-d-colon'] });
       return;
     }
+    if (style === 'terminal') {
+      // A green screen: a prompt, the time large, the date, a bar of hashes that fills toward
+      // your goal or runs down with a session, and what you're doing, with the cursor after it.
+      // Small, just the time and the cursor.
+      const screen = box.createDiv('pw-tm-screen');
+      if (!sq.mini) screen.createDiv({ cls: ['pw-tm-line', 'is-prompt'], text: '~ $ now' });
+      const big = screen.createDiv('pw-tm-big');
+      sq.hm = big.createSpan();
+      // The seconds over am or pm, small beside the time.
+      const side = big.createSpan('pw-tm-side');
+      if (s.digitalSeconds && !sq.mini) sq.ss = side.createSpan();
+      sq.ampm = side.createSpan();
+      if (sq.mini) {
+        big.createSpan('pw-tm-cursor');
+        return;
+      }
+      sq.date = screen.createDiv('pw-tm-line');
+      if (s.digitalBar) sq.bar = screen.createDiv({ cls: ['pw-tm-line', 'is-bar'] });
+      const status = screen.createDiv({ cls: ['pw-tm-line', 'is-status'] });
+      status.createSpan({ cls: 'pw-tm-arrow', text: '> ' });
+      sq.status = status.createSpan();
+      status.createSpan('pw-tm-cursor');
+      return;
+    }
     if (style === 'words' && sq.mini) {
       // Small, just the words that are lit, on two lines.
       sq.lines = [box.createDiv('pw-w-line'), box.createDiv({ cls: ['pw-w-line', 'is-hour'] })];
@@ -4609,6 +5215,28 @@ class FloatingWatch {
       }
       sq.cells.forEach((cell, i) => setIfChanged(cell, 'class', `pw-px${on.has(i) ? ' is-on' : bar.has(i) ? ' is-bar' : i === sec ? ' is-sec' : ''}`));
       if (sq.ampm) setText(sq.ampm, this.h24 ? '' : h < 12 ? 'AM' : 'PM');
+    } else if (sq.style === 'terminal') {
+      setText(sq.hm, `${this.h24 ? pad2(h) : h % 12 || 12}:${pad2(m)}`);
+      if (sq.ss) setText(sq.ss, pad2(now.getSeconds()));
+      setText(sq.ampm, this.h24 ? '' : h < 12 ? 'am' : 'pm');
+      if (sq.mini) return;
+      setText(sq.date, now.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }).toLowerCase());
+      if (sq.bar) {
+        const part = clamp(progress, 0, 1);
+        const lit = Math.round(part * 10);
+        setText(sq.bar, `[${'#'.repeat(lit)}${'.'.repeat(10 - lit)}] ${Math.round(part * 100)}%`);
+      }
+      const x = p.session;
+      let status;
+      if (x) {
+        const secs = Math.ceil(p.sessionRemaining() / 1000);
+        status = `${x.paused ? 'paused' : x.kind === 'focus' ? 'focus' : 'break'} ${Math.floor(secs / 60)}:${pad2(secs % 60)}`;
+      } else if (p.alert) {
+        status = p.alert.kind === 'focus' ? 'break time' : 'focus time';
+      } else {
+        status = `today ${fmtShort(p.getDay(dayKey(now)).ms)}`;
+      }
+      setText(sq.status, status);
     } else if (sq.mini) {
       // "twenty five to" over "three", or "three" over "o'clock".
       const words = timeWords(h, m).slice(2).filter((w) => w !== 'minutes');
@@ -9719,6 +10347,7 @@ class PocketWatchSettingTab extends PluginSettingTab {
         tomato: 'The time left in a session, large, with the session round the edge.',
         pixel: 'The time in lights, and what else it shows.',
         words: 'The time in words, to the five minutes before it, with a light in a corner for each minute since.',
+        terminal: 'A green screen: the time, the date, a bar toward your goal and what you\'re doing, with a cursor after it.',
       }[style]);
       if (style !== 'words') dropdown(new Setting(body).setName('Clock'), CLOCKS, s.clock, (v) => set({ clock: v }, true));
       if (style === 'tomato') toggle(body, 'Monogram', 'dialText', 'The Philip Pocket monogram, faded into the tile.');
@@ -9728,6 +10357,11 @@ class PocketWatchSettingTab extends PluginSettingTab {
         toggle(body, 'Bottom row', 'digitalBar', 'Fills up toward your daily goal, and counts down during a focus session.');
       }
       if (style === 'words') new Setting(body).setName('Colour').setDesc('The words take on the colour of a focus session or a break while one runs.');
+      if (style === 'terminal') {
+        toggle(body, 'Seconds', 'digitalSeconds');
+        toggle(body, 'Blinking cursor', 'blinkColon');
+        toggle(body, 'Bar', 'digitalBar', 'Fills up toward your daily goal, and runs down during a focus session.');
+      }
     } else if (s.watchType === 'digital' && SHAPED_STYLES.includes(s.digitalStyle)) {
       const name = DIGITAL_STYLES[s.digitalStyle];
       const body = group('customise', `Customise ${name}`, 'Clock and seconds.');
@@ -9887,7 +10521,7 @@ class PocketWatchSettingTab extends PluginSettingTab {
     gallery.createDiv({ cls: 'pocket-watch-gallery-label', text: 'Digital' });
     grid = gallery.createDiv({ cls: ['pocket-watch-gallery-grid', 'is-digital'] });
     // The slim ones are drawn larger, so they fill their card like the others.
-    const slimSize = { hairline: 116, capsule: 124, column: 96, tomato: 84, pixel: 84, words: 84 };
+    const slimSize = { hairline: 116, capsule: 124, column: 96, tomato: 84, pixel: 84, words: 84, terminal: 84 };
     for (const [key, name] of Object.entries(DIGITAL_STYLES)) {
       card(grid, name, s.watchType === 'digital' && s.digitalStyle === key, { watchType: 'digital', digitalStyle: key }, slimSize[key] || 72);
     }

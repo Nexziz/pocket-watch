@@ -4475,12 +4475,127 @@ body.theme-light {
 }
 
 /* ---------------------------------------------------------------------------
+   Lavender, Jungle and Tourbillon
+   --------------------------------------------------------------------------- */
+
+.pocket-watch-face-lavender {
+  --pw-flange: rgba(40, 28, 70, 0.55);
+  --pw-bezel-a: #fff3df; --pw-bezel-b: #d9b98a; --pw-bezel-c: #7f5f3a;
+  --pw-dial-a: #8a6ab4; --pw-dial-b: #3c2a66;
+  --pw-ink: #fff1dc; --pw-ink-soft: rgba(255, 241, 220, 0.6);
+  --pw-hand: #fff6e8; --pw-hand-shade: #d8bf98; --pw-hand-edge: rgba(40, 20, 50, 0.6);
+  --pw-lume: #3c2a66; --pw-accent: #f39a6b;
+  --pw-ring: #f6a874; --pw-ring-track: rgba(0, 0, 0, 0.2);
+  --pw-date-bg: #2e2050; --pw-date-ink: #fff1dc;
+  --pw-subdial: rgba(0, 0, 0, 0.22);
+}
+
+.pocket-watch-svg.pocket-watch-face-lavender {
+  --pw-metal-a: #fff8e6;
+  --pw-metal-b: #e9c995;
+  --pw-metal-c: #93703f;
+}
+
+.pw-lav-sky-stroke.is-light { fill: rgba(255, 228, 214, 0.1); }
+.pw-lav-sky-stroke.is-dark { fill: rgba(40, 30, 90, 0.1); }
+.pw-lav-cloud { fill: rgba(96, 74, 140, 0.55); }
+.pw-lav-cloud-lit { fill: rgba(255, 186, 160, 0.7); }
+.pw-lav-sun { filter: drop-shadow(0 0 2px rgba(255, 240, 200, 0.9)); }
+.pw-lav-tree { fill: #4a3460; }
+.pw-lav-wall { fill: #8c6a8c; }
+.pw-lav-wall-lit { fill: #e7a07f; }
+.pw-lav-roof { fill: #6b4560; }
+.pw-lav-lamp { fill: #ffe2a0; }
+.pw-lav-lamp-glow { fill: rgba(255, 214, 140, 0.55); }
+
+.pw-lav-dab { fill: none; stroke-linecap: round; }
+.pw-lav-dab.is-soil { stroke: rgba(40, 22, 30, 0.4); }
+.pw-lav-dab.is-deep { stroke: #3f2874; }
+.pw-lav-dab.is-mid { stroke: #6a48a8; }
+.pw-lav-dab.is-light { stroke: #9677cc; }
+.pw-lav-dab.is-pale { stroke: #c3a8e2; }
+.pw-lav-dab.is-warm { stroke: #eea7b4; }
+
+.pw-lav-stem { fill: #6f8f5c; }
+.pw-lav-bud { stroke: rgba(36, 18, 70, 0.55); stroke-width: 0.25; }
+.pw-lav-bud.is-deep { fill: #5b37a8; }
+.pw-lav-bud.is-mid { fill: #8058cc; }
+.pw-lav-bud.is-light { fill: #a886e6; }
+.pw-lav-bud.is-pale { fill: #d2bdf3; }
+.pw-lav-bud-light { fill: rgba(255, 222, 236, 0.75); }
+
+.pocket-watch-face-jungle {
+  --pw-flange: rgba(4, 22, 14, 0.6);
+  --pw-bezel-a: #fff4d2; --pw-bezel-b: #d8b166; --pw-bezel-c: #7a5719;
+  --pw-dial-a: #2d5c3d; --pw-dial-b: #0a2117;
+  --pw-ink: #f6e3a8; --pw-ink-soft: rgba(246, 227, 168, 0.55);
+  --pw-hand: #f8e6ad; --pw-hand-shade: #b8913f; --pw-hand-edge: rgba(4, 20, 10, 0.65);
+  --pw-lume: #0a2117; --pw-accent: #ef5246;
+  --pw-ring: #ef5246; --pw-ring-track: rgba(0, 0, 0, 0.22);
+  --pw-date-bg: #0a2117; --pw-date-ink: #f6e3a8;
+  --pw-subdial: rgba(0, 0, 0, 0.22);
+}
+
+.pocket-watch-svg.pocket-watch-face-jungle {
+  --pw-metal-a: #fff4cf;
+  --pw-metal-b: #e0b85f;
+  --pw-metal-c: #8a6420;
+}
+
+.pw-jun-frond.is-far { fill: #17432e; }
+.pw-jun-frond.is-mid { fill: #22573a; }
+.pw-jun-heart.is-back { fill: #0f3123; }
+.pw-jun-heart.is-mid { fill: #1a4a32; }
+.pw-jun-heart-vein { fill: none; stroke-width: 0.5; stroke-linecap: round; }
+.pw-jun-heart-vein.is-back { stroke: rgba(120, 180, 120, 0.09); }
+.pw-jun-heart-vein.is-mid { stroke: rgba(150, 210, 140, 0.22); }
+.pw-jun-banana-vein { fill: none; stroke: rgba(205, 240, 170, 0.28); stroke-width: 0.3; }
+.pw-jun-banana-rib { fill: #c9e3a0; }
+.pw-jun-tear { fill: #0d2a1d; }
+.pw-jun-leaf-stroke { fill: rgba(190, 235, 160, 0.14); }
+.pw-jun-leaf-vein { fill: none; stroke: rgba(196, 236, 160, 0.45); }
+.pw-jun-leaf-rib { fill: #b9dc95; }
+.pw-jun-stalk { fill: #3c7a45; }
+.pw-jun-petal { stroke: rgba(110, 10, 30, 0.35); stroke-width: 0.3; }
+.pw-jun-petal-vein { fill: none; stroke: rgba(120, 10, 30, 0.35); stroke-width: 0.35; }
+.pw-jun-column { fill: #f5d0b8; }
+.pw-jun-pollen { fill: #ffd34d; }
+.pw-jun-stigma { fill: #b0122f; }
+.pw-jun-wing-edge { fill: #0d0f1a; }
+.pw-jun-wing-spot { fill: #f4f6ff; }
+.pw-jun-body { fill: #1b1a14; }
+.pw-jun-antenna { fill: none; stroke: #1b1a14; stroke-width: 0.35; stroke-linecap: round; }
+.pw-jun-dapple { fill: rgba(240, 255, 190, 0.16); }
+
+.pocket-watch-face-tourbillon {
+  --pw-flange: #0d1726;
+  --pw-bezel-a: #ffffff; --pw-bezel-b: #c3c8d0; --pw-bezel-c: #5c626c;
+  --pw-dial-a: #3d6497; --pw-dial-b: #08111d;
+  --pw-ink: #e9eef6; --pw-ink-soft: rgba(233, 238, 246, 0.5);
+  --pw-hand: #f4f6f9; --pw-hand-shade: #b9c0ca; --pw-hand-edge: rgba(0, 0, 0, 0.55);
+  --pw-lume: #0b1626; --pw-accent: #7fa4e8;
+  --pw-ring: #7fa4e8; --pw-ring-track: rgba(255, 255, 255, 0.08);
+  --pw-date-bg: #0b1626; --pw-date-ink: #e9eef6;
+  --pw-subdial: rgba(0, 0, 0, 0.25);
+}
+
+.pw-tb-scale { fill: none; stroke: var(--pw-ink); stroke-width: 0.9; }
+.pw-tb-scale.is-fine { stroke: var(--pw-ink-soft); stroke-width: 0.5; }
+.pw-tb-graining { fill: none; stroke: rgba(255, 255, 255, 0.05); stroke-width: 0.35; }
+.pw-tb-wheel { stroke: rgba(70, 45, 10, 0.6); stroke-width: 0.3; }
+.pw-tb-wheel-ring { fill: none; stroke: rgba(255, 245, 210, 0.35); stroke-width: 0.4; }
+.pw-tb-frame { fill: none; stroke: #8e96a1; stroke-width: 2.2; }
+.pw-tb-frame-top { fill: none; stroke: rgba(255, 255, 255, 0.55); stroke-width: 0.4; }
+.pw-tb-arm { stroke: rgba(0, 0, 0, 0.5); stroke-width: 0.3; }
+
+/* ---------------------------------------------------------------------------
    Square digital watches: Tomato, Pixel and Words
    --------------------------------------------------------------------------- */
 
 .pw-d-tomato,
 .pw-d-pixel,
-.pw-d-words {
+.pw-d-words,
+.pw-d-terminal {
   --pw-corner: 1.25em;
   box-sizing: border-box;
   width: 7.4em;
@@ -4785,6 +4900,149 @@ body.theme-light {
 .pw-case-ceramic .pw-bezel-edge {
   stroke: rgba(255, 255, 255, 0.5);
   stroke-width: 0.6;
+}
+
+/* Terminal: green phosphor on a curved glass screen, with scan lines and a soft glow. */
+.pw-d-terminal {
+  --pw-d-bg: linear-gradient(160deg, #2c2f2d, #121413);
+  --pw-d-edge: rgba(255, 255, 255, 0.09);
+  --pw-tm-on: #8dffa8;
+  --pw-tm-soft: rgba(141, 255, 168, 0.55);
+  padding: 0.42em;
+}
+
+.pw-tm-screen {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 0.35em 0.45em;
+  border-radius: 0.85em;
+  text-align: left;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 45%, #0f2c18, #06130a 70%, #020704);
+  box-shadow: inset 0 0 0.8em rgba(0, 0, 0, 0.85), inset 0 0 0 1px rgba(0, 0, 0, 0.6);
+  font-family: var(--font-monospace, ui-monospace, Menlo, Consolas, monospace);
+  color: var(--pw-tm-on);
+  text-shadow: 0 0 0.35em color-mix(in srgb, var(--pw-tm-on) 70%, transparent);
+  white-space: nowrap;
+}
+
+/* Scan lines over the glass, and a reflection across its top. */
+.pw-tm-screen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 30% 0%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 55%),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.28) 0 1px, rgba(0, 0, 0, 0) 1px 3px);
+}
+
+.pw-tm-line {
+  font-size: 0.56em;
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+}
+
+.pw-tm-line.is-prompt {
+  color: var(--pw-tm-soft);
+}
+
+.pw-tm-big {
+  display: flex;
+  align-items: center;
+  font-size: 1.55em;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+}
+
+.pw-tm-side {
+  display: inline-flex;
+  flex-direction: column;
+  margin-left: 0.18em;
+  font-size: 0.36em;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  color: var(--pw-tm-soft);
+}
+
+.pw-tm-side:empty,
+.pw-tm-side span:empty {
+  display: none;
+}
+
+.pw-tm-line.is-bar {
+  color: var(--pw-tm-bar, var(--pw-tm-on));
+}
+
+.pocket-watch-float[data-ring="focus"] .pw-d-terminal {
+  --pw-tm-bar: color-mix(in srgb, var(--pw-focus, #e0694f) 70%, #fff);
+}
+
+.pocket-watch-float[data-ring="break"] .pw-d-terminal {
+  --pw-tm-bar: color-mix(in srgb, var(--pw-break, #5fb49c) 60%, #fff);
+}
+
+.pw-tm-arrow {
+  color: var(--pw-tm-soft);
+}
+
+/* The block cursor. */
+.pw-tm-cursor {
+  display: inline-block;
+  width: 0.55em;
+  height: 1em;
+  margin-left: 0.1em;
+  vertical-align: -0.12em;
+  background: var(--pw-tm-on);
+  box-shadow: 0 0 0.35em color-mix(in srgb, var(--pw-tm-on) 70%, transparent);
+}
+
+.pw-tm-big .pw-tm-cursor {
+  width: 0.4em;
+  height: 0.8em;
+  margin-left: 0.15em;
+}
+
+.pw-blink .pw-tm-cursor {
+  animation: pocket-watch-cursor 1.1s steps(1) infinite;
+}
+
+@keyframes pocket-watch-cursor {
+  50% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pw-blink .pw-tm-cursor {
+    animation: none;
+  }
+}
+
+.pocket-watch-float[data-palette="grey"] .pw-d-terminal {
+  --pw-tm-on: #e4e7e4;
+  --pw-tm-soft: rgba(228, 231, 228, 0.55);
+}
+
+.pw-d-terminal.is-mini {
+  width: auto;
+  height: 4.6em;
+  --pw-corner: 1em;
+  padding: 0.36em;
+}
+
+.pw-d-terminal.is-mini .pw-tm-screen {
+  padding: 0 0.6em;
+  border-radius: 0.7em;
+}
+
+.pw-d-terminal.is-mini .pw-tm-big {
+  font-size: 2.3em;
 }
 
 /* ---------------------------------------------------------------------------
