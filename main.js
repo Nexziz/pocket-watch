@@ -1,6 +1,8 @@
 'use strict';
 
-const { Plugin, PluginSettingTab, Setting, MarkdownView, Notice, Menu, ItemView, Modal, SuggestModal, Platform, setIcon, parseYaml } = require('obsidian');
+const { Plugin, PluginSettingTab, Setting, Notice, Menu, ItemView, Modal, SuggestModal, Platform, setIcon, parseYaml, editorInfoField } = require('obsidian');
+const { EditorView } = require('@codemirror/view');
+const { Transaction } = require('@codemirror/state');
 
 // ---------------------------------------------------------------------------
 // Options
@@ -396,6 +398,37 @@ function countWords(text) {
   const rest = text.replace(CJK_CHAR, ' ').match(WORD);
   return cjk + (rest ? rest.length : 0);
 }
+
+// The words an edit adds (or takes away, below zero). A word never runs over a line break,
+// so it's enough to count the lines the edit touches, before and after it.
+function changedWords(tr) {
+  const before = tr.startState.doc;
+  const after = tr.newDoc;
+  let diff = 0;
+  let span = null;
+  const close = () => {
+    if (span) diff += countWords(after.sliceString(span.fromB, span.toB)) - countWords(before.sliceString(span.fromA, span.toA));
+  };
+  tr.changes.iterChangedRanges((fromA, toA, fromB, toB) => {
+    const a0 = before.lineAt(fromA).from;
+    const a1 = before.lineAt(toA).to;
+    const b1 = after.lineAt(toB).to;
+    // Two edits on one line are counted together.
+    if (span && a0 <= span.toA) {
+      span.toA = Math.max(span.toA, a1);
+      span.toB = Math.max(span.toB, b1);
+      return;
+    }
+    close();
+    span = { fromA: a0, toA: a1, fromB: after.lineAt(fromB).from, toB: b1 };
+  });
+  close();
+  return diff;
+}
+
+// Edits you make yourself: typing, dictation, pasting, dropping, deleting, undo and redo.
+// Opening a note, sync, and other plugins changing it don't say they come from you.
+const USER_EDITS = ['input', 'delete', 'undo', 'redo', 'move'];
 
 function dayKey(date) {
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -996,9 +1029,8 @@ module.exports = class PocketWatchPlugin extends Plugin {
     this.lastInput = 0;
     this.lastTick = Date.now();
     this.sinceActivityMs = 0;
-    // Word count of each open note when we last looked, keyed by path.
-    this.wordCounts = new Map();
-    this.pendingCounts = new Map();
+    // Words written or deleted in a note, waiting for you to pause, keyed by path.
+    this.pendingWords = new Map();
     this.watch = null;
 
     this.addRibbonIcon('clock', 'Open Pocket Watch', () => this.watch && this.watch.toggleShelf());
@@ -1081,20 +1113,21 @@ module.exports = class PocketWatchPlugin extends Plugin {
     this.registerEvent(this.app.workspace.on('layout-change', follow));
     this.registerEvent(this.app.workspace.on('resize', follow));
 
-    this.registerEvent(this.app.workspace.on('editor-change', (editor, info) => this.onEditorChange(editor, info)));
+    this.registerEditorExtension(EditorView.updateListener.of((update) => this.onEditorUpdate(update)));
     this.registerEvent(this.app.workspace.on('file-open', (file) => {
       this.markActive();
       if (file) this.count('opens');
-      this.seedWordCount(file);
     }));
     this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
       this.markActive();
       follow();
     }));
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
-      if (this.wordCounts.has(oldPath)) {
-        this.wordCounts.set(file.path, this.wordCounts.get(oldPath));
-        this.wordCounts.delete(oldPath);
+      const pending = this.pendingWords.get(oldPath);
+      if (pending) {
+        pending.path = file.path;
+        this.pendingWords.delete(oldPath);
+        this.pendingWords.set(file.path, pending);
       }
       this.renameInDays(oldPath, file.path);
       this.renameTimeline(oldPath, file.path);
@@ -1140,16 +1173,13 @@ module.exports = class PocketWatchPlugin extends Plugin {
         if (links > before.links) this.count('links', links - before.links);
         if (done > before.done) this.count('tasks', done - before.done);
       }));
-      for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
-        if (leaf.view instanceof MarkdownView) this.seedWordCount(leaf.view.file);
-      }
       this.watch = new FloatingWatch(this);
       this.tick();
     });
   }
 
   onunload() {
-    for (const t of this.pendingCounts.values()) window.clearTimeout(t);
+    for (const pending of [...this.pendingWords.values()]) this.addWords(pending);
     if (this.watch) this.watch.destroy();
     if (audio) audio.close();
     audio = null;
@@ -1532,61 +1562,73 @@ module.exports = class PocketWatchPlugin extends Plugin {
     this.ownDays = days;
   }
 
-  seedWordCount(file) {
-    if (!file || file.extension !== 'md' || this.pendingCounts.has(file.path)) return;
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (view && view.file === file) this.wordCounts.set(file.path, countWords(view.editor.getValue()));
-  }
-
-  // Compare the note's word count with what it was before. Growth counts as words
-  // written, shrinking as words deleted. Waits until you pause typing for half a second.
-  onEditorChange(editor, info) {
+  // Words you write or delete, edit by edit. Only edits that come from you count, in the note
+  // you're in, so a note opening, sync or another plugin changing it never adds words.
+  onEditorUpdate(update) {
+    if (!update.docChanged || !update.view.hasFocus) return;
+    const info = editorInfoField ? update.state.field(editorInfoField, false) : null;
     const file = info && info.file;
     if (!file) return;
-    const path = file.path;
-    if (!this.wordCounts.has(path)) {
-      this.wordCounts.set(path, countWords(editor.getValue()));
-      return;
+    let diff = 0;
+    let yours = false;
+    for (const tr of update.transactions) {
+      if (!tr.docChanged || !this.byYou(tr)) continue;
+      yours = true;
+      diff += changedWords(tr);
     }
-    window.clearTimeout(this.pendingCounts.get(path));
-    this.pendingCounts.set(path, window.setTimeout(() => {
-      this.pendingCounts.delete(path);
-      // The pane may have switched to another note in the meantime.
-      if (!info.file || info.file.path !== path) return;
-      const now = countWords(editor.getValue());
-      const before = this.wordCounts.get(path);
-      this.wordCounts.set(path, now);
-      // Changes that arrive without you typing or clicking (sync, other plugins) don't count.
-      if (Date.now() - this.lastInput > 5000) return;
-      const diff = now - before;
-      const day = this.today();
-      const project = this.projectDay(day);
-      if (diff > 0) day.written += diff;
-      else if (diff < 0) day.deleted += -diff;
-      if (project && diff > 0) project.written += diff;
-      else if (project && diff < 0) project.deleted += -diff;
-      if (diff > 0) {
-        // When in the day the words come, and which note they go into.
-        const hour = new Date().getHours();
-        for (const x of project ? [day, project] : [day]) {
-          x.wordHours = x.wordHours || new Array(24).fill(0);
-          x.wordHours[hour] += diff;
-          x.fileWords = x.fileWords || {};
-          x.fileWords[path] = (x.fileWords[path] || 0) + diff;
-        }
-        // The most words written in any one minute, not counting what was pasted.
-        if (Date.now() - (this.pastedAt || 0) > 3000) {
-          const minute = Math.floor(Date.now() / 60000);
-          if (this.minuteAt !== minute) {
-            this.minuteAt = minute;
-            this.minuteWords = 0;
-          }
-          this.minuteWords += diff;
-          for (const x of project ? [day, project] : [day]) x.fastest = Math.max(x.fastest || 0, this.minuteWords);
-        }
+    if (!yours) return;
+    // Waits until you pause typing for half a second, and counts what's grown or shrunk.
+    let pending = this.pendingWords.get(file.path);
+    if (!pending) {
+      if (!diff) return;
+      pending = { path: file.path, diff: 0, timer: 0 };
+      this.pendingWords.set(file.path, pending);
+    }
+    pending.diff += diff;
+    window.clearTimeout(pending.timer);
+    pending.timer = window.setTimeout(() => this.addWords(pending), 500);
+  }
+
+  byYou(tr) {
+    if (USER_EDITS.some((x) => tr.isUserEvent(x))) return true;
+    // Obsidian turns some pastes into Markdown itself, without saying where they come from.
+    return tr.annotation(Transaction.userEvent) === undefined && Date.now() - (this.pastedAt || 0) < 1000;
+  }
+
+  // Growth counts as words written, shrinking as words deleted.
+  addWords(pending) {
+    window.clearTimeout(pending.timer);
+    if (this.pendingWords.get(pending.path) === pending) this.pendingWords.delete(pending.path);
+    const diff = pending.diff;
+    const path = pending.path;
+    if (!diff) return;
+    const day = this.today();
+    const project = this.projectDay(day);
+    if (diff > 0) day.written += diff;
+    else day.deleted += -diff;
+    if (project && diff > 0) project.written += diff;
+    else if (project) project.deleted += -diff;
+    if (diff > 0) {
+      // When in the day the words come, and which note they go into.
+      const hour = new Date().getHours();
+      for (const x of project ? [day, project] : [day]) {
+        x.wordHours = x.wordHours || new Array(24).fill(0);
+        x.wordHours[hour] += diff;
+        x.fileWords = x.fileWords || {};
+        x.fileWords[path] = (x.fileWords[path] || 0) + diff;
       }
-      if (diff !== 0) this.dirty = true;
-    }, 500));
+      // The most words written in any one minute, not counting what was pasted.
+      if (Date.now() - (this.pastedAt || 0) > 3000) {
+        const minute = Math.floor(Date.now() / 60000);
+        if (this.minuteAt !== minute) {
+          this.minuteAt = minute;
+          this.minuteWords = 0;
+        }
+        this.minuteWords += diff;
+        for (const x of project ? [day, project] : [day]) x.fastest = Math.max(x.fastest || 0, this.minuteWords);
+      }
+    }
+    this.dirty = true;
   }
 
   // --- Devices ---

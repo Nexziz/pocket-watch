@@ -135,7 +135,7 @@ If you use it on more than one device, update every device to 1.14 or later.
 
 ## Privacy
 
-Pocket Watch works entirely offline. It makes no network requests and only writes its own `data.json` in the plugin folder, and the PDF reports you ask it to save. Words written are counted from how a note's word count changes as you edit it. Chinese, Japanese and Korean characters count as one word each, as in Obsidian's own count.
+Pocket Watch works entirely offline. It makes no network requests and only writes its own `data.json` in the plugin folder, and the PDF reports you ask it to save. Words written are counted from what you type, paste and delete in a note; a note opening, sync, or another plugin changing a note never adds words. Chinese, Japanese and Korean characters count as one word each, as in Obsidian's own count.
 
 ## Support
 
